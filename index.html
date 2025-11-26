@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Personal Development Plan</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Brand Fonts -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700&family=Teko:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- Header -->
+      <header class="app-header">
+        <div class="header-left">
+          <div class="header-title heading-xl">Personal Development Plan</div>
+          <div class="header-subtitle meta-text">
+            Aligning your professional growth, personal life, and spiritual walk.
+          </div>
+        </div>
+        <div class="header-right">
+          <div class="header-controls">
+            <!-- Theme toggle -->
+            <button id="btnThemeToggle" class="icon-btn" aria-label="Toggle theme">
+              <span id="themeIconContainer">
+                <span id="themeIcon">🌞</span>
+              </span>
+            </button>
+
+            <!-- Palette picker -->
+            <div class="palette-wrapper">
+              <button
+                id="btnPaletteToggle"
+                class="icon-btn palette-btn"
+                aria-label="Choose color palette"
+              >
+                🎨
+              </button>
+              <div id="palettePopover" class="palette-popover hidden">
+                <div class="palette-popover-header">
+                  <span class="meta-text">Color theme</span>
+                </div>
+                <div class="palette-grid">
+                  <button
+                    class="palette-swatch"
+                    data-palette="ocean"
+                    aria-label="Ocean"
+                  ></button>
+                  <button
+                    class="palette-swatch"
+                    data-palette="sunset"
+                    aria-label="Sunset"
+                  ></button>
+                  <button
+                    class="palette-swatch"
+                    data-palette="forest"
+                    aria-label="Forest"
+                  ></button>
+                  <button
+                    class="palette-swatch"
+                    data-palette="royal"
+                    aria-label="Royal"
+                  ></button>
+                  <button
+                    class="palette-swatch"
+                    data-palette="candy"
+                    aria-label="Candy"
+                  ></button>
+                  <button
+                    class="palette-swatch"
+                    data-palette="dusk"
+                    aria-label="Dusk"
+                  ></button>
+                  <button
+                    class="palette-swatch"
+                    data-palette="lava"
+                    aria-label="Lava"
+                  ></button>
+                  <button
+                    class="palette-swatch"
+                    data-palette="mint"
+                    aria-label="Mint"
+                  ></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="auth-block">
+            <span id="userLabel" class="meta-text">Not signed in</span>
+            <button id="btnSignIn" class="secondary-btn small">Sign in</button>
+            <button id="btnSignOut" class="secondary-btn small" disabled>
+              Sign out
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Layout -->
+      <main class="app-main">
+        <!-- Top nav -->
+        <nav class="top-nav">
+          <button class="nav-btn active" data-section="dashboard">Dashboard</button>
+          <button class="nav-btn" data-section="goals">Goals</button>
+          <button class="nav-btn" data-section="calendar">Calendar</button>
+        </nav>
+
+        <!-- Sections -->
+        <section id="dashboard" class="section visible">
+          <div class="dashboard-grid">
+            <!-- Left Column: Overview, Tasks Due Soon, At-Risk -->
+            <div class="dashboard-left">
+              <!-- Overview stats -->
+              <section class="card">
+                <header class="card-header">
+                  <h2 class="card-title subheading">Overview</h2>
+                  <p class="card-subtitle meta-text">
+                    Quick snapshot of where your goals stand.
+                  </p>
+                </header>
+                <div class="card-body">
+                  <div class="stats-row">
+                    <div class="stat-block">
+                      <div class="stat-label meta-text">Professional goals</div>
+                      <div class="stat-value" id="stat-prof-count">0</div>
+                      <div class="stat-sub meta-text">
+                        Completed: <span id="stat-prof-complete">0</span>
+                      </div>
+                    </div>
+                    <div class="stat-block">
+                      <div class="stat-label meta-text">Personal goals</div>
+                      <div class="stat-value" id="stat-pers-count">0</div>
+                      <div class="stat-sub meta-text">
+                        Completed: <span id="stat-pers-complete">0</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="progress-wrapper">
+                    <div class="progress-header">
+                      <span class="meta-text">Overall completion</span>
+                      <span id="overall-progress-label" class="meta-text">0% complete</span>
+                    </div>
+                    <div class="progress-track">
+                      <div id="overall-progress" class="progress-bar"></div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Tasks Due Soon -->
+              <section class="card" id="tasksDueSoon">
+                <header class="card-header">
+                  <h2 class="card-title subheading">Tasks due soon</h2>
+                  <p class="card-subtitle meta-text">
+                    Stay on top of upcoming deadlines.
+                  </p>
+                </header>
+                <div id="tasksDueSoonContent" class="card-body">
+                  <!-- Dynamic content rendered by JS -->
+                </div>
+              </section>
+
+              <!-- At-Risk Items -->
+              <section class="card" id="atRiskItems">
+                <header class="card-header">
+                  <h2 class="card-title subheading">At-risk items</h2>
+                  <p class="card-subtitle meta-text">
+                    Items that are behind schedule or need attention.
+                  </p>
+                </header>
+                <div id="atRiskContent" class="card-body">
+                  <!-- Dynamic content rendered by JS -->
+                </div>
+              </section>
+
+              <!-- Recently Updated -->
+              <section class="card" id="recentlyUpdated">
+                <header class="card-header">
+                  <h2 class="card-title subheading">Recently updated</h2>
+                  <p class="card-subtitle meta-text">
+                    Latest changes across goals, sub-goals, and tasks.
+                  </p>
+                </header>
+                <div id="recentlyUpdatedContent" class="card-body">
+                  <!-- Dynamic content rendered by JS -->
+                </div>
+              </section>
+            </div>
+
+
+            <!-- Right Column: Current Focus -->
+            <div class="dashboard-right">
+              <!-- Current Focus -->
+              <section class="card">
+                <header class="card-header">
+                  <h2 class="card-title subheading">Current focus</h2>
+                  <p class="card-subtitle meta-text">
+                    Your priority goals right now.
+                  </p>
+                </header>
+                <div id="currentFocusContent" class="card-body">
+                  <!-- Dynamic content rendered by JS -->
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>        <section id="goals" class="section">
+          <section class="card">
+            <header class="card-header card-header-row">
+              <div>
+                <h2 class="card-title subheading">Goals</h2>
+                <p class="card-subtitle meta-text">
+                  Break down your professional and personal development into clear,
+                  trackable goals.
+                </p>
+              </div>
+              <button id="btnAddGoal" class="primary-btn">
+                ＋ Add goal
+              </button>
+            </header>
+            <div class="card-body goals-layout">
+              <div class="goals-column">
+                <h3 class="column-heading subheading">Professional</h3>
+                <div id="professional-goals" class="goals-list"></div>
+              </div>
+              <div class="goals-column">
+                <h3 class="column-heading subheading">Personal</h3>
+                <div id="personal-goals" class="goals-list"></div>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="calendar" class="section">
+          <section class="card calendar-card">
+            <header class="card-header">
+              <h2 class="card-title subheading">Calendar</h2>
+              <p class="card-subtitle meta-text">
+                View your goals, sub-goals, and tasks on a timeline.
+              </p>
+            </header>
+            <div class="card-body">
+              <div class="calendar-controls">
+                <button id="calPrev" class="calendar-nav-btn" aria-label="Previous month">‹</button>
+                <span id="calMonthLabel" class="calendar-month-label subheading">Month 2025</span>
+                <button id="calToday" class="calendar-nav-btn" aria-label="Today">Today</button>
+                <button id="calNext" class="calendar-nav-btn" aria-label="Next month">›</button>
+                <div class="calendar-legend">
+                  <span class="calendar-legend-item">
+                    <span class="calendar-legend-swatch goal"></span>
+                    <span class="meta-text">Goals</span>
+                  </span>
+                  <span class="calendar-legend-item">
+                    <span class="calendar-legend-swatch subgoal"></span>
+                    <span class="meta-text">Sub-goals</span>
+                  </span>
+                  <span class="calendar-legend-item">
+                    <span class="calendar-legend-dot task"></span>
+                    <span class="meta-text">Tasks</span>
+                  </span>
+                </div>
+              </div>
+              <div id="calendarGrid" class="calendar-grid"></div>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <!-- Goal Modal -->
+    <div id="goalModalBackdrop" class="modal-backdrop hidden">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="goalModalTitle">
+        <div class="modal-header">
+          <h3 id="goalModalTitle" class="subheading">Add new goal</h3>
+          <button
+            id="btnCloseGoalModal"
+            class="icon-btn small"
+            aria-label="Close goal modal"
+          >
+            ✕
+          </button>
+        </div>
+        <form id="goalForm" class="modal-body">
+          <div class="field-group">
+            <span class="field-label">Goal type</span>
+            <div class="radio-row meta-text">
+              <label>
+                <input
+                  type="radio"
+                  name="goalType"
+                  value="professional"
+                  checked
+                />
+                Professional
+              </label>
+              <label>
+                <input type="radio" name="goalType" value="personal" />
+                Personal
+              </label>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="goalTitle" class="field-label">
+              Goal title <span class="field-required">*</span>
+            </label>
+            <input
+              id="goalTitle"
+              name="goalTitle"
+              type="text"
+              class="field-input"
+              placeholder="e.g. Become IT VP with strong strategic alignment"
+              required
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="goalDescription" class="field-label">Description</label>
+            <textarea
+              id="goalDescription"
+              name="goalDescription"
+              class="field-textarea"
+              rows="3"
+              placeholder="Describe why this goal matters and what success looks like."
+            ></textarea>
+          </div>
+
+          <div class="field-group field-row">
+            <div class="field-column">
+              <label for="goalStartDate" class="field-label">Projected start</label>
+              <input
+                id="goalStartDate"
+                name="goalStartDate"
+                type="date"
+                class="field-input"
+              />
+            </div>
+            <div class="field-column">
+              <label for="goalEndDate" class="field-label">Projected end</label>
+              <input
+                id="goalEndDate"
+                name="goalEndDate"
+                type="date"
+                class="field-input"
+              />
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="goalTimeframeLabel" class="field-label">
+              Timeframe label (optional)
+            </label>
+            <input
+              id="goalTimeframeLabel"
+              name="goalTimeframeLabel"
+              type="text"
+              class="field-input"
+              placeholder="e.g. Next 12–18 months, Ongoing, This season"
+            />
+            <p class="field-hint meta-text">
+              If left blank, we’ll derive a label from the projected dates or mark it
+              as ongoing.
+            </p>
+          </div>
+
+          <div class="field-group checkbox-row">
+            <label class="meta-text">
+              <input id="goalIsFocus" name="goalIsFocus" type="checkbox" />
+              Mark as current focus
+            </label>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" id="btnCancelGoal" class="secondary-btn">
+              Cancel
+            </button>
+            <button type="submit" class="primary-btn">
+              Save goal
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Sub-goal Modal -->
+    <div id="subgoalModalBackdrop" class="modal-backdrop hidden">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="subgoalModalTitle"
+      >
+        <div class="modal-header">
+          <h3 id="subgoalModalTitle" class="subheading">Add sub-goal</h3>
+          <button
+            id="btnCloseSubgoalModal"
+            class="icon-btn small"
+            aria-label="Close sub-goal modal"
+          >
+            ✕
+          </button>
+        </div>
+        <form id="subgoalForm" class="modal-body">
+          <p id="subgoalParentLabel" class="field-hint meta-text">
+            Parent goal: <strong>(will be set when opened)</strong>
+          </p>
+
+          <div class="field-group">
+            <label for="subgoalTitle" class="field-label">
+              Sub-goal title <span class="field-required">*</span>
+            </label>
+            <input
+              id="subgoalTitle"
+              name="subgoalTitle"
+              type="text"
+              class="field-input"
+              placeholder="e.g. Establish monthly mentorship meetings with VP"
+              required
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="subgoalDescription" class="field-label">Description</label>
+            <textarea
+              id="subgoalDescription"
+              name="subgoalDescription"
+              class="field-textarea"
+              rows="3"
+              placeholder="Describe what this sub-goal covers."
+            ></textarea>
+          </div>
+
+          <div class="field-group field-row">
+            <div class="field-column">
+              <label for="subgoalStartDate" class="field-label">
+                Projected start
+              </label>
+              <input
+                id="subgoalStartDate"
+                name="subgoalStartDate"
+                type="date"
+                class="field-input"
+              />
+            </div>
+            <div class="field-column">
+              <label for="subgoalEndDate" class="field-label">Projected end</label>
+              <input
+                id="subgoalEndDate"
+                name="subgoalEndDate"
+                type="date"
+                class="field-input"
+              />
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="subgoalTimeframeLabel" class="field-label">
+              Timeframe label (optional)
+            </label>
+            <input
+              id="subgoalTimeframeLabel"
+              name="subgoalTimeframeLabel"
+              type="text"
+              class="field-input"
+              placeholder="e.g. Q1, This semester, 6-month window"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="subgoalStatus" class="field-label">Status</label>
+            <select id="subgoalStatus" name="subgoalStatus" class="field-input">
+              <option value="not_started">Not started</option>
+              <option value="in_progress">In progress</option>
+              <option value="done">Done</option>
+            </select>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" id="btnCancelSubgoal" class="secondary-btn">
+              Cancel
+            </button>
+            <button type="submit" class="primary-btn">
+              Save sub-goal
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Task Modal -->
+    <div id="taskModalBackdrop" class="modal-backdrop hidden">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
+        <div class="modal-header">
+          <h3 id="taskModalTitle" class="subheading">Add task</h3>
+          <button
+            id="btnCloseTaskModal"
+            class="icon-btn small"
+            aria-label="Close task modal"
+          >
+            ✕
+          </button>
+        </div>
+        <form id="taskForm" class="modal-body">
+          <p id="taskParentLabel" class="field-hint meta-text">
+            Parent sub-goal: <strong>(will be set when opened)</strong>
+          </p>
+
+          <div class="field-group">
+            <label for="taskTitle" class="field-label">
+              Task title <span class="field-required">*</span>
+            </label>
+            <input
+              id="taskTitle"
+              name="taskTitle"
+              type="text"
+              class="field-input"
+              placeholder="e.g. Read NMC U Lesson 1"
+              required
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="taskNotes" class="field-label">Notes</label>
+            <textarea
+              id="taskNotes"
+              name="taskNotes"
+              class="field-textarea"
+              rows="3"
+              placeholder="Details, links, or context for this task."
+            ></textarea>
+          </div>
+
+          <div class="field-group field-row">
+            <div class="field-column">
+              <label for="taskDueDate" class="field-label">Due date</label>
+              <input
+                id="taskDueDate"
+                name="taskDueDate"
+                type="date"
+                class="field-input"
+              />
+            </div>
+            <div class="field-column">
+              <label for="taskStatus" class="field-label">Status</label>
+              <select id="taskStatus" name="taskStatus" class="field-input">
+                <option value="not_started">Not started</option>
+                <option value="in_progress">In progress</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+          </div>
+
+          <p class="field-hint meta-text">
+            Tasks are your smallest actions. Later they’ll roll up into sub-goal and
+            goal progress and scheduling.
+          </p>
+
+          <div class="modal-footer">
+            <button type="button" id="btnCancelTask" class="secondary-btn">
+              Cancel
+            </button>
+            <button type="submit" class="primary-btn">
+              Save task
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

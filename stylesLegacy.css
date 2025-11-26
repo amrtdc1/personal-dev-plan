@@ -1,0 +1,1644 @@
+/* Root + Theme */
+
+:root {
+  --font-display: "Teko", sans-serif;
+  --font-body: "Archivo", sans-serif;
+
+  --bg-body: #020617;
+  --bg-elevated: rgba(15, 23, 42, 0.9);
+  --bg-card: rgba(15, 23, 42, 0.96);
+  --bg-soft: rgba(15, 23, 42, 0.9);
+
+  --fg: #0f172a;
+  --fg-muted: #64748b;
+
+  --border-subtle: rgba(148, 163, 184, 0.4);
+
+  /* Accent palette (overridden by JS palette) */
+  --accent: #2563eb;
+  --accent-alt: #ef4444;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --accent-strong: rgba(37, 99, 235, 0.3);
+  --accent-alt-soft: rgba(239, 68, 68, 0.12);
+  --accent-alt-strong: rgba(239, 68, 68, 0.3);
+
+  /* Status colors */
+  --status-not_started: #6b7280;
+  --status-in_progress: #eab308;
+  --status-done: #22c55e;
+
+  /* Typography colors */
+  --text-strong: var(--accent);
+  --text-subheading: #334155;
+  --text-body: #1e293b;
+  --text-meta: #64748b;
+
+  /* Theme-based modal backgrounds */
+  --modal-bg: rgba(255, 255, 255, 0.97); /* light mode modal */
+}
+
+body[data-theme="dark"] {
+  --bg-body: #020617;
+  --bg-elevated: rgba(15, 23, 42, 0.96);
+  --bg-card: rgba(15, 23, 42, 0.98);
+  --bg-soft: rgba(15, 23, 42, 0.9);
+
+  --fg: #e5e7eb;
+  --fg-muted: #94a3b8;
+  --border-subtle: rgba(148, 163, 184, 0.5);
+
+  --text-strong: var(--accent-alt);
+  --text-subheading: #e2e8f0;
+  --text-body: #f1f5f9;
+  --text-meta: #94a3b8;
+
+  --modal-bg: rgba(15, 23, 42, 0.96);    /* dark mode modal */
+}
+body[data-theme="cwm"] {
+  /* Use your CWM brand background color here, or a dark variant */
+  --bg-body: #0b1120; /* placeholder - CWM dark navy? */
+  --bg-elevated: rgba(15, 23, 42, 0.96);
+  --bg-card: rgba(15, 23, 42, 0.98);
+  --bg-soft: rgba(15, 23, 42, 0.9);
+
+  /* Text colors – similar to dark theme, tweak as needed */
+  --fg: #e5e7eb;
+  --fg-muted: #94a3b8;
+  --border-subtle: rgba(148, 163, 184, 0.6);
+
+  /* CWM brand accents – REPLACE with your real colors */
+  --accent: #ff9900;      /* CWM primary – placeholder */
+  --accent-alt: #003366;  /* CWM secondary – placeholder */
+  --accent-soft: rgba(255, 153, 0, 0.12);
+  --accent-strong: rgba(255, 153, 0, 0.3);
+  --accent-alt-soft: rgba(0, 51, 102, 0.16);
+  --accent-alt-strong: rgba(0, 51, 102, 0.32);
+
+  /* Typography color adjustments */
+  --text-strong: var(--accent);
+  --text-subheading: #e2e8f0;
+  --text-body: #f1f5f9;
+  --text-meta: #94a3b8;
+}
+
+/* Typography utils */
+
+.heading-xl {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+}
+
+.heading-lg {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+}
+
+.subheading {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-subheading);
+}
+
+.body-text {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-body);
+}
+
+.meta-text {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--text-meta);
+}
+
+/* Base */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  font-family: var(--font-body);
+  color: var(--fg);
+  background:
+    radial-gradient(circle at 0% 0%, var(--accent-strong), #020617 55%) fixed,
+    radial-gradient(circle at 100% 100%, var(--accent-alt-strong), #020617 55%)
+      fixed;
+}
+
+body[data-theme="light"] {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(248, 250, 252, 0.9), #e5e7eb 55%) fixed,
+    radial-gradient(circle at 100% 100%, rgba(248, 250, 252, 0.9), #e2e8f0 55%)
+      fixed;
+  color: #020617;
+}
+
+body[data-theme="cwm"] {
+  /* Core surfaces */
+  --bg-body: #2d2c25; /* dark background from CWM */
+  --bg-elevated: rgba(24, 44, 40, 0.96); /* slightly tinted with #182c28 */
+  --bg-card: rgba(24, 44, 40, 0.98);
+  --bg-soft: rgba(24, 44, 40, 0.9);
+
+  /* Text */
+  --fg: #e5e1d6;         /* light neutral from brand palette */
+  --fg-muted: #b4afa0;
+  --border-subtle: rgba(229, 225, 214, 0.4);
+
+  /* Brand accents */
+  --accent: #ffd400;      /* secondary (yellow) – strong highlight */
+  --accent-alt: #1e4741;  /* primary (greenish) */
+  --accent-soft: rgba(255, 212, 0, 0.14);
+  --accent-strong: rgba(255, 212, 0, 0.32);
+  --accent-alt-soft: rgba(30, 71, 65, 0.36);
+  --accent-alt-strong: rgba(30, 71, 65, 0.6);
+
+  /* Typography colors tuned for this palette */
+  --text-strong: #ffd400;
+  --text-subheading: #e5e1d6;
+  --text-body: #f5f2e8;
+  --text-meta: #b4afa0;
+
+  /* Background: subtle gradient + centered logo */
+  background:
+    radial-gradient(circle at 0% 0%, var(--accent-alt-strong), rgba(0, 0, 0, 0.9) 55%) fixed,
+    radial-gradient(circle at 100% 100%, var(--accent-strong), rgba(0, 0, 0, 0.95) 55%) fixed,
+    url("assets/cwm-logo.png") center center / 45% auto no-repeat fixed;
+}
+
+/* CWM header feel */
+body[data-theme="cwm"] .app-header {
+  background: linear-gradient(
+    135deg,
+    rgba(24, 44, 40, 0.98),
+    rgba(30, 71, 65, 0.98)
+  );
+  border-color: rgba(255, 212, 0, 0.7);
+  box-shadow: 0 26px 55px rgba(0, 0, 0, 0.9);
+}
+
+/* CWM cards */
+body[data-theme="cwm"] .card {
+  background: rgba(24, 44, 40, 0.97);
+  border-color: rgba(229, 225, 214, 0.45);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.85);
+}
+
+/* CWM stat blocks for a little pop on dashboard */
+body[data-theme="cwm"] .stat-block {
+  background: rgba(29, 64, 60, 0.96);
+  border-color: rgba(255, 212, 0, 0.5);
+}
+
+/* --- Override card colors specifically in CWM mode --- */
+
+body[data-theme="cwm"] .goal-card,
+body[data-theme="cwm"] .subgoal-item,
+body[data-theme="cwm"] .task-section,
+body[data-theme="cwm"] .task-item,
+body[data-theme="cwm"] .card {
+  background: #2d2c25 !important;        /* true CWM dark */
+  border-color: rgba(229, 225, 214, 0.20) !important;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.55);
+}
+
+/* Slight hierarchy variation (optional) */
+body[data-theme="cwm"] .subgoal-item {
+  background: #34332c !important;  /* +5% lighter */
+}
+
+body[data-theme="cwm"] .task-item {
+  background: #3a392f !important;  /* +10% lighter */
+}
+
+body[data-theme="cwm"] .goal-card {
+  border-color: rgba(30, 71, 65, 0.45) !important;  /* #1e4741 */
+}
+
+/* ============================================================
+   CWM MODE COLOR PURIFICATION (removes all blue-ish surfaces)
+   ============================================================ */
+
+body[data-theme="cwm"] .goal-status-pill,
+body[data-theme="cwm"] .goal-tag,
+body[data-theme="cwm"] .status-pill,
+body[data-theme="cwm"] .pill,
+body[data-theme="cwm"] .badge,
+body[data-theme="cwm"] .tag {
+  background: #2d2c25 !important;
+  color: #ffd400 !important; /* brand yellow for readability */
+  border-color: rgba(229, 225, 214, 0.35) !important;
+}
+
+/* Sign In / Sign Out buttons inside header */
+body[data-theme="cwm"] .app-header .secondary-btn {
+  background: #2d2c25 !important;
+  color: #e5e1d6 !important;
+  border-color: rgba(229, 225, 214, 0.35) !important;
+}
+
+body[data-theme="cwm"] .app-header .secondary-btn:hover {
+  border-color: #ffd400 !important;
+  color: #ffd400 !important;
+}
+
+/* Theme toggle + Palette toggle buttons */
+body[data-theme="cwm"] #btnThemeToggle,
+body[data-theme="cwm"] #btnPaletteToggle,
+body[data-theme="cwm"] .icon-btn {
+  background: #2d2c25 !important;
+  border-color: rgba(229, 225, 214, 0.35) !important;
+  color: #ffd400 !important;
+}
+
+body[data-theme="cwm"] #btnThemeToggle:hover,
+body[data-theme="cwm"] #btnPaletteToggle:hover,
+body[data-theme="cwm"] .icon-btn:hover {
+  background: #34332c !important;
+  border-color: #ffd400 !important;
+}
+
+/* Goal progress bars */
+body[data-theme="cwm"] .goal-progress-track,
+body[data-theme="cwm"] .subgoal-progress-track {
+  background: #2d2c25 !important;
+}
+
+body[data-theme="cwm"] .goal-progress-bar,
+body[data-theme="cwm"] .subgoal-progress-bar {
+  background: #ffd400 !important; /* brand yellow progress fill */
+}
+
+/* Task section/headers if any blue tint lingers */
+body[data-theme="cwm"] .task-section,
+body[data-theme="cwm"] .task-header,
+body[data-theme="cwm"] .task-item {
+  background: #2d2c25 !important;
+  border-color: rgba(229, 225, 214, 0.25) !important;
+}
+
+/* Divider lines in CWM should be neutral/tan instead of slate/blue */
+body[data-theme="cwm"] .divider,
+body[data-theme="cwm"] hr {
+  border-color: rgba(229, 225, 214, 0.25) !important;
+}
+
+/* Buttons inside cards (Add Sub-goal / Add Task) */
+body[data-theme="cwm"] .subgoal-add-btn,
+body[data-theme="cwm"] .task-add-btn {
+  background: #2d2c25 !important;
+  color: #ffd400 !important;
+  border-color: rgba(229, 225, 214, 0.35) !important;
+}
+
+body[data-theme="cwm"] .subgoal-add-btn:hover,
+body[data-theme="cwm"] .task-add-btn:hover {
+  background: #34332c !important;
+  color: #ffd400 !important;
+}
+
+/* Status footer under sub-goal */
+body[data-theme="cwm"] .subgoal-actions {
+  border-top-color: rgba(229, 225, 214, 0.25) !important;
+}
+
+/* ============================================================
+   CWM MODE — Clean Up Status Dropdown + Tab Toggle Buttons
+   ============================================================ */
+
+/* All dropdowns in the app: Goals, Sub-goals, Tasks */
+body[data-theme="cwm"] select,
+body[data-theme="cwm"] .modal select,
+body[data-theme="cwm"] .goal-card select,
+body[data-theme="cwm"] .subgoal-item select,
+body[data-theme="cwm"] .task-item select {
+  background: #2d2c25 !important;
+  color: #e5e1d6 !important;
+  border: 1px solid rgba(229, 225, 214, 0.35) !important;
+  box-shadow: none !important;
+}
+
+body[data-theme="cwm"] select option {
+  background: #2d2c25 !important;
+  color: #e5e1d6 !important;
+}
+
+/* Focus state (remove blue glow) */
+body[data-theme="cwm"] select:focus,
+body[data-theme="cwm"] .modal select:focus {
+  border-color: #ffd400 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(255, 212, 0, 0.25) !important;
+}
+
+/* Hover state (remove blue) */
+body[data-theme="cwm"] select:hover {
+  background: #34332c !important;
+}
+
+/* ============================================================
+   Tab Toggle Buttons (Dashboard / Goals)
+   ============================================================ */
+
+body[data-theme="cwm"] .tab-btn {
+  background: #2d2c25 !important;
+  color: #e5e1d6 !important;
+  border: 1px solid rgba(229, 225, 214, 0.35) !important;
+}
+
+/* Hover */
+body[data-theme="cwm"] .tab-btn:hover {
+  background: #34332c !important;
+  color: #ffd400 !important; /* brand highlight */
+  border-color: #ffd400 !important;
+}
+
+/* Active / Selected Tab */
+body[data-theme="cwm"] .tab-btn.active {
+  background: #1e4741 !important; /* CWM primary */
+  color: #ffd400 !important;
+  border-color: #ffd400 !important;
+  box-shadow: 0 0 6px rgba(255, 212, 0, 0.4) !important;
+}
+
+/* ============================================================
+   CWM MODE — Top Navigation + Nav Buttons
+   ============================================================ */
+
+/* The nav container */
+body[data-theme="cwm"] .top-nav {
+  background: #2d2c25 !important; /* CWM dark background */
+  border-bottom: 1px solid rgba(229, 225, 214, 0.35) !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Default (non-active) nav buttons */
+body[data-theme="cwm"] .nav-btn {
+  background: #2d2c25 !important;
+  color: #e5e1d6 !important; /* brand neutral light text */
+  border: 1px solid rgba(229, 225, 214, 0.3) !important;
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  font-family: var(--font-body);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* Hover */
+body[data-theme="cwm"] .nav-btn:hover {
+  background: #34332c !important;
+  color: #ffd400 !important; /* CWM yellow highlight */
+  border-color: #ffd400 !important;
+}
+
+/* Active / selected nav button */
+body[data-theme="cwm"] .nav-btn.active {
+  background: #1e4741 !important;  /* CWM primary dark green */
+  color: #ffd400 !important;        /* CWM yellow */
+  border-color: #ffd400 !important;
+  box-shadow: 0 0 8px rgba(255, 212, 0, 0.35) !important;
+}
+
+/* ============================================================
+   CWM MODE — Dashboard + Goal Progress Bars (better contrast)
+   ============================================================ */
+
+body[data-theme="cwm"] .progress-track,
+body[data-theme="cwm"] .goal-progress-track,
+body[data-theme="cwm"] .subgoal-progress-track {
+  background: #182c28 !important;  /* deeper CWM brand color */
+  border-radius: 999px;
+}
+
+body[data-theme="cwm"] .progress-bar,
+body[data-theme="cwm"] .goal-progress-bar,
+body[data-theme="cwm"] .subgoal-progress-bar {
+  background: #ffd400 !important;   /* brand yellow */
+  box-shadow: none !important;
+}
+
+/* App Shell */
+
+.app-shell {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 1.8rem 1.2rem 2.5rem;
+}
+
+/* Header */
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+  padding: 1rem 1.2rem;
+  border-radius: 1.25rem;
+  background: linear-gradient(
+      135deg,
+      rgba(15, 23, 42, 0.96),
+      rgba(15, 23, 42, 0.94)
+    );
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.65);
+}
+
+.header-left {
+  flex: 1;
+}
+
+.header-subtitle {
+  margin-top: 0.25rem;
+}
+
+.header-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Palette popover */
+
+.palette-wrapper {
+  position: relative;
+}
+
+.palette-popover {
+  position: absolute;
+  right: 0;
+  top: 140%;
+  z-index: 20;
+  width: 210px;
+  padding: 0.55rem;
+  border-radius: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.8);
+}
+
+.palette-popover.hidden {
+  display: none;
+}
+
+.palette-popover-header {
+  margin-bottom: 0.4rem;
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.palette-swatch {
+  width: 34px;
+  height: 24px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+  position: relative;
+}
+
+.palette-swatch::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 999px;
+  border: 1px solid rgba(248, 250, 252, 0.5);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.palette-swatch:hover::after {
+  opacity: 1;
+}
+
+.palette-swatch.active {
+  border-color: #f9fafb;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.9);
+}
+
+/* Auth */
+
+.auth-block {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Buttons */
+
+.icon-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5e7eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.cwm-theme-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  display: block;
+}
+
+body[data-theme="light"] .icon-btn {
+  background: rgba(248, 250, 252, 0.96);
+  color: #0f172a;
+}
+
+.icon-btn.small {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.8rem;
+}
+
+.icon-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.6);
+}
+
+.palette-btn {
+  font-size: 1rem;
+}
+
+.primary-btn,
+.secondary-btn {
+  font-family: var(--font-body);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border-width: 1px;
+  border-style: solid;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-alt));
+  color: #f9fafb;
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.75);
+}
+
+.primary-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.9);
+}
+
+.secondary-btn {
+  background: transparent;
+  color: var(--fg);
+  border-color: rgba(148, 163, 184, 0.7);
+}
+
+.secondary-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.5);
+}
+
+.secondary-btn.small {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+}
+
+/* Ensure auth buttons in the dark header are always readable */
+.app-header .secondary-btn {
+  background: rgba(15, 23, 42, 0.98);
+  color: #e5e7eb;
+  border-color: rgba(148, 163, 184, 0.8);
+}
+
+.app-header .secondary-btn:hover {
+  border-color: var(--accent);
+  color: #f9fafb;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.7);
+}
+
+/* Main layout */
+
+.app-main {
+  margin-top: 1.6rem;
+}
+
+/* Nav */
+
+.top-nav {
+  display: inline-flex;
+  padding: 0.18rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.7);
+  margin-bottom: 1.4rem;
+}
+
+body[data-theme="light"] .top-nav {
+  background: rgba(248, 250, 252, 0.96);
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.nav-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.nav-btn.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-alt));
+  color: #f9fafb;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.7);
+}
+
+/* Sections */
+
+.section {
+  display: none;
+}
+
+.section.visible {
+  display: block;
+}
+
+/* Cards */
+
+.card {
+  border-radius: 1.1rem;
+  background: var(--bg-card);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.85);
+  padding: 1rem 1.1rem 1rem;
+}
+
+body[data-theme="light"] .card {
+  background: rgba(248, 250, 252, 0.96);
+  border-color: rgba(148, 163, 184, 0.5);
+  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.25);
+}
+
+.card-header {
+  margin-bottom: 0.6rem;
+}
+
+.card-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.card-title {
+  margin: 0;
+}
+
+.card-subtitle {
+  margin: 0.15rem 0 0;
+}
+
+.card-body {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+}
+
+/* Dashboard */
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.stats-row {
+  display: flex;
+  gap: 0.8rem;
+}
+
+.stat-block {
+  flex: 1;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.9rem;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+}
+
+body[data-theme="light"] .stat-block {
+  background: rgba(248, 250, 252, 0.98);
+}
+
+.stat-label {
+  margin-bottom: 0.1rem;
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  color: var(--text-strong);
+}
+
+.stat-sub {
+  margin-top: 0.05rem;
+}
+
+.progress-wrapper {
+  margin-top: 0.75rem;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.progress-track {
+  position: relative;
+  width: 100%;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  overflow: hidden;
+}
+
+body[data-theme="light"] .progress-track {
+  background: rgba(226, 232, 240, 0.9);
+}
+
+.progress-bar {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+  transition: width 0.25s ease-out;
+}
+
+/* Goals layout */
+
+.goals-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.column-heading {
+  margin-top: 0;
+  margin-bottom: 0.4rem;
+}
+
+.goals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Goal cards */
+
+.goal-card {
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  padding: 0.75rem 0.85rem;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.85);
+}
+
+body[data-theme="light"] .goal-card {
+  background: rgba(248, 250, 252, 0.98);
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.goal-card.status-not_started {
+  border-left: 3px solid var(--status-not_started);
+}
+.goal-card.status-in_progress {
+  border-left: 3px solid var(--status-in_progress);
+}
+.goal-card.status-done {
+  border-left: 3px solid var(--status-done);
+}
+
+.goal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.3rem;
+}
+
+.goal-title {
+  margin: 0;
+}
+
+.goal-body {
+  margin: 0.15rem 0 0.35rem;
+}
+
+.goal-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.76rem;
+}
+
+.goal-timeframe {
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  color: var(--text-meta);
+}
+
+.goal-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.goal-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-family: var(--font-body);
+  color: #e5e7eb;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+}
+
+.goal-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+}
+
+.goal-progress-label {
+  @supports (font-family: var(--font-body)) {
+    font-family: var(--font-body);
+  }
+  color: var(--text-meta);
+  white-space: nowrap;
+}
+
+.goal-progress-track {
+  position: relative;
+  flex: 1;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  overflow: hidden;
+}
+
+body[data-theme="light"] .goal-progress-track {
+  background: rgba(226, 232, 240, 0.9);
+}
+
+.goal-progress-bar {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+  transition: width 0.25s ease-out;
+}
+
+.goal-progress-percent {
+  font-size: 0.72rem;
+  color: var(--text-meta);
+  min-width: 3ch;
+  text-align: right;
+}
+
+body[data-theme="light"] .goal-tag {
+  color: #0f172a;
+  background: rgba(248, 250, 252, 0.96);
+}
+
+.focus-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.goal-status-select {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  padding: 0.2rem 0.7rem;
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--fg);
+}
+
+body[data-theme="light"] .goal-status-select {
+  background: rgba(248, 250, 252, 0.98);
+}
+
+.goal-edit-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.goal-edit-btn:hover {
+  color: var(--accent);
+}
+
+/* Sub-goal section */
+
+.subgoal-section {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.subgoal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--fg-muted);
+}
+
+.subgoal-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.subgoal-header-title {
+  font-weight: 500;
+}
+
+.subgoal-count {
+  font-size: 0.7rem;
+  opacity: 0.85;
+}
+
+.section-toggle-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  transition: color 0.15s ease;
+}
+
+.section-toggle-btn:hover {
+  color: var(--accent);
+}
+
+.section-toggle-btn .chevron {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.section-toggle-btn.collapsed .chevron {
+  transform: rotate(-90deg);
+}
+
+.subgoal-add-btn {
+  padding: 0.18rem 0.65rem;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(248, 250, 252, 0.96);
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+body[data-theme="dark"] .subgoal-add-btn {
+  background: rgba(15, 23, 42, 0.98);
+}
+
+.subgoal-add-btn span:first-child {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.subgoal-add-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.2);
+}
+
+.subgoal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.subgoal-list.collapsed {
+  display: none;
+}
+
+.subgoal-empty {
+  font-size: 0.76rem;
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+/* Sub-goal item */
+
+.subgoal-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.6rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+
+body[data-theme="dark"] .subgoal-item {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.subgoal-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.subgoal-title {
+  margin: 0;
+}
+
+.subgoal-meta {
+  margin: 0.1rem 0 0;
+}
+
+/* Sub-goal footer */
+
+.subgoal-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--border-subtle);
+  font-size: 0.72rem;
+}
+
+.subgoal-footer-label {
+  color: var(--fg-muted);
+  margin-right: auto;
+}
+
+.subgoal-status-pill {
+  font-size: 0.72rem;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--fg-muted);
+}
+
+.subgoal-status-pill.status-not_started {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--status-not_started);
+}
+
+.subgoal-status-pill.status-in_progress {
+  background: rgba(234, 179, 8, 0.08);
+  color: var(--status-in_progress);
+}
+
+.subgoal-status-pill.status-done {
+  background: rgba(34, 197, 94, 0.08);
+  color: var(--status-done);
+}
+
+.subgoal-edit-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.subgoal-edit-btn:hover {
+  color: var(--accent);
+}
+
+.subgoal-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+}
+
+.subgoal-progress-label {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--text-meta);
+  white-space: nowrap;
+}
+
+.subgoal-progress-track {
+  position: relative;
+  flex: 1;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  overflow: hidden;
+}
+
+body[data-theme="light"] .subgoal-progress-track {
+  background: rgba(226, 232, 240, 0.9);
+}
+
+.subgoal-progress-bar {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+  transition: width 0.25s ease-out;
+}
+
+.subgoal-progress-percent {
+  font-size: 0.72rem;
+  color: var(--text-meta);
+  min-width: 3ch;
+  text-align: right;
+}
+
+/* Task section */
+
+.task-section {
+  margin-top: 0.45rem;
+  padding: 0.4rem 0.55rem 0.35rem 0.85rem;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.04);
+  border-left: 2px solid var(--accent-soft);
+}
+
+body[data-theme="dark"] .task-section {
+  background: rgba(15, 23, 42, 0.8);
+  border-left-color: var(--accent-alt-soft);
+}
+
+.task-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.76rem;
+  color: var(--fg-muted);
+}
+
+.task-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.task-header-title {
+  font-weight: 500;
+}
+
+.task-count {
+  font-size: 0.7rem;
+  opacity: 0.85;
+}
+
+.task-add-btn {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.72rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(248, 250, 252, 0.96);
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+body[data-theme="dark"] .task-add-btn {
+  background: rgba(15, 23, 42, 0.98);
+}
+
+.task-add-btn span:first-child {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.task-add-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.25);
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.task-list.collapsed {
+  display: none;
+}
+
+.task-empty {
+  font-size: 0.72rem;
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+.task-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+body[data-theme="dark"] .task-item {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.task-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-title {
+  margin: 0;
+}
+
+.task-meta {
+  margin: 0.05rem 0 0;
+}
+
+.task-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+}
+
+.task-status-pill {
+  font-size: 0.7rem;
+  padding: 0.08rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--fg-muted);
+}
+
+.task-status-pill.status-not_started {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--status-not_started);
+}
+
+.task-status-pill.status-in_progress {
+  background: rgba(234, 179, 8, 0.08);
+  color: var(--status-in_progress);
+}
+
+.task-status-pill.status-done {
+  background: rgba(34, 197, 94, 0.08);
+  color: var(--status-done);
+}
+
+.task-edit-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.task-edit-btn:hover {
+  color: var(--accent);
+}
+
+/* Drag state styling */
+.goal-card.dragging,
+.subgoal-item.dragging,
+.task-item.dragging {
+  opacity: 0.7;
+  transform: scale(0.995);
+}
+
+/* Optional: indicate draggable items */
+.goal-card,
+.subgoal-item,
+.task-item {
+  cursor: grab;
+}
+
+/* Modals */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.modal-backdrop.hidden {
+  display: none;
+}
+
+/* Modal container */
+.modal {
+  width: min(92%, 480px);
+  border-radius: 18px;
+  padding: 1.4rem 1.6rem;
+  background: var(--modal-bg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 25px 55px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  animation: modalFadeIn 0.2s ease forwards;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.modal-body {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+}
+
+.modal-footer {
+  margin-top: 0.6rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+/* Modal overlay – follows theme */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55); /* works for both themes */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  backdrop-filter: blur(3px);
+}
+
+.modal-title {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-strong);
+}
+
+.modal label {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-body);
+}
+
+.modal input,
+.modal textarea,
+.modal select {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--text-body);
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+body[data-theme="dark"] .modal input,
+body[data-theme="dark"] .modal textarea,
+body[data-theme="dark"] .modal select {
+  background: rgba(30, 41, 59, 0.9); /* darker slate for dark mode */
+  color: var(--text-body);
+}
+
+.modal input:focus,
+.modal textarea:focus,
+.modal select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  outline: none;
+}
+
+.modal .primary-btn {
+  background: var(--accent);
+  color: #fff;
+}
+
+.modal .primary-btn:hover {
+  background: var(--accent-alt);
+}
+
+.modal .secondary-btn {
+  background: transparent;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.modal .secondary-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Form fields */
+
+.field-group {
+  margin-bottom: 0.5rem;
+}
+
+.field-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  margin-bottom: 0.15rem;
+  color: var(--text-body);
+}
+
+.field-input,
+.field-textarea,
+select.field-input {
+  width: 100%;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  padding: 0.35rem 0.55rem;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  background: rgba(15, 23, 42, 0.96);
+  color: var(--fg);
+}
+
+body[data-theme="light"] .field-input,
+body[data-theme="light"] .field-textarea,
+body[data-theme="light"] select.field-input {
+  background: rgba(248, 250, 252, 0.98);
+  color: #020617;
+}
+
+.field-input:focus,
+.field-textarea:focus,
+select.field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.field-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.field-hint {
+  margin-top: 0.1rem;
+}
+
+.field-required {
+  color: #f97316;
+}
+
+.field-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.field-column {
+  flex: 1;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.radio-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Small screens */
+
+@media (max-width: 768px) {
+  .app-shell {
+    padding: 1.2rem 0.7rem 2.2rem;
+  }
+
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-right {
+    align-items: flex-start;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .header-controls {
+    order: 2;
+  }
+
+  .auth-block {
+    order: 1;
+  }
+
+  .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goals-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .modal {
+    max-width: 90vw;
+  }
+}
