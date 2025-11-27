@@ -1,185 +1,153 @@
-🧭 Personal Development Plan (PDP) App
+# 🧭 Personal Development Plan (PDP) App  
+*A modern, theme-aware, Firebase-powered personal development tracker.*
 
-A modern, theme-aware, Firebase-powered personal development tracker.
+<img src="assets/cwm-logo.png" width="200" alt="CWM Logo">
 
-📌 Overview
-
-The Personal Development Plan (PDP) App is a modern, web-based system designed to help individuals track their personal and professional development through structured Goals → Sub-goals → Tasks.
+## 📌 Overview  
+The **Personal Development Plan (PDP) App** is a modern, web-based system designed to help individuals track their personal and professional development through structured **Goals → Sub-goals → Tasks**.
 
 It is built using:
 
-Vanilla JavaScript, HTML, CSS
+- **Vanilla JavaScript, HTML, CSS**
+- **Firebase Authentication + Firestore**
+- A fully responsive, animated UI
+- A custom **3-theme system** (Light, Dark, and CWM company-branded theme)
+- A powerful **Dashboard** and **Calendar view**
+- Drag-and-drop reordering of goals, sub-goals, and tasks
+- Multi-user support (each user only sees their own PDP)
+- Hosted on **GitHub Pages**
 
-Firebase Authentication + Firestore
+This app is designed as a long-term personal and professional growth tracker, with flexibility for future expansion.
 
-A fully responsive, animated UI
+---
 
-A custom 3-theme system (Light, Dark, and CWM company-branded theme)
+## ✨ Key Features
 
-A powerful Dashboard and Calendar view
+### ✅ Full PDP Structure  
+- Create and manage **Goals**
+- Break goals down into **Sub-goals**
+- Add actionable **Tasks** under each sub-goal  
+- Track timelines with **Projected Start/End Dates**
+- Progress rolls up automatically:
+  - Tasks → Sub-goals  
+  - Sub-goals → Goals  
+  - Goals → Overall dashboard metrics  
 
-Drag-and-drop reordering of goals, sub-goals, and tasks
+---
 
-Multi-user support (each user only sees their own PDP)
-
-The app is designed to be deployed on GitHub Pages and can be used from desktop or mobile.
-
-✨ Key Features
-✅ Full PDP Structure
-
-Create and manage Goals
-
-Break goals down into Sub-goals
-
-Add actionable Tasks under each sub-goal
-
-Track timelines with Projected Start/End Dates
-
-Progress auto-rolls up:
-
-Task → Sub-goal
-
-Sub-goal → Goal
-
-Goal → Dashboard
-
-🗓️ Calendar View (Timeline & Events)
-
+### 🗓️ Calendar View  
 A built-in calendar shows:
 
-Goal timelines (mini-Gantt bars)
+- Goal timelines (mini-Gantt bars)
+- Sub-goal timelines
+- Task due dates
+- Click any event to open edit modal
 
-Sub-goal timelines
+Theme-aware, responsive, and intuitive.
 
-Task due dates
+---
 
-Click any event to open edit modal
-
-Theme-aware, responsive, and clean.
-
-📊 Dashboard Insights
-
+### 📊 Dashboard Insights  
 The dashboard includes:
 
-Quick overview of professional vs personal goals
+- Quick overview of all professional and personal goals  
+- Overall PDP progress  
+- **Current Focus Goal**  
+- **Tasks Due Soon**  
+- **At-Risk Items**  
+- **Recently Updated Activity Feed**  
 
-Overall progress
+Together, these provide an instant snapshot of the user's development progress.
 
-Current Focus Goal
+---
 
-Tasks Due Soon
+### 🎨 Advanced Theme System  
+The theme toggle cycles through:
 
-At-Risk Items
+- **🌞 Light mode** (clean modern colors)  
+- **🌙 Dark mode** (deep slate UI)  
+- **🏗️ CWM Theme**  
+  - Uses company brand colors  
+  - Neutral dark backgrounds  
+  - CWM brand yellow accents  
+  - CWM logo used as the theme icon  
+  - Optional background logo watermark  
 
-Recently Updated Activity Feed
+A palette picker gives users additional color customization options.
 
-This gives users a real snapshot of their PDP status the moment they open the app.
+---
 
-🎨 Advanced Theme System
+### 🔄 Drag-and-drop  
+All major structures support custom ordering:
 
-Theme toggle cycles through:
+- Rearrange Goals  
+- Rearrange Sub-goals within each Goal  
+- Rearrange Tasks within each Sub-goal  
 
-🌞 Light mode (modern gradients)
+Reorders are saved to Firestore using `orderIndex`.
 
-🌙 Dark mode (deep slate UI)
+---
 
-🏗️ CWM Theme
+### 🔐 Firebase-Powered Authentication  
+- Secure user login (email/password, expandable to OAuth)
+- Per-user Firestore storage  
+- Real-time syncing  
 
-Uses company brand colors
+---
 
-Neutral dark backgrounds
+### 🧱 Clean, Modular Code Structure  
+- `main.js` handles logic, rendering, and Firestore interaction  
+- `styles.css` defines theme-aware styling and layout  
+- `index.html` provides semantic structure  
+- Code designed for easy extension using VS Code Copilot and clear developer specs  
 
-Branded yellow highlights
+---
 
-CWM logo as theme icon
+## 🗂️ Project Structure
 
-CWM logo background image
-
-A custom palette picker allows the user to select preset color schemes as well.
-
-🔄 Drag-and-drop Everything
-
-Reorder Goals
-
-Reorder Sub-goals
-
-Reorder Tasks
-
-Changes are saved automatically to Firestore.
-
-🔐 Firebase-Powered Authentication
-
-Secure user login (email/password, extendable to Google/Microsoft OAuth)
-
-Per-user Firestore storage
-
-Real-time sync
-
-🧱 Clean, Modular Code Structure
-
-All logic centralized in main.js
-
-All UI styling in styles.css
-
-Semantic HTML layout in index.html
-
-Designed for future expansion via VS Code + GitHub Copilot
-
-🗂️ Project Structure
 personal-dev-plan/
 ├── index.html
 ├── main.js
 ├── styles.css
 ├── assets/
-│   ├── cwm-logo.png
-│   ├── cwm-logo-icon.ico
-│   └── any additional media…
+│ ├── cwm-logo.png
+│ ├── cwm-logo-icon.ico
+│ └── other assets…
 └── dev-notes/
-    ├── PDP_MASTER_SPEC.md
-    ├── DASHBOARD_UPGRADE_SPEC.md
-    └── QUOTE_BANNER_SPEC.md
+├── PDP_MASTER_SPEC.md
+├── DASHBOARD_UPGRADE_SPEC.md
+└── QUOTE_BANNER_SPEC.md
 
-🚀 Getting Started (Local Development)
 
-You can run the PDP app locally using a simple Node-based static server.
+---
 
-1. Install a simple static server
+## 🚀 Getting Started (Local Development)
 
-If you don't have it:
+You can run the PDP app locally using a lightweight static server.
 
+### 1. Install a simple local server  
+If needed:
+
+bash
 npm install -g serve
 
-2. Run the local dev server
-
-From the project root:
-
-serve .
-
-
-Your app will be available at:
-
+### 2. Start the server
+bash
+npx http-server
+#### Visit:
 http://localhost:3000
 
+---
 
-Or use:
-
-npx http-server
-
-3. Firebase Setup
+## 🔧 Firebase Setup
 
 This app requires:
+- A Firebase project
+- Authentication enabled
+- Firestore Database enddabled
 
-A Firebase project
-
-Enabled Authentication (email/password or OAuth)
-
-Firestore Database
-
-Firebase Hosting NOT required if using GitHub Pages
-
-You must create and include your Firebase config block in main.js:
-
-const firebaseConfig = {
+Update your Firebase config in main.js:
+ const firebaseConfig = {
   apiKey: "...",
   authDomain: "...",
   projectId: "...",
@@ -188,98 +156,80 @@ const firebaseConfig = {
   appId: "..."
 };
 
+Firestore rules should restric reads/writes to authenticated users.
 
-Firestore rules should restrict access to authenticated users only.
+---
 
-🌐 Deployment (GitHub Pages)
+## 🌐 Deployment (GitHub Pages)
+1. Push your code to a public GitHub repo
+2. Go to Settings -> Pages
+3. Select:
+    - Branch: main
+    - Folder: /root
+4. Save
 
-This project is designed for GitHub Pages hosting.
+Your app will be hosted at:
 
-To deploy:
+https://<username>.github.io/personal-dev-plan/
 
-Commit your code
+---
 
-Push to main
+## 🛣️ Roadmap
+### 🔔 Reminders & Notifications
+- Task due today notifications
+- Weekly PDP nudges
+- Push notifications via Firebase Cloud Messaging (optional future)
 
-In GitHub repo settings:
+### 📝 Mentorship & Notes Section
+- Log VP mentorship sessions
+- Record leadership insights
+- Reflect on spiritual learning (NMC University)
+- Attach notes to goals or sub-goals
 
-Enable GitHub Pages
+### 📎 Attachments
+- Upload documents, images, or PDFs
+- Associate with goals/sub-goals/tasks
 
-Select main branch → /root
+### 🧾 Export Tools
+- Generate summary PDF
+- Print-friendly PDP view
 
-Your app will be live at:
+### 📉 Weekly Progress Tracking
+- Store weekly snapshots
+- Show progress sparkline
 
-https://<yourusername>.github.io/personal-dev-plan/
+### 🌐 Quote API
+- Pull inspirational quotes from external sources
+- Rotate daily quotes or refreshing feed
 
-🛣️ Roadmap (Future Enhancements)
+---
 
-The following features are planned but not yet implemented:
+## 🧪 Testing
+- Mobile resonsive
+- Tested in Light/Dark/CWM modes
+- CRUD for goals, sub-goals, tasks
+- Firestore access validated
+- Calendar event positioning verified
 
-🔔 Reminders & Notifications
+---
 
-Task due reminders, progress nudges, and browser notifications.
+## 🤝 Contributing
+Contributions are welcome!
+Specs for future features live in the dev-notes folder:
+- PDP_MASTER_SPEC.md
+- DASHBOARD_UPGRADE_SPEC.md
+- QUOTE_BANNER_SPEC.md
+Feel free to submit feature requests or enhancements
 
-📝 Mentorship & Notes Section
+---
 
-A place to log:
+## 👤 Author
+### Drew Coffey
+Personal Development Plan Web Application
+Built with ChatGPT + VSCode + GitHub Copilot
+Focused on leadership development, personal growth, and coaching.
 
-VP mentorship notes
+---
 
-Personal reflections
-
-Spiritual learning (NMC University)
-
-Attach to goals/sub-goals optionally
-
-📎 Attachments
-
-Upload documents, PDFs, images to goals/sub-goals/tasks.
-
-🧾 Export Tools
-
-Generate a printable or PDF summary of your entire PDP.
-
-📉 Weekly Trend Tracking
-
-Historical snapshots stored weekly, visualized as sparkline trend lines.
-
-📡 Quote API Support
-
-Pull inspirational quotes from external APIs or a Firestore collection.
-
-🧪 Testing
-
-Mobile responsiveness confirmed
-
-Dark mode & CWM theme tested visually
-
-All CRUD operations validated
-
-Firestore security rules tested with authenticated users
-
-Calendar events match timeline logic
-
-🤝 Contributing
-
-Pull requests are welcome!
-This project is structured intentionally to make contributions easy through:
-
-PDP_MASTER_SPEC.md
-
-DASHBOARD_UPGRADE_SPEC.md
-
-QUOTE_BANNER_SPEC.md
-
-Feel free to propose new views, insights, or additional theming expansions.
-
-👤 Author
-
-Drew Coffey
-Personal Development Plan App
-Built with help from ChatGPT + VS Code Copilot
-Designed for ongoing learning, leadership development, and personal growth.
-
-⭐ License
-
-MIT License.
-You are free to use, modify, and adapt this for personal or professional development.
+## ⭐ License
+This projece is licensed under the MIT License--free to use, modify, and extend.
