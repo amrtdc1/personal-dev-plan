@@ -147,14 +147,14 @@ This app requires:
 - Firestore Database enddabled
 
 Update your Firebase config in main.js:
- const firebaseConfig = {
-  apiKey: "...",
-  authDomain: "...",
-  projectId: "...",
-  storageBucket: "...",
-  messagingSenderId: "...",
-  appId: "..."
-};
+ - const firebaseConfig = {
+  - apiKey: "...",
+  - authDomain: "...",
+  - projectId: "...",
+  - storageBucket: "...",
+  - messagingSenderId: "...",
+  - appId: "..."
+- };
 
 Firestore rules should restric reads/writes to authenticated users.
 
@@ -170,7 +170,7 @@ Firestore rules should restric reads/writes to authenticated users.
 
 Your app will be hosted at:
 
-https://<username>.github.io/personal-dev-plan/
+https://`<username>`.github.io/personal-dev-plan/
 
 ---
 
