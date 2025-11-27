@@ -105,18 +105,18 @@ Reorders are saved to Firestore using `orderIndex`.
 
 ## 🗂️ Project Structure
 
-personal-dev-plan/
-├── index.html
-├── main.js
-├── styles.css
-├── assets/
-│ ├── cwm-logo.png
-│ ├── cwm-logo-icon.ico
-│ └── other assets…
-└── dev-notes/
-├── PDP_MASTER_SPEC.md
-├── DASHBOARD_UPGRADE_SPEC.md
-└── QUOTE_BANNER_SPEC.md
+- personal-dev-plan/
+- ├── index.html
+- ├── main.js
+- ├── styles.css
+- ├── assets/
+- │ ├── cwm-logo.png
+- │ ├── cwm-logo-icon.ico
+- │ └── other assets…
+- └── dev-notes/
+- ├── PDP_MASTER_SPEC.md
+- ├── DASHBOARD_UPGRADE_SPEC.md
+- └── QUOTE_BANNER_SPEC.md
 
 
 ---
