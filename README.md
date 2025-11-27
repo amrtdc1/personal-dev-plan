@@ -1,8 +1,6 @@
 # 🧭 Personal Development Plan (PDP) App  
 *A modern, theme-aware, Firebase-powered personal development tracker.*
 
-<img src="assets/cwm-logo.png" width="200" alt="CWM Logo">
-
 ## 📌 Overview  
 The **Personal Development Plan (PDP) App** is a modern, web-based system designed to help individuals track their personal and professional development through structured **Goals → Sub-goals → Tasks**.
 
