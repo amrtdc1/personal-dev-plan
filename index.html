@@ -94,13 +94,46 @@
 
           <div class="auth-block">
             <span id="userLabel" class="meta-text">Not signed in</span>
-            <button id="btnSignIn" class="secondary-btn small">Sign in</button>
+            <div class="auth-actions">
+              <button id="btnOpenEmailAuth" class="secondary-btn small" aria-haspopup="dialog">Email</button>
+              <button id="btnGoogleAuth" class="secondary-btn small">Google</button>
+            </div>
             <button id="btnSignOut" class="secondary-btn small" disabled>
               Sign out
             </button>
           </div>
         </div>
       </header>
+
+      <!-- Email Auth Modal -->
+      <div id="emailAuthBackdrop" class="modal-backdrop hidden" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="emailAuthTitle">
+          <div class="modal-header">
+            <h3 id="emailAuthTitle" class="subheading">Account access</h3>
+            <button id="btnCloseEmailAuth" class="icon-btn small" aria-label="Close email auth">✕</button>
+          </div>
+          <form id="emailAuthForm" class="modal-body" novalidate>
+            <p id="emailAuthModeLabel" class="meta-text">Sign in with email & password</p>
+            <div class="field-group">
+              <label for="authEmail" class="field-label">Email <span class="field-required">*</span></label>
+              <input id="authEmail" name="authEmail" type="email" class="field-input" required autocomplete="email" />
+            </div>
+            <div class="field-group">
+              <label for="authPassword" class="field-label">Password <span class="field-required">*</span></label>
+              <input id="authPassword" name="authPassword" type="password" class="field-input" required autocomplete="current-password" />
+            </div>
+            <div class="field-group hidden" id="passwordConfirmGroup">
+              <label for="authPasswordConfirm" class="field-label">Confirm password <span class="field-required">*</span></label>
+              <input id="authPasswordConfirm" name="authPasswordConfirm" type="password" class="field-input" autocomplete="new-password" />
+            </div>
+            <div id="emailAuthError" class="meta-text" style="color: var(--accent-alt); min-height: 1.1rem;"></div>
+            <div class="modal-footer">
+              <button type="button" id="btnToggleAuthMode" class="secondary-btn small" data-mode="signin">Need an account?</button>
+              <button type="submit" class="primary-btn" id="btnSubmitEmailAuth">Continue</button>
+            </div>
+          </form>
+        </div>
+      </div>
 
       <!-- Main Layout -->
       <main class="app-main">

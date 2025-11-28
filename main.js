@@ -7,7 +7,10 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   onAuthStateChanged,
-  signOut
+  signOut,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 import {
   getFirestore,
@@ -3162,17 +3165,120 @@ function setupNav() {
 // --- Auth UI ---
 
 function setupAuthUI() {
-  const btnSignIn = document.getElementById("btnSignIn");
+  const btnGoogleAuth = document.getElementById("btnGoogleAuth");
+  const btnOpenEmailAuth = document.getElementById("btnOpenEmailAuth");
   const btnSignOut = document.getElementById("btnSignOut");
   const userLabel = document.getElementById("userLabel");
 
-  if (btnSignIn) {
-    btnSignIn.addEventListener("click", async () => {
+  // Email auth modal elements
+  const emailAuthBackdrop = document.getElementById("emailAuthBackdrop");
+  const emailAuthForm = document.getElementById("emailAuthForm");
+  const btnCloseEmailAuth = document.getElementById("btnCloseEmailAuth");
+  const btnToggleAuthMode = document.getElementById("btnToggleAuthMode");
+  const emailAuthError = document.getElementById("emailAuthError");
+  const authEmailInput = document.getElementById("authEmail");
+  const authPasswordInput = document.getElementById("authPassword");
+  const authPasswordConfirmInput = document.getElementById("authPasswordConfirm");
+  const passwordConfirmGroup = document.getElementById("passwordConfirmGroup");
+  const emailAuthModeLabel = document.getElementById("emailAuthModeLabel");
+  let emailAuthMode = "signin"; // or 'signup'
+
+  function openEmailModal() {
+    if (!emailAuthBackdrop) return;
+    emailAuthBackdrop.classList.remove("hidden");
+    emailAuthBackdrop.setAttribute("aria-hidden", "false");
+    emailAuthError.textContent = "";
+    authEmailInput.focus();
+  }
+
+  function closeEmailModal() {
+    if (!emailAuthBackdrop) return;
+    emailAuthBackdrop.classList.add("hidden");
+    emailAuthBackdrop.setAttribute("aria-hidden", "true");
+    emailAuthForm.reset();
+    emailAuthError.textContent = "";
+    if (passwordConfirmGroup) passwordConfirmGroup.classList.add("hidden");
+    btnToggleAuthMode.dataset.mode = "signin";
+    btnToggleAuthMode.textContent = "Need an account?";
+    emailAuthModeLabel.textContent = "Sign in with email & password";
+    emailAuthMode = "signin";
+  }
+
+  if (btnOpenEmailAuth) {
+    btnOpenEmailAuth.addEventListener("click", () => openEmailModal());
+  }
+
+  if (btnCloseEmailAuth) {
+    btnCloseEmailAuth.addEventListener("click", () => closeEmailModal());
+  }
+
+  if (btnToggleAuthMode) {
+    btnToggleAuthMode.addEventListener("click", () => {
+      if (emailAuthMode === "signin") {
+        emailAuthMode = "signup";
+        btnToggleAuthMode.textContent = "Have an account?";
+        btnToggleAuthMode.dataset.mode = "signup";
+        emailAuthModeLabel.textContent = "Create an account";
+        passwordConfirmGroup.classList.remove("hidden");
+        authPasswordConfirmInput.required = true;
+      } else {
+        emailAuthMode = "signin";
+        btnToggleAuthMode.textContent = "Need an account?";
+        btnToggleAuthMode.dataset.mode = "signin";
+        emailAuthModeLabel.textContent = "Sign in with email & password";
+        passwordConfirmGroup.classList.add("hidden");
+        authPasswordConfirmInput.required = false;
+      }
+      emailAuthError.textContent = "";
+    });
+  }
+
+  if (emailAuthForm) {
+    emailAuthForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      emailAuthError.textContent = "";
+      const email = authEmailInput.value.trim();
+      const password = authPasswordInput.value;
+      const pwConfirm = authPasswordConfirmInput.value;
+      if (!email || !password) {
+        emailAuthError.textContent = "Email and password required.";
+        return;
+      }
+      if (emailAuthMode === "signup") {
+        if (!pwConfirm) {
+          emailAuthError.textContent = "Please confirm password.";
+          return;
+        }
+        if (pwConfirm !== password) {
+          emailAuthError.textContent = "Passwords do not match.";
+          return;
+        }
+      }
+      try {
+        if (emailAuthMode === "signup") {
+          const cred = await createUserWithEmailAndPassword(auth, email, password);
+          // Optionally set a displayName default
+          if (!cred.user.displayName) {
+            await updateProfile(cred.user, { displayName: email.split('@')[0] });
+          }
+        } else {
+          await signInWithEmailAndPassword(auth, email, password);
+        }
+        closeEmailModal();
+      } catch (err) {
+        console.error("Email auth error", err);
+        emailAuthError.textContent = humanizeFirebaseAuthError(err);
+      }
+    });
+  }
+
+  if (btnGoogleAuth) {
+    btnGoogleAuth.addEventListener("click", async () => {
       try {
         await signInWithPopup(auth, provider);
       } catch (err) {
-        console.error("Sign-in error:", err);
-        alert("Sign-in failed. Check console for details.");
+        console.error("Google sign-in error:", err);
+        alert("Google sign-in failed. Check console for details.");
       }
     });
   }
@@ -3193,7 +3299,8 @@ function setupAuthUI() {
       if (userLabel) {
         userLabel.textContent = `Signed in as ${user.displayName || user.email}`;
       }
-      if (btnSignIn) btnSignIn.disabled = true;
+      if (btnGoogleAuth) btnGoogleAuth.disabled = true;
+      if (btnOpenEmailAuth) btnOpenEmailAuth.disabled = true;
       if (btnSignOut) btnSignOut.disabled = false;
 
       try {
@@ -3207,7 +3314,8 @@ function setupAuthUI() {
       if (userLabel) {
         userLabel.textContent = "Not signed in";
       }
-      if (btnSignIn) btnSignIn.disabled = false;
+      if (btnGoogleAuth) btnGoogleAuth.disabled = false;
+      if (btnOpenEmailAuth) btnOpenEmailAuth.disabled = false;
       if (btnSignOut) btnSignOut.disabled = true;
 
       goals.professional = [];
@@ -3218,6 +3326,19 @@ function setupAuthUI() {
       updateStats();
     }
   });
+}
+
+function humanizeFirebaseAuthError(err) {
+  const code = err?.code || "";
+  switch (code) {
+    case "auth/email-already-in-use": return "Email already in use.";
+    case "auth/invalid-email": return "Invalid email address.";
+    case "auth/weak-password": return "Password should be at least 6 characters.";
+    case "auth/wrong-password": return "Incorrect password.";
+    case "auth/user-not-found": return "No account found for that email.";
+    case "auth/too-many-requests": return "Too many attempts. Try again later.";
+    default: return err.message || "Authentication error.";
+  }
 }
 
 // --- Init ---

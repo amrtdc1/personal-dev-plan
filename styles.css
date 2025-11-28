@@ -2656,6 +2656,21 @@ body[data-theme="cwm"] .recently-updated-type.type-task {
     width: 100%;
   }
 
+  .auth-actions {
+    display: inline-flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin: 0.3rem 0;
+  }
+
+  #emailAuthBackdrop.hidden { display: none; }
+
+  #emailAuthBackdrop .modal {
+    max-width: 400px;
+  }
+
+  #emailAuthError { min-height: 1rem; }
+
   /* Stack nav and quote banner vertically */
   .top-row {
     grid-template-columns: 1fr;
