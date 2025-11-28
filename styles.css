@@ -177,6 +177,10 @@ body[data-theme="cwm"] {
   box-sizing: border-box;
 }
 
+html {
+  font-size: 20px; /* Base size increase from default 16px - makes all rem units 25% larger */
+}
+
 html,
 body {
   margin: 0;
@@ -661,28 +665,31 @@ body[data-theme="light"] .icon-btn {
 }
 
 .quote-refresh-btn {
-  padding: 0.25rem 0.6rem;
-  font-size: 0.75rem;
-  border-radius: 999px;
-  border: 1px solid var(--border-subtle);
-  background: rgba(15, 23, 42, 0.9);
-  color: var(--fg);
+  padding: 0.3rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-meta);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  transition: color 0.15s ease, transform 0.15s ease;
+  opacity: 0.6;
 }
 
 body[data-theme="light"] .quote-refresh-btn {
-  background: rgba(248, 250, 252, 0.96);
+  background: transparent;
 }
 
 body[data-theme="cwm"] .quote-refresh-btn {
-  background: #2d2c25;
+  background: transparent;
   color: #e5e1d6;
 }
 
 .quote-refresh-btn:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
+  color: var(--accent);
+  opacity: 1;
+  transform: rotate(180deg);
 }
 
 /* Nav */
@@ -2610,29 +2617,103 @@ body[data-theme="cwm"] .recently-updated-type.type-task {
 /* Small screens */
 
 @media (max-width: 768px) {
+  /* Reduce base font size slightly on mobile for better fit */
+  html {
+    font-size: 18px;
+  }
+
   .app-shell {
-    padding: 1.2rem 0.7rem 2.2rem;
+    padding: 1rem 0.6rem 2rem;
   }
 
   .app-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 0.8rem;
+    padding: 0.9rem 1rem;
+  }
+
+  .header-left h1 {
+    font-size: 1.4rem;
   }
 
   .header-right {
     align-items: flex-start;
     width: 100%;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
   .header-controls {
     order: 2;
+    display: flex;
+    gap: 0.5rem;
   }
 
   .auth-block {
     order: 1;
+    width: 100%;
   }
 
+  /* Stack nav and quote banner vertically */
+  .top-row {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+  }
+
+  /* Make nav buttons stack better */
+  .top-nav {
+    width: 100%;
+    justify-content: space-around;
+    padding: 0.15rem;
+    flex-wrap: wrap;
+  }
+
+  .nav-btn {
+    padding: 0.4rem 0.7rem;
+    font-size: 0.75rem;
+    flex: 1;
+    min-width: fit-content;
+  }
+
+  /* Quote banner adjustments */
+  .quote-banner {
+    padding: 0.5rem 0.6rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .quote-text {
+    font-size: 0.85rem;
+  }
+
+  .quote-author {
+    font-size: 0.75rem;
+  }
+
+  /* Dashboard mobile layout */
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
+  }
+
+  .dashboard-left,
+  .dashboard-right {
+    gap: 0.8rem;
+  }
+
+  /* Make stats row wrap nicely on mobile */
+  .stats-row {
+    flex-wrap: wrap;
+  }
+
+  .stat-block {
+    flex: 1 1 calc(50% - 0.8rem);
+  }
+
+  /* Cards and grids */
   .grid-2 {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2641,13 +2722,64 @@ body[data-theme="cwm"] .recently-updated-type.type-task {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .modal {
-    max-width: 90vw;
+  .card {
+    padding: 0.9rem;
+    border-radius: 0.9rem;
   }
 
+  /* Goal and subgoal cards */
+  .goal-card,
+  .subgoal-card,
+  .task-card {
+    padding: 0.8rem;
+  }
+
+  .goal-title,
+  .subgoal-title {
+    font-size: 1rem;
+  }
+
+  /* Buttons */
+  .primary-btn,
+  .secondary-btn {
+    padding: 0.5rem 0.8rem;
+    font-size: 0.8rem;
+  }
+
+  .secondary-btn.small {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.7rem;
+  }
+
+  /* Modal adjustments */
+  .modal {
+    max-width: 95vw;
+    width: 95vw;
+    max-height: 90vh;
+    padding: 1.2rem;
+    margin: 1rem;
+  }
+
+  .modal-header h2 {
+    font-size: 1.3rem;
+  }
+
+  .modal-field label {
+    font-size: 0.85rem;
+  }
+
+  .modal-field input,
+  .modal-field textarea,
+  .modal-field select {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.7rem;
+  }
+
+  /* Calendar */
   .calendar-cell {
     min-height: 60px;
     padding: 0.25rem;
+    font-size: 0.7rem;
   }
 
   .calendar-bar,
@@ -2673,14 +2805,93 @@ body[data-theme="cwm"] .recently-updated-type.type-task {
   .calendar-legend {
     width: 100%;
     justify-content: center;
-  }
-  .top-row {
-    grid-template-columns: 1fr;
+    flex-wrap: wrap;
     gap: 0.5rem;
-    margin-bottom: 1rem;
   }
 
-  .quote-banner {
-    padding: 0.3rem 0.5rem;
+  .legend-item {
+    font-size: 0.7rem;
+  }
+
+  /* Stats blocks */
+  .stat-block {
+    padding: 0.8rem;
+  }
+
+  .stat-value {
+    font-size: 1.6rem;
+  }
+
+  .stat-label {
+    font-size: 0.75rem;
+  }
+
+  /* Progress bars */
+  .progress-wrapper {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .progress-bar {
+    width: 100%;
+  }
+
+  /* Activity feed */
+  .activity-item {
+    padding: 0.7rem;
+    font-size: 0.8rem;
+  }
+
+  /* Dashboard sections */
+  .dashboard-section {
+    margin-bottom: 1.5rem;
+  }
+
+  /* Make touch targets larger for mobile */
+  button,
+  .clickable {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Improve spacing for readability */
+  .app-main {
+    margin-top: 1.2rem;
   }
 }
+
+/* Extra small devices (iPhone SE, smaller phones) */
+@media (max-width: 390px) {
+  html {
+    font-size: 16px;
+  }
+
+  .app-shell {
+    padding: 0.8rem 0.5rem 1.8rem;
+  }
+
+  .app-header {
+    padding: 0.8rem;
+  }
+
+  .header-left h1 {
+    font-size: 1.2rem;
+  }
+
+  .nav-btn {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .modal {
+    max-width: 98vw;
+    width: 98vw;
+    padding: 1rem;
+  }
+
+  .card {
+    padding: 0.7rem;
+  }
+}
+

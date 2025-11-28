@@ -1,0 +1,412 @@
+{
+  "quotes": [
+    {
+      "content": "The first mountain is about building up the ego and defining yourself and success. The second mountain is about shedding the ego and losing yourself in service to others.",
+      "author": "David Brooks"
+    },
+    {
+      "content": "Joy is not a light emotion. It's the serious response to seeing people as they are, not as you want them to be.",
+      "author": "David Brooks"
+    },
+    {
+      "content": "The people on the second mountain have been transformed. They are deeply committed. The outpouring is a response to some gift they have received.",
+      "author": "David Brooks"
+    },
+    {
+      "content": "Practice isn't the thing you do once you're good. It's the thing you do that makes you good.",
+      "author": "Malcolm Gladwell"
+    },
+    {
+      "content": "The key to good decision making is not knowledge. It is understanding. We are swimming in the former. We are desperately lacking in the latter.",
+      "author": "Malcolm Gladwell"
+    },
+    {
+      "content": "Achievement is talent plus preparation.",
+      "author": "Malcolm Gladwell"
+    },
+    {
+      "content": "We learn by example and by direct experience because there are real limits to the adequacy of verbal instruction.",
+      "author": "Malcolm Gladwell"
+    },
+    {
+      "content": "Hard work is a prison sentence only if it does not have meaning.",
+      "author": "Malcolm Gladwell"
+    },
+    {
+      "content": "Success is not a random act. It arises out of a predictable and powerful set of circumstances and opportunities.",
+      "author": "Malcolm Gladwell"
+    },
+    {
+      "content": "Who we are cannot be separated from where we're from.",
+      "author": "Malcolm Gladwell"
+    },
+    {
+      "content": "The tipping point is that magic moment when an idea, trend, or social behavior crosses a threshold, tips, and spreads like wildfire.",
+      "author": "Malcolm Gladwell"
+    },
+    {
+      "content": "The real work of a life is to make commitments to people, places, and causes, and live them out faithfully.",
+      "author": "David Brooks"
+    },
+    {
+      "content": "The only way to discover the limits of the possible is to go beyond them into the impossible.",
+      "author": "Arthur C. Clarke"
+    },
+    {
+      "content": "The best time to plant a tree was 20 years ago. The second best time is now.",
+      "author": "Chinese Proverb"
+    },
+    {
+      "content": "Your time is limited, don't waste it living someone else's life.",
+      "author": "Steve Jobs"
+    },
+    {
+      "content": "The future belongs to those who believe in the beauty of their dreams.",
+      "author": "Eleanor Roosevelt"
+    },
+    {
+      "content": "It is during our darkest moments that we must focus to see the light.",
+      "author": "Aristotle"
+    },
+    {
+      "content": "Believe you can and you're halfway there.",
+      "author": "Theodore Roosevelt"
+    },
+    {
+      "content": "The only impossible journey is the one you never begin.",
+      "author": "Tony Robbins"
+    },
+    {
+      "content": "In the end, it's not the years in your life that count. It's the life in your years.",
+      "author": "Abraham Lincoln"
+    },
+    {
+      "content": "Life is what happens when you're busy making other plans.",
+      "author": "John Lennon"
+    },
+    {
+      "content": "The purpose of our lives is to be happy.",
+      "author": "Dalai Lama"
+    },
+    {
+      "content": "Get busy living or get busy dying.",
+      "author": "Stephen King"
+    },
+    {
+      "content": "You only live once, but if you do it right, once is enough.",
+      "author": "Mae West"
+    },
+    {
+      "content": "Many of life's failures are people who did not realize how close they were to success when they gave up.",
+      "author": "Thomas Edison"
+    },
+    {
+      "content": "The way to get started is to quit talking and begin doing.",
+      "author": "Walt Disney"
+    },
+    {
+      "content": "Don't let yesterday take up too much of today.",
+      "author": "Will Rogers"
+    },
+    {
+      "content": "You learn more from failure than from success. Don't let it stop you. Failure builds character.",
+      "author": "Unknown"
+    },
+    {
+      "content": "It's not whether you get knocked down, it's whether you get up.",
+      "author": "Vince Lombardi"
+    },
+    {
+      "content": "People who are crazy enough to think they can change the world, are the ones who do.",
+      "author": "Rob Siltanen"
+    },
+    {
+      "content": "Failure will never overtake me if my determination to succeed is strong enough.",
+      "author": "Og Mandino"
+    },
+    {
+      "content": "We may encounter many defeats but we must not be defeated.",
+      "author": "Maya Angelou"
+    },
+    {
+      "content": "Knowing is not enough; we must apply. Wishing is not enough; we must do.",
+      "author": "Johann Wolfgang Von Goethe"
+    },
+    {
+      "content": "Whether you think you can or think you can't, you're right.",
+      "author": "Henry Ford"
+    },
+    {
+      "content": "The only person you are destined to become is the person you decide to be.",
+      "author": "Ralph Waldo Emerson"
+    },
+    {
+      "content": "I have learned over the years that when one's mind is made up, this diminishes fear.",
+      "author": "Rosa Parks"
+    },
+    {
+      "content": "Everything you've ever wanted is on the other side of fear.",
+      "author": "George Addair"
+    },
+    {
+      "content": "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+      "author": "Winston Churchill"
+    },
+    {
+      "content": "Hardships often prepare ordinary people for an extraordinary destiny.",
+      "author": "C.S. Lewis"
+    },
+    {
+      "content": "I alone cannot change the world, but I can cast a stone across the water to create many ripples.",
+      "author": "Mother Teresa"
+    },
+    {
+      "content": "What lies behind us and what lies before us are tiny matters compared to what lies within us.",
+      "author": "Ralph Waldo Emerson"
+    },
+    {
+      "content": "You must be the change you wish to see in the world.",
+      "author": "Mahatma Gandhi"
+    },
+    {
+      "content": "The best and most beautiful things in the world cannot be seen or even touched - they must be felt with the heart.",
+      "author": "Helen Keller"
+    },
+    {
+      "content": "It is never too late to be what you might have been.",
+      "author": "George Eliot"
+    },
+    {
+      "content": "A person who never made a mistake never tried anything new.",
+      "author": "Albert Einstein"
+    },
+    {
+      "content": "The person who says it cannot be done should not interrupt the person who is doing it.",
+      "author": "Chinese Proverb"
+    },
+    {
+      "content": "Do what you can, where you are, with what you have.",
+      "author": "Teddy Roosevelt"
+    },
+    {
+      "content": "If you can dream it, you can do it.",
+      "author": "Walt Disney"
+    },
+    {
+      "content": "Trust yourself. You know more than you think you do.",
+      "author": "Benjamin Spock"
+    },
+    {
+      "content": "We can easily forgive a child who is afraid of the dark; the real tragedy of life is when men are afraid of the light.",
+      "author": "Plato"
+    },
+    {
+      "content": "Nothing will work unless you do.",
+      "author": "Maya Angelou"
+    },
+    {
+      "content": "Do one thing every day that scares you.",
+      "author": "Eleanor Roosevelt"
+    },
+    {
+      "content": "What's money? A man is a success if he gets up in the morning and goes to bed at night and in between does what he wants to do.",
+      "author": "Bob Dylan"
+    },
+    {
+      "content": "I didn't fail the test. I just found 100 ways to do it wrong.",
+      "author": "Benjamin Franklin"
+    },
+    {
+      "content": "A person who never made a mistake never tried anything new.",
+      "author": "Albert Einstein"
+    },
+    {
+      "content": "The only way to do great work is to love what you do.",
+      "author": "Steve Jobs"
+    },
+    {
+      "content": "If you look at what you have in life, you'll always have more. If you look at what you don't have in life, you'll never have enough.",
+      "author": "Oprah Winfrey"
+    },
+    {
+      "content": "Remember that not getting what you want is sometimes a wonderful stroke of luck.",
+      "author": "Dalai Lama"
+    },
+    {
+      "content": "You can't use up creativity. The more you use, the more you have.",
+      "author": "Maya Angelou"
+    },
+    {
+      "content": "Dream big and dare to fail.",
+      "author": "Norman Vaughan"
+    },
+    {
+      "content": "Our lives begin to end the day we become silent about things that matter.",
+      "author": "Martin Luther King Jr."
+    },
+    {
+      "content": "Do not go where the path may lead, go instead where there is no path and leave a trail.",
+      "author": "Ralph Waldo Emerson"
+    },
+    {
+      "content": "The mind is everything. What you think you become.",
+      "author": "Buddha"
+    },
+    {
+      "content": "The best time to plant a tree was 20 years ago. The second best time is now.",
+      "author": "Chinese Proverb"
+    },
+    {
+      "content": "An unexamined life is not worth living.",
+      "author": "Socrates"
+    },
+    {
+      "content": "Your limitation—it's only your imagination.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Great things never come from comfort zones.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Success doesn't just find you. You have to go out and get it.",
+      "author": "Unknown"
+    },
+    {
+      "content": "The harder you work for something, the greater you'll feel when you achieve it.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Dream bigger. Do bigger.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Don't stop when you're tired. Stop when you're done.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Wake up with determination. Go to bed with satisfaction.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Do something today that your future self will thank you for.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Little things make big days.",
+      "author": "Unknown"
+    },
+    {
+      "content": "It's going to be hard, but hard does not mean impossible.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Don't wait for opportunity. Create it.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Sometimes we're tested not to show our weaknesses, but to discover our strengths.",
+      "author": "Unknown"
+    },
+    {
+      "content": "The key to success is to focus on goals, not obstacles.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Dream it. Wish it. Do it.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Success is what comes after you stop making excuses.",
+      "author": "Unknown"
+    },
+    {
+      "content": "Don't be afraid to give up the good to go for the great.",
+      "author": "John D. Rockefeller"
+    },
+    {
+      "content": "I find that the harder I work, the more luck I seem to have.",
+      "author": "Thomas Jefferson"
+    },
+    {
+      "content": "Success is walking from failure to failure with no loss of enthusiasm.",
+      "author": "Winston Churchill"
+    },
+    {
+      "content": "All progress takes place outside the comfort zone.",
+      "author": "Michael John Bobak"
+    },
+    {
+      "content": "The only limit to our realization of tomorrow will be our doubts of today.",
+      "author": "Franklin D. Roosevelt"
+    },
+    {
+      "content": "Creativity is intelligence having fun.",
+      "author": "Albert Einstein"
+    },
+    {
+      "content": "What you get by achieving your goals is not as important as what you become by achieving your goals.",
+      "author": "Zig Ziglar"
+    },
+    {
+      "content": "You are never too old to set another goal or to dream a new dream.",
+      "author": "C.S. Lewis"
+    },
+    {
+      "content": "To be yourself in a world that is constantly trying to make you something else is the greatest accomplishment.",
+      "author": "Ralph Waldo Emerson"
+    },
+    {
+      "content": "If you want to lift yourself up, lift up someone else.",
+      "author": "Booker T. Washington"
+    },
+    {
+      "content": "I have been impressed with the urgency of doing. Knowing is not enough; we must apply. Being willing is not enough; we must do.",
+      "author": "Leonardo da Vinci"
+    },
+    {
+      "content": "Limitations live only in our minds. But if we use our imaginations, our possibilities become limitless.",
+      "author": "Jamie Paolinetti"
+    },
+    {
+      "content": "You take your life in your own hands, and what happens? A terrible thing, no one to blame.",
+      "author": "Erica Jong"
+    },
+    {
+      "content": "What's the point of being alive if you don't at least try to do something remarkable.",
+      "author": "John Green"
+    },
+    {
+      "content": "Life is not about finding yourself. Life is about creating yourself.",
+      "author": "George Bernard Shaw"
+    },
+    {
+      "content": "Nothing in the world can take the place of Persistence. Talent will not; nothing is more common than unsuccessful men with talent.",
+      "author": "Calvin Coolidge"
+    },
+    {
+      "content": "You measure the size of the accomplishment by the obstacles you have to overcome to reach your goals.",
+      "author": "Booker T. Washington"
+    },
+    {
+      "content": "Real difficulties can be overcome; it is only the imaginary ones that are unconquerable.",
+      "author": "Theodore N. Vail"
+    },
+    {
+      "content": "It is better to fail in originality than to succeed in imitation.",
+      "author": "Herman Melville"
+    },
+    {
+      "content": "The road to success and the road to failure are almost exactly the same.",
+      "author": "Colin R. Davis"
+    },
+    {
+      "content": "I failed my way to success.",
+      "author": "Thomas Edison"
+    },
+    {
+      "content": "A successful man is one who can lay a firm foundation with the bricks others have thrown at him.",
+      "author": "David Brinkley"
+    }
+  ]
+}

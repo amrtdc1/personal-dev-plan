@@ -3251,8 +3251,8 @@ function setupQuoteBanner() {
   separatorEl.className = "quote-separator";
   separatorEl.textContent = "\u2022"; // middle dot
 
-  const categoryEl = document.createElement("span");
-  categoryEl.className = "quote-category";
+  const authorEl = document.createElement("span");
+  authorEl.className = "quote-author";
 
   const actionsEl = document.createElement("div");
   actionsEl.className = "quote-actions";
@@ -3260,41 +3260,53 @@ function setupQuoteBanner() {
   const refreshBtn = document.createElement("button");
   refreshBtn.className = "quote-refresh-btn";
   refreshBtn.type = "button";
-  refreshBtn.innerHTML = "🔄 New quote";
+  refreshBtn.innerHTML = "↻";
+  refreshBtn.setAttribute("aria-label", "Get new quote");
+  refreshBtn.setAttribute("title", "Get new quote");
 
   actionsEl.appendChild(refreshBtn);
 
   container.appendChild(textEl);
   container.appendChild(separatorEl);
-  container.appendChild(categoryEl);
+  container.appendChild(authorEl);
   container.appendChild(actionsEl);
 
   const LS_KEY = "pdp-quote-banner";
   const todayKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
-  function setQuote(quote, category) {
+  function setQuote(quote, author) {
     textEl.textContent = `“${quote}”`;
-    if (category) {
+    if (author) {
       separatorEl.style.display = "inline";
-      categoryEl.textContent = category;
+      authorEl.textContent = author;
     } else {
       separatorEl.style.display = "none";
-      categoryEl.textContent = "";
+      authorEl.textContent = "";
     }
   }
 
   async function fetchRandomQuote() {
     try {
-      const resp = await fetch("https://quote-generator-api-six.vercel.app/api/quotes/random");
+      const resp = await fetch("quotes.json");
       const data = await resp.json();
-      const quote = data?.quote || "Stay consistent and keep moving forward.";
-      const category = data?.category || "Unknown";
+      const quotes = data.quotes;
+      
+      if (!quotes || quotes.length === 0) {
+        throw new Error("No quotes available");
+      }
+      
+      // Pick a random quote from the array
+      const randomIndex = Math.floor(Math.random() * quotes.length);
+      const randomQuote = quotes[randomIndex];
+      
+      const quote = randomQuote.content || "Stay consistent and keep moving forward.";
+      const author = randomQuote.author || "Unknown";
 
-      setQuote(quote, category);
-      localStorage.setItem(LS_KEY, JSON.stringify({ date: todayKey, quote, category }));
+      setQuote(quote, author);
+      localStorage.setItem(LS_KEY, JSON.stringify({ date: todayKey, quote, author }));
     } catch (e) {
       console.warn("Quote fetch failed, using fallback.", e);
-      setQuote("Small steps lead to big change.", "");
+      setQuote("Small steps lead to big change.", "Unknown");
     }
   }
 
@@ -3303,7 +3315,7 @@ function setupQuoteBanner() {
     const cachedRaw = localStorage.getItem(LS_KEY);
     const cached = cachedRaw ? JSON.parse(cachedRaw) : null;
     if (cached && cached.date === todayKey && cached.quote) {
-      setQuote(cached.quote, cached.category);
+      setQuote(cached.quote, cached.author);
     } else {
       // Fetch a fresh quote and cache it
       fetchRandomQuote();
