@@ -123,17 +123,23 @@ Reorders are saved to Firestore using `orderIndex`.
 
 You can run the PDP app locally using a lightweight static server.
 
-### 1. Install a simple local server  
-If needed:
+Option A — http-server (no install needed):
 
-bash
-npm install -g serve
+```
+npm run start
+```
 
-### 2. Start the server
-bash
-npx http-server
-#### Visit:
+Option B — serve (alternative):
+
+```
+npm run serve
+```
+
+Then open:
+
+```
 http://localhost:3000
+```
 
 ---
 
@@ -142,9 +148,9 @@ http://localhost:3000
 This app requires:
 - A Firebase project
 - Authentication enabled
-- Firestore Database enddabled
+- Firestore Database enabled
 
-Update your Firebase config in main.js:
+Update your Firebase config in `main.js`:
  - const firebaseConfig = {
   - apiKey: "...",
   - authDomain: "...",
@@ -154,7 +160,7 @@ Update your Firebase config in main.js:
   - appId: "..."
 - };
 
-Firestore rules should restric reads/writes to authenticated users.
+Firestore rules should restrict reads/writes to authenticated users.
 
 ---
 
@@ -203,7 +209,7 @@ https://`<username>`.github.io/personal-dev-plan/
 ---
 
 ## 🧪 Testing
-- Mobile resonsive
+- Mobile responsive
 - Tested in Light/Dark/CWM modes
 - CRUD for goals, sub-goals, tasks
 - Firestore access validated
@@ -213,11 +219,11 @@ https://`<username>`.github.io/personal-dev-plan/
 
 ## 🤝 Contributing
 Contributions are welcome!
-Specs for future features live in the dev-notes folder:
-- PDP_MASTER_SPEC.md
-- DASHBOARD_UPGRADE_SPEC.md
-- QUOTE_BANNER_SPEC.md
-Feel free to submit feature requests or enhancements
+Specs for future features live in the `dev-notes` folder:
+- `PDP_MASTER_SPEC.md`
+- `DASHBOARD_UPGRADE_SPEC.md`
+
+Feel free to submit feature requests or enhancements.
 
 ---
 
@@ -230,4 +236,4 @@ Focused on leadership development, personal growth, and coaching.
 ---
 
 ## ⭐ License
-This projece is licensed under the MIT License--free to use, modify, and extend.
+This project is licensed under the MIT License — free to use, modify, and extend.

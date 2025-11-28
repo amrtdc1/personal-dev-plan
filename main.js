@@ -799,7 +799,8 @@ async function saveGoalStatus(uid, section, goalId, newStatus) {
 
   await updateDoc(ref, {
     status: newStatus,
-    percentComplete: newPercent
+    percentComplete: newPercent,
+    updatedAt: serverTimestamp()
   });
 
   updateStats();
@@ -811,7 +812,7 @@ async function saveSubgoalDoc(mode, payload) {
   if (mode === "edit" && payload.id) {
     const { id, ...rest } = payload;
     const ref = doc(db, "subgoals", id);
-    await updateDoc(ref, rest);
+    await updateDoc(ref, { ...rest, updatedAt: serverTimestamp() });
     return id;
   } else {
     const { id, ...rest } = payload;
@@ -826,7 +827,7 @@ async function saveTaskDoc(mode, payload) {
   if (mode === "edit" && payload.id) {
     const { id, ...rest } = payload;
     const ref = doc(db, "tasks", id);
-    await updateDoc(ref, rest);
+    await updateDoc(ref, { ...rest, updatedAt: serverTimestamp() });
     return id;
   } else {
     const { id, ...rest } = payload;
@@ -989,7 +990,8 @@ function setupGoalModalUI() {
             projectedStartDate: projectedStartDate || null,
             projectedEndDate: projectedEndDate || null,
             isFocus,
-            themeColor
+            themeColor,
+            updatedAt: serverTimestamp()
           });
 
           closeGoalModal();
@@ -1017,7 +1019,8 @@ function setupGoalModalUI() {
             percentComplete: 0,
             isFocus,
             themeColor,
-            orderIndex: nextOrderIndex
+            orderIndex: nextOrderIndex,
+            updatedAt: now
           });
 
 
@@ -3129,6 +3132,16 @@ function setupNav() {
   const buttons = document.querySelectorAll(".nav-btn");
   const sections = document.querySelectorAll(".section");
 
+  // Restore last active section from localStorage (defaults to 'dashboard')
+  const savedSection = localStorage.getItem("pdp-active-section") || "dashboard";
+  const initialBtn = Array.from(buttons).find(b => b.dataset.section === savedSection);
+  const initialSection = Array.from(sections).find(sec => sec.id === savedSection);
+
+  if (initialBtn && initialSection) {
+    buttons.forEach(b => b.classList.toggle("active", b === initialBtn));
+    sections.forEach(sec => sec.classList.toggle("visible", sec === initialSection));
+  }
+
   buttons.forEach(btn => {
     btn.addEventListener("click", () => {
       const target = btn.dataset.section;
@@ -3137,6 +3150,11 @@ function setupNav() {
       sections.forEach(sec => {
         sec.classList.toggle("visible", sec.id === target);
       });
+
+      // Persist active section for next visit
+      if (target) {
+        localStorage.setItem("pdp-active-section", target);
+      }
     });
   });
 }
@@ -3209,6 +3227,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initPalette();
   setupThemeToggle();
   setupPaletteUI();
+  setupQuoteBanner();
   setupNav();
   setupAuthUI();
   setupGoalModalUI();
@@ -3217,3 +3236,84 @@ document.addEventListener("DOMContentLoaded", () => {
   setupCalendarUI();
   renderCalendar();
 });
+
+// --- Quote Banner ---
+
+function setupQuoteBanner() {
+  const container = document.getElementById("quoteBanner");
+  if (!container) return;
+
+  // Build structure
+  const textEl = document.createElement("span");
+  textEl.className = "quote-text";
+
+  const separatorEl = document.createElement("span");
+  separatorEl.className = "quote-separator";
+  separatorEl.textContent = "\u2022"; // middle dot
+
+  const authorEl = document.createElement("span");
+  authorEl.className = "quote-author";
+
+  const actionsEl = document.createElement("div");
+  actionsEl.className = "quote-actions";
+
+  const refreshBtn = document.createElement("button");
+  refreshBtn.className = "quote-refresh-btn";
+  refreshBtn.type = "button";
+  refreshBtn.innerHTML = "🔄 New quote";
+
+  actionsEl.appendChild(refreshBtn);
+
+  container.appendChild(textEl);
+  container.appendChild(separatorEl);
+  container.appendChild(authorEl);
+  container.appendChild(actionsEl);
+
+  const LS_KEY = "pdp-quote-banner";
+  const todayKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  function setQuote(quote, author) {
+    textEl.textContent = `“${quote}”`;
+    if (author) {
+      separatorEl.style.display = "inline";
+      authorEl.textContent = author;
+    } else {
+      separatorEl.style.display = "none";
+      authorEl.textContent = "";
+    }
+  }
+
+  async function fetchRandomQuote() {
+    try {
+      const resp = await fetch("https://api.quotable.io/quotes/random");
+      const data = await resp.json();
+      const quote = data?.content || "Stay consistent and keep moving forward.";
+      const author = data?.author || "Unknown";
+
+      setQuote(quote, author);
+      localStorage.setItem(LS_KEY, JSON.stringify({ date: todayKey, quote, author }));
+    } catch (e) {
+      console.warn("Quote fetch failed, using fallback.", e);
+      setQuote("Small steps lead to big change.", "");
+    }
+  }
+
+  // Load cached quote if same day
+  try {
+    const cachedRaw = localStorage.getItem(LS_KEY);
+    const cached = cachedRaw ? JSON.parse(cachedRaw) : null;
+    if (cached && cached.date === todayKey && cached.quote) {
+      setQuote(cached.quote, cached.author);
+    } else {
+      // Fetch a fresh quote and cache it
+      fetchRandomQuote();
+    }
+  } catch (_) {
+    fetchRandomQuote();
+  }
+
+  refreshBtn.addEventListener("click", () => {
+    // Force a fresh quote (does not change daily cache date)
+    fetchRandomQuote();
+  });
+}

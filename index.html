@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <title>Personal Development Plan</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="assets/cwm-logo-icon.ico" type="image/x-icon" />
 
     <!-- Brand Fonts -->
     <link
@@ -103,12 +104,15 @@
 
       <!-- Main Layout -->
       <main class="app-main">
-        <!-- Top nav -->
-        <nav class="top-nav">
+        <!-- Top row: nav + quote banner -->
+        <div class="top-row">
+          <nav class="top-nav">
           <button class="nav-btn active" data-section="dashboard">Dashboard</button>
           <button class="nav-btn" data-section="goals">Goals</button>
           <button class="nav-btn" data-section="calendar">Calendar</button>
-        </nav>
+          </nav>
+          <section class="quote-banner" id="quoteBanner"></section>
+        </div>
 
         <!-- Sections -->
         <section id="dashboard" class="section visible">
