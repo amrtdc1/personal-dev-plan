@@ -1,3 +1,136 @@
+/* Utility */
+.hidden { display: none !important; }
+
+/* Avatar dropdown */
+#userDropdown { display: none; position: absolute; z-index: 100; }
+#userDropdown.open { display: block; }
+/* Sign-In Modal & Google Button */
+.sign-in-modal {
+  max-width: 420px;
+}
+
+.sign-in-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.2rem 0.6rem;
+}
+
+.google-sign-in-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1.2rem;
+  border: 1px solid rgba(0,0,0,0.2);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #3c4043;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.google-sign-in-btn:hover {
+  background: #f8f9fa;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+}
+
+.google-logo {
+  flex-shrink: 0;
+}
+
+.sign-in-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.3rem 0;
+}
+
+.sign-in-divider::before,
+.sign-in-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.email-sign-in-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* User Avatar & Dropdown */
+.user-avatar-wrapper {
+  position: relative;
+}
+
+.user-avatar-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.user-avatar-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px var(--accent-soft);
+}
+
+.user-initial {
+  text-transform: uppercase;
+}
+
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  background: var(--modal-bg);
+  border: 1px solid var(--modal-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  padding: 0.5rem 0;
+  z-index: 100;
+}
+
+.user-dropdown-header {
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 0.35rem;
+}
+
+.user-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--modal-text);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.user-dropdown-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .archived-toggle {
   display: inline-flex;
   align-items: center;
@@ -467,6 +600,17 @@ body[data-theme="cwm"] .subgoal-progress-bar {
   align-items: flex-end;
 }
 
+.header-controls-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+
+.mobile-controls-toggle {
+  align-self: flex-end;
+}
+
 .header-controls {
   display: flex;
   align-items: center;
@@ -558,6 +702,10 @@ body[data-theme="cwm"] .subgoal-progress-bar {
   align-items: center;
   justify-content: center;
   transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.icon-btn.mobile-controls-toggle {
+  display: none;
 }
 
 .cwm-theme-icon {
@@ -1600,8 +1748,9 @@ body[data-theme="dark"] .task-item {
 
 /* Specific button class hooks (retain selectors for potential JS) */
 .goal-edit-btn, .subgoal-edit-btn, .task-edit-btn,
-.goal-delete-btn, .subgoal-delete-btn, .task-delete-btn { 
-  /* inherit icon-btn styles */
+.goal-delete-btn, .subgoal-delete-btn, .task-delete-btn {
+  /* Hook classes share base icon styles; ensure pointer */
+  cursor: pointer;
 }
 
 /* Archived state overrides (keep legible) */
@@ -2828,22 +2977,49 @@ body[data-theme="cwm"] .recently-updated-type.type-task {
   }
 
   .header-right {
-    align-items: flex-start;
     width: 100%;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+    position: relative;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .icon-btn.mobile-controls-toggle {
+    display: inline-flex;
+    margin-left: auto;
+  }
+
+  .header-controls-panel {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    background: var(--modal-bg);
+    border: 1px solid var(--modal-border);
+    border-radius: 0.85rem;
+    box-shadow: 0 15px 35px rgba(15, 23, 42, 0.55);
+    padding: 0.9rem;
+    width: min(320px, 90vw);
+    display: none;
+    flex-direction: column;
+    gap: 0.85rem;
+    align-items: flex-end;
+    z-index: 30;
+  }
+
+  .header-right.mobile-controls-open .header-controls-panel {
+    display: flex;
   }
 
   .header-controls {
-    order: 2;
-    display: flex;
-    gap: 0.5rem;
+    width: 100%;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    flex-wrap: wrap;
   }
 
   .auth-block {
-    order: 1;
     width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
   }
 
   .auth-actions {
