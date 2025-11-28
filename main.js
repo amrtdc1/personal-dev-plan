@@ -3251,8 +3251,8 @@ function setupQuoteBanner() {
   separatorEl.className = "quote-separator";
   separatorEl.textContent = "\u2022"; // middle dot
 
-  const authorEl = document.createElement("span");
-  authorEl.className = "quote-author";
+  const categoryEl = document.createElement("span");
+  categoryEl.className = "quote-category";
 
   const actionsEl = document.createElement("div");
   actionsEl.className = "quote-actions";
@@ -3266,32 +3266,32 @@ function setupQuoteBanner() {
 
   container.appendChild(textEl);
   container.appendChild(separatorEl);
-  container.appendChild(authorEl);
+  container.appendChild(categoryEl);
   container.appendChild(actionsEl);
 
   const LS_KEY = "pdp-quote-banner";
   const todayKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
-  function setQuote(quote, author) {
+  function setQuote(quote, category) {
     textEl.textContent = `“${quote}”`;
-    if (author) {
+    if (category) {
       separatorEl.style.display = "inline";
-      authorEl.textContent = author;
+      categoryEl.textContent = category;
     } else {
       separatorEl.style.display = "none";
-      authorEl.textContent = "";
+      categoryEl.textContent = "";
     }
   }
 
   async function fetchRandomQuote() {
     try {
-      const resp = await fetch("https://api.quotable.io/quotes/random");
+      const resp = await fetch("https://quote-generator-api-six.vercel.app/api/quotes/random");
       const data = await resp.json();
-      const quote = data?.content || "Stay consistent and keep moving forward.";
-      const author = data?.author || "Unknown";
+      const quote = data?.quote || "Stay consistent and keep moving forward.";
+      const category = data?.category || "Unknown";
 
-      setQuote(quote, author);
-      localStorage.setItem(LS_KEY, JSON.stringify({ date: todayKey, quote, author }));
+      setQuote(quote, category);
+      localStorage.setItem(LS_KEY, JSON.stringify({ date: todayKey, quote, category }));
     } catch (e) {
       console.warn("Quote fetch failed, using fallback.", e);
       setQuote("Small steps lead to big change.", "");
@@ -3303,7 +3303,7 @@ function setupQuoteBanner() {
     const cachedRaw = localStorage.getItem(LS_KEY);
     const cached = cachedRaw ? JSON.parse(cachedRaw) : null;
     if (cached && cached.date === todayKey && cached.quote) {
-      setQuote(cached.quote, cached.author);
+      setQuote(cached.quote, cached.category);
     } else {
       // Fetch a fresh quote and cache it
       fetchRandomQuote();
