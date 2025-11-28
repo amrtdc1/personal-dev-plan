@@ -1,3 +1,42 @@
+.archived-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.65rem;
+  font-size: 0.75rem;
+  user-select: none;
+}
+
+.archived-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent, #0077ff);
+  cursor: pointer;
+}
+/* Archived state visuals */
+.goal-card.archived,
+.subgoal-item.archived,
+.task-item.archived {
+  opacity: 0.55;
+  filter: grayscale(0.4);
+  position: relative;
+}
+
+.goal-card.archived::before,
+.subgoal-item.archived::before,
+.task-item.archived::before {
+  content: "Archived";
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font-size: 0.65rem;
+  background: var(--surface-alt, #444);
+  color: var(--text-invert, #fff);
+  padding: 2px 6px;
+  border-radius: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
 /* Dashboard - Tasks Due Soon */
 
 #tasksDueSoon,
@@ -909,6 +948,38 @@ body[data-theme="light"] .goal-card {
   border-left: 3px solid var(--status-done);
 }
 
+/* Focus goals get a prominent left border in accent color */
+.goal-card.is-focus {
+  border-left: 5px solid var(--accent) !important;
+  /* Stronger, layered accent shadows */
+  box-shadow:
+    0 0 0 2px var(--accent-soft),
+    0 10px 24px var(--accent-soft),
+    0 24px 56px var(--accent-strong) !important;
+}
+
+/* Theme-specific shadow overrides (explicit for clarity/tuning) */
+body[data-theme="light"] .goal-card.is-focus {
+  box-shadow:
+    0 0 0 2px var(--accent-soft),
+    0 12px 28px var(--accent-soft),
+    0 28px 60px var(--accent-strong) !important;
+}
+
+body[data-theme="dark"] .goal-card.is-focus {
+  box-shadow:
+    0 0 0 2px var(--accent-soft),
+    0 14px 32px var(--accent-soft),
+    0 32px 66px var(--accent-strong) !important;
+}
+
+body[data-theme="cwm"] .goal-card.is-focus {
+  box-shadow:
+    0 0 0 2px var(--accent-soft),
+    0 12px 28px var(--accent-soft),
+    0 28px 60px var(--accent-strong) !important;
+}
+
 .goal-header {
   display: flex;
   justify-content: space-between;
@@ -943,6 +1014,42 @@ body[data-theme="light"] .goal-card {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+/* Compact action groups */
+.action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.action-group .icon-btn {
+  opacity: 0.9;
+}
+
+.action-group .icon-btn:hover {
+  opacity: 1;
+}
+
+.goal-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.4rem;
+}
+
+.goal-actions-bar .left,
+.goal-actions-bar .right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.subgoal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
 }
 
 .goal-tag {
@@ -1437,6 +1544,89 @@ body[data-theme="dark"] .task-item {
 
 .task-edit-btn:hover {
   color: var(--accent);
+}
+
+/* Archive / Unarchive buttons (match edit style) */
+/* Icon button base (edit + archive) */
+.icon-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  line-height: 1;
+  font-size: 0.95rem; /* allow text/emoji icons to render */
+  position: relative;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.icon-btn svg { 
+  width: 14px; 
+  height: 14px; 
+  stroke: currentColor; 
+}
+
+.icon-btn:hover { color: var(--accent); }
+
+/* Tooltip */
+.icon-btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, -4px);
+  background: var(--surface-alt, #222);
+  color: var(--text-invert, #fff);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-family: var(--font-body);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 20;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+}
+
+.icon-btn[data-tooltip]:hover::after {
+  opacity: 1;
+  transform: translate(-50%, -8px);
+}
+
+/* Specific button class hooks (retain selectors for potential JS) */
+.goal-edit-btn, .subgoal-edit-btn, .task-edit-btn,
+.goal-delete-btn, .subgoal-delete-btn, .task-delete-btn { 
+  /* inherit icon-btn styles */
+}
+
+/* Archived state overrides (keep legible) */
+.goal-card.archived .icon-btn,
+.subgoal-item.archived .icon-btn,
+.task-item.archived .icon-btn {
+  opacity: 0.75;
+}
+.goal-card.archived .icon-btn:hover,
+.subgoal-item.archived .icon-btn:hover,
+.task-item.archived .icon-btn:hover {
+  opacity: 1;
+}
+
+/* Visually hidden (for accessible labels inside icon buttons) */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 
 /* Drag state styling */
@@ -2662,6 +2852,20 @@ body[data-theme="cwm"] .recently-updated-type.type-task {
     flex-wrap: wrap;
     margin: 0.3rem 0;
   }
+
+  .text-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 0.7rem;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .text-btn:hover { color: var(--accent-alt); }
+
+  #accountManageBackdrop.hidden { display:none; }
+  #accountManageBackdrop .modal { max-width:420px; }
 
   #emailAuthBackdrop.hidden { display: none; }
 

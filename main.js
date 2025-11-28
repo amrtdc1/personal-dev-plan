@@ -10,7 +10,12 @@ import {
   signOut,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  updateProfile
+  updateProfile,
+  sendPasswordResetEmail,
+  deleteUser,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 import {
   getFirestore,
@@ -21,7 +26,8 @@ import {
   where,
   getDocs,
   addDoc,
-  serverTimestamp
+  serverTimestamp,
+  deleteDoc
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 // --- 2. Firebase config ---
@@ -146,30 +152,30 @@ function setTheme(theme) {
   body.dataset.theme = theme;
   localStorage.setItem("pdp-theme", theme);
 
-  const themeIcon = document.getElementById("themeIcon");
-  // if (themeIcon) {
-  //   if (theme === "dark") {
-  //     themeIcon.textContent = "🌙";
-  //   } else if (theme === "light") {
-  //     themeIcon.textContent = "🌞";
-  //   } else if (theme === "cwm") {
-  //     themeIcon.textContent = "assets/cwm-logo-icon.ico"; // CWM theme icon (can change later)🏗️
-  //   }
-  // }
   const iconContainer = document.getElementById("themeIconContainer");
 
   if (theme === "light") {
-    iconContainer.innerHTML = `<span id="themeIcon">🌞</span>`;
+    // Emoji fallback: 🌞
+    iconContainer.innerHTML = `
+      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+        <circle cx="12" cy="12" r="5"/>
+        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+      </svg>`;
   }
   else if (theme === "dark") {
-    iconContainer.innerHTML = `<span id="themeIcon">🌙</span>`;
+    // Emoji fallback: 🌙
+    iconContainer.innerHTML = `
+      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>`;
   }
   else if (theme === "cwm") {
     iconContainer.innerHTML = `
-    <img src="assets/cwm-logo-icon.ico" 
-         alt="CWM Theme"
-         class="cwm-theme-icon">
-  `;
+      <img src="assets/cwm-logo-icon.ico" 
+           alt="CWM Theme"
+           id="themeIcon"
+           class="cwm-theme-icon">
+    `;
   }
 
 }
@@ -460,7 +466,8 @@ function getTaskPercent(task) {
 }
 
 function computeSubgoalPercent(subgoal) {
-  const tasks = tasksBySubgoal[subgoal.id] || [];
+  const tasksAll = tasksBySubgoal[subgoal.id] || [];
+  const tasks = tasksAll.filter(t => !t.archived);
   if (!tasks.length) {
     // No tasks -> sub-goal progress is based on its own status
     return statusToPercent(subgoal.status || "not_started");
@@ -474,7 +481,8 @@ function computeSubgoalPercent(subgoal) {
 }
 
 function computeGoalPercent(goal) {
-  const subs = subgoalsByGoal[goal.id] || [];
+  const subsAll = subgoalsByGoal[goal.id] || [];
+  const subs = subsAll.filter(sg => !sg.archived);
   if (!subs.length) {
     // No sub-goals -> goal progress based on its own status
     return statusToPercent(goal.status || "not_started");
@@ -807,6 +815,29 @@ async function saveGoalStatus(uid, section, goalId, newStatus) {
   });
 
   updateStats();
+}
+
+async function saveSubgoalStatus(subgoalId, newStatus) {
+  // Update local cache
+  const parentGoalEntry = Object.entries(subgoalsByGoal).find(([, list]) => list.some(s => s.id === subgoalId));
+  if (parentGoalEntry) {
+    const list = parentGoalEntry[1];
+    const idx = list.findIndex(s => s.id === subgoalId);
+    if (idx !== -1) list[idx].status = newStatus;
+  }
+  // Persist to Firestore (flat collection model)
+  const ref = doc(db, "subgoals", subgoalId);
+  await updateDoc(ref, { status: newStatus, updatedAt: serverTimestamp() });
+}
+
+async function saveTaskStatus(taskId, newStatus, subgoalId) {
+  // Update local cache
+  const list = tasksBySubgoal[subgoalId] || [];
+  const idx = list.findIndex(t => t.id === taskId);
+  if (idx !== -1) list[idx].status = newStatus;
+  // Persist to Firestore (flat collection model)
+  const ref = doc(db, "tasks", taskId);
+  await updateDoc(ref, { status: newStatus, updatedAt: serverTimestamp() });
 }
 
 async function saveSubgoalDoc(mode, payload) {
@@ -1408,6 +1439,9 @@ function setupTaskModalUI() {
 
 // --- Rendering ---
 
+// Global toggle state
+let showArchived = false;
+
 function renderGoals() {
   const profContainer = document.getElementById("professional-goals");
   const persContainer = document.getElementById("personal-goals");
@@ -1417,11 +1451,14 @@ function renderGoals() {
   profContainer.innerHTML = "";
   persContainer.innerHTML = "";
 
-  goals.professional.forEach(goal => {
+  const profGoals = showArchived ? goals.professional : goals.professional.filter(g => !g.archived);
+  const persGoals = showArchived ? goals.personal : goals.personal.filter(g => !g.archived);
+
+  profGoals.forEach(goal => {
     profContainer.appendChild(createGoalCard(goal, "professional", "Professional"));
   });
 
-  goals.personal.forEach(goal => {
+  persGoals.forEach(goal => {
     persContainer.appendChild(createGoalCard(goal, "personal", "Personal"));
   });
 
@@ -1434,6 +1471,8 @@ function createGoalCard(goal, sectionKey, tagLabel) {
   card.className = `goal-card ${statusClassForCard(goal.status || "not_started")}`;
   card.dataset.goalId = goal.id;
   card.dataset.section = sectionKey;
+  if (goal.archived) card.classList.add("archived");
+  if (goal.isFocus) card.classList.add("is-focus");
 
   const goalPercent = computeGoalPercent(goal);
 
@@ -1509,8 +1548,57 @@ function createGoalCard(goal, sectionKey, tagLabel) {
 
   const editBtn = document.createElement("button");
   editBtn.type = "button";
-  editBtn.className = "goal-edit-btn";
-  editBtn.textContent = "Edit";
+  editBtn.className = "icon-btn goal-edit-btn";
+  editBtn.setAttribute("aria-label", "Edit goal");
+  editBtn.dataset.tooltip = "Edit";
+  editBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+    <span class="visually-hidden">Edit</span>
+  `;
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "icon-btn goal-delete-btn";
+  deleteBtn.setAttribute("aria-label", goal.archived ? "Unarchive goal" : "Archive goal");
+  deleteBtn.dataset.tooltip = goal.archived ? "Unarchive" : "Archive";
+  deleteBtn.innerHTML = goal.archived ? `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 3h18v4H3Z" />
+      <path d="M5 7h14v14H5Z" />
+      <path d="M12 12v6" />
+      <path d="m9 15 3-3 3 3" />
+    </svg>
+    <span class="visually-hidden">Unarchive</span>
+  ` : `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 3h18v4H3Z" />
+      <path d="M5 7h14v14H5Z" />
+      <path d="M10 12h4" />
+    </svg>
+    <span class="visually-hidden">Archive</span>
+  `;
+
+  deleteBtn.addEventListener("click", async () => {
+    if (!auth.currentUser) {
+      alert("Please sign in to manage goals.");
+      return;
+    }
+    try {
+      if (goal.archived) {
+        await unarchiveGoal(auth.currentUser.uid, sectionKey, goal.id);
+      } else {
+        await archiveGoal(auth.currentUser.uid, sectionKey, goal.id);
+      }
+      renderGoals();
+      updateStats();
+    } catch (err) {
+      console.error("Archive/unarchive goal error", err);
+      alert("Could not update goal archive state.");
+    }
+  });
 
   editBtn.addEventListener("click", () => {
     if (!auth.currentUser) {
@@ -1520,8 +1608,34 @@ function createGoalCard(goal, sectionKey, tagLabel) {
     openGoalModal("edit", goal);
   });
 
+  const actionGroup = document.createElement("span");
+  actionGroup.className = "action-group";
+  actionGroup.appendChild(editBtn);
+  actionGroup.appendChild(deleteBtn);
+
+  const addSubIconBtn = document.createElement("button");
+  addSubIconBtn.type = "button";
+  addSubIconBtn.className = "icon-btn";
+  addSubIconBtn.setAttribute("aria-label", "Add sub-goal");
+  addSubIconBtn.dataset.tooltip = "Add sub-goal";
+  addSubIconBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+    <span class="visually-hidden">Add sub-goal</span>
+  `;
+  addSubIconBtn.addEventListener("click", () => {
+    if (!auth.currentUser) {
+      alert("Please sign in to add a sub-goal.");
+      return;
+    }
+    openSubgoalModal("add", { goalId: goal.id, goalTitle: goal.title });
+  });
+
   right.appendChild(select);
-  right.appendChild(editBtn);
+  right.appendChild(actionGroup);
+  right.appendChild(addSubIconBtn);
 
   meta.appendChild(timeframe);
   meta.appendChild(right);
@@ -1588,21 +1702,7 @@ function createGoalCard(goal, sectionKey, tagLabel) {
   subHeaderLeft.appendChild(subHeaderTitle);
   subHeaderLeft.appendChild(subCount);
 
-  const addSubBtn = document.createElement("button");
-  addSubBtn.type = "button";
-  addSubBtn.className = "subgoal-add-btn";
-  addSubBtn.innerHTML = `<span>＋</span><span>Sub-goal</span>`;
-
-  addSubBtn.addEventListener("click", () => {
-    if (!auth.currentUser) {
-      alert("Please sign in to add a sub-goal.");
-      return;
-    }
-    openSubgoalModal("add", {
-      goalId: goal.id,
-      goalTitle: goal.title
-    });
-  });
+  const addSubBtn = addSubIconBtn; // reuse icon button in header
 
   subHeader.appendChild(subHeaderLeft);
   subHeader.appendChild(addSubBtn);
@@ -1621,9 +1721,10 @@ function createGoalCard(goal, sectionKey, tagLabel) {
     empty.textContent = "No sub-goals yet. Add one to break this goal into smaller wins.";
     subList.appendChild(empty);
   } else {
-    subgoalsForThis.forEach(sg => {
-      subList.appendChild(createSubgoalItem(sg, goal));
-    });
+    const subListFiltered = showArchived ? subgoalsForThis : subgoalsForThis.filter(sg => !sg.archived);
+    subListFiltered.forEach(sg => {
+        subList.appendChild(createSubgoalItem(sg, goal));
+      });
   }
 
   subSection.appendChild(subHeader);
@@ -1833,6 +1934,7 @@ function createSubgoalItem(subgoal, parentGoal) {
   row.className = "subgoal-item";
   row.dataset.subgoalId = subgoal.id;
   row.dataset.parentGoalId = parentGoal.id;
+  if (subgoal.archived) row.classList.add("archived");
 
   const main = document.createElement("div");
   main.className = "subgoal-main";
@@ -1921,9 +2023,16 @@ function createSubgoalItem(subgoal, parentGoal) {
 
   const addTaskBtn = document.createElement("button");
   addTaskBtn.type = "button";
-  addTaskBtn.className = "task-add-btn";
-  addTaskBtn.innerHTML = `<span>＋</span><span>Task</span>`;
-
+  addTaskBtn.className = "icon-btn";
+  addTaskBtn.setAttribute("aria-label", "Add task");
+  addTaskBtn.dataset.tooltip = "Add task";
+  addTaskBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+    <span class="visually-hidden">Add task</span>
+  `;
   addTaskBtn.addEventListener("click", () => {
     if (!auth.currentUser) {
       alert("Please sign in to add a task.");
@@ -1954,9 +2063,10 @@ function createSubgoalItem(subgoal, parentGoal) {
       "No tasks yet. Add actions to move this sub-goal forward.";
     tasksList.appendChild(emptyTask);
   } else {
-    tasksForThis.forEach(task => {
-      tasksList.appendChild(createTaskItem(task, subgoal, parentGoal));
-    });
+    const tasksFiltered = showArchived ? tasksForThis : tasksForThis.filter(t => !t.archived);
+    tasksFiltered.forEach(task => {
+        tasksList.appendChild(createTaskItem(task, subgoal, parentGoal));
+      });
   }
 
   tasksSection.appendChild(tasksHeader);
@@ -1970,19 +2080,84 @@ function createSubgoalItem(subgoal, parentGoal) {
   footerLabel.className = "subgoal-footer-label meta-text";
   footerLabel.textContent = "Sub-goal status";
 
-  const statusPill = document.createElement("span");
-  statusPill.className = `subgoal-status-pill status-${subgoal.status || "not_started"}`;
-  statusPill.textContent =
-    subgoal.status === "done"
-      ? "Done"
-      : subgoal.status === "in_progress"
-      ? "In progress"
-      : "Not started";
+  const statusSelect = document.createElement("select");
+  statusSelect.className = "goal-status-select";
+  statusSelect.innerHTML = `
+    <option value="not_started">Not started</option>
+    <option value="in_progress">In progress</option>
+    <option value="done">Done</option>
+  `;
+  statusSelect.value = subgoal.status || "not_started";
+  statusSelect.addEventListener("change", async (e) => {
+    if (!auth.currentUser) {
+      alert("Please sign in to save changes.");
+      e.target.value = subgoal.status || "not_started";
+      return;
+    }
+    try {
+      await saveSubgoalStatus(subgoal.id, e.target.value);
+      renderGoals();
+      updateStats();
+    } catch (err) {
+      console.error("Error saving sub-goal status:", err);
+      alert("Could not save sub-goal status.");
+      e.target.value = subgoal.status || "not_started";
+    }
+  });
 
   const editBtn = document.createElement("button");
   editBtn.type = "button";
-  editBtn.className = "subgoal-edit-btn";
-  editBtn.textContent = "Edit";
+  editBtn.className = "icon-btn subgoal-edit-btn";
+  editBtn.setAttribute("aria-label", "Edit sub-goal");
+  editBtn.dataset.tooltip = "Edit";
+  editBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+    <span class="visually-hidden">Edit</span>
+  `;
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "icon-btn subgoal-delete-btn";
+  deleteBtn.setAttribute("aria-label", subgoal.archived ? "Unarchive sub-goal" : "Archive sub-goal");
+  deleteBtn.dataset.tooltip = subgoal.archived ? "Unarchive" : "Archive";
+  deleteBtn.innerHTML = subgoal.archived ? `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 3h18v4H3Z" />
+      <path d="M5 7h14v14H5Z" />
+      <path d="M12 12v6" />
+      <path d="m9 15 3-3 3 3" />
+    </svg>
+    <span class="visually-hidden">Unarchive</span>
+  ` : `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 3h18v4H3Z" />
+      <path d="M5 7h14v14H5Z" />
+      <path d="M10 12h4" />
+    </svg>
+    <span class="visually-hidden">Archive</span>
+  `;
+
+  deleteBtn.addEventListener("click", async () => {
+    if (!auth.currentUser) {
+      alert("Please sign in to manage sub-goals.");
+      return;
+    }
+    try {
+      if (subgoal.archived) {
+        await unarchiveSubgoal(auth.currentUser.uid, parentGoal.id, subgoal.id);
+      } else {
+        await archiveSubgoal(auth.currentUser.uid, parentGoal.id, subgoal.id);
+      }
+      renderGoals();
+      updateStats();
+    } catch (err) {
+      console.error("Archive/unarchive sub-goal error", err);
+      alert("Could not update sub-goal archive state.");
+    }
+  });
 
   editBtn.addEventListener("click", () => {
     if (!auth.currentUser) {
@@ -1995,9 +2170,19 @@ function createSubgoalItem(subgoal, parentGoal) {
     });
   });
 
-  actions.appendChild(footerLabel);
-  actions.appendChild(statusPill);
-  actions.appendChild(editBtn);
+  const actionsLeft = document.createElement("span");
+  actionsLeft.className = "left action-group";
+  actionsLeft.appendChild(footerLabel);
+  actionsLeft.appendChild(statusSelect);
+
+  const actionsRight = document.createElement("span");
+  actionsRight.className = "right action-group";
+  actionsRight.appendChild(editBtn);
+  actionsRight.appendChild(deleteBtn);
+  actionsRight.appendChild(addTaskBtn);
+
+  actions.appendChild(actionsLeft);
+  actions.appendChild(actionsRight);
 
   // Final structure: main → tasks → footer
   row.appendChild(main);
@@ -2015,6 +2200,7 @@ function createTaskItem(task, parentSubgoal, parentGoal) {
   row.className = "task-item";
   row.dataset.taskId = task.id;
   row.dataset.subgoalId = parentSubgoal.id;
+  if (task.archived) row.classList.add("archived");
 
   const main = document.createElement("div");
   main.className = "task-main";
@@ -2043,21 +2229,87 @@ function createTaskItem(task, parentSubgoal, parentGoal) {
   main.appendChild(meta);
 
   const actions = document.createElement("div");
-  actions.className = "task-actions";
+  actions.className = "task-actions goal-actions-bar";
 
-  const statusPill = document.createElement("span");
-  statusPill.className = `task-status-pill status-${task.status || "not_started"}`;
-  statusPill.textContent =
-    task.status === "done"
-      ? "Done"
-      : task.status === "in_progress"
-      ? "In progress"
-      : "Not started";
+  const statusSelect = document.createElement("select");
+  statusSelect.className = "goal-status-select";
+  statusSelect.innerHTML = `
+    <option value="not_started">Not started</option>
+    <option value="in_progress">In progress</option>
+    <option value="done">Done</option>
+  `;
+  statusSelect.value = task.status || "not_started";
+  statusSelect.addEventListener("change", async (e) => {
+    if (!auth.currentUser) {
+      alert("Please sign in to save changes.");
+      e.target.value = task.status || "not_started";
+      return;
+    }
+    try {
+      await saveTaskStatus(task.id, e.target.value, parentSubgoal.id);
+      renderGoals();
+      updateStats();
+    } catch (err) {
+      console.error("Error saving task status:", err);
+      alert("Could not save task status.");
+      e.target.value = task.status || "not_started";
+    }
+  });
 
   const editBtn = document.createElement("button");
   editBtn.type = "button";
-  editBtn.className = "task-edit-btn";
-  editBtn.textContent = "Edit";
+  editBtn.className = "icon-btn task-edit-btn";
+  editBtn.setAttribute("aria-label", "Edit task");
+  editBtn.dataset.tooltip = "Edit";
+  editBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+    <span class="visually-hidden">Edit</span>
+  `;
+
+  const archiveBtn = document.createElement("button");
+  archiveBtn.type = "button";
+  archiveBtn.className = "icon-btn task-delete-btn";
+  archiveBtn.setAttribute("aria-label", task.archived ? "Unarchive task" : "Archive task");
+  archiveBtn.dataset.tooltip = task.archived ? "Unarchive" : "Archive";
+  archiveBtn.innerHTML = task.archived ? `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 3h18v4H3Z" />
+      <path d="M5 7h14v14H5Z" />
+      <path d="M12 12v6" />
+      <path d="m9 15 3-3 3 3" />
+    </svg>
+    <span class="visually-hidden">Unarchive</span>
+  ` : `
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 3h18v4H3Z" />
+      <path d="M5 7h14v14H5Z" />
+      <path d="M10 12h4" />
+    </svg>
+    <span class="visually-hidden">Archive</span>
+  `;
+
+  archiveBtn.addEventListener("click", async () => {
+    if (!auth.currentUser) {
+      alert("Please sign in to manage tasks.");
+      return;
+    }
+    try {
+      if (task.archived) {
+        await unarchiveTask(auth.currentUser.uid, parentGoal.id, parentSubgoal.id, task.id);
+      } else {
+        await archiveTask(auth.currentUser.uid, parentGoal.id, parentSubgoal.id, task.id);
+      }
+      renderGoals();
+      updateStats();
+    } catch (err) {
+      console.error("Archive/unarchive task error", err);
+      alert("Could not update task archive state.");
+    }
+  });
+
 
   editBtn.addEventListener("click", () => {
     if (!auth.currentUser) {
@@ -2071,8 +2323,18 @@ function createTaskItem(task, parentSubgoal, parentGoal) {
     });
   });
 
-  actions.appendChild(statusPill);
-  actions.appendChild(editBtn);
+  const actionsLeft = document.createElement("span");
+  actionsLeft.className = "left action-group";
+  actionsLeft.appendChild(statusSelect);
+
+  const actionsRight = document.createElement("span");
+  actionsRight.className = "right action-group";
+  actionsRight.appendChild(editBtn);
+  actionsRight.appendChild(archiveBtn);
+  // Removed duplicate and add note for simplicity
+
+  actions.appendChild(actionsLeft);
+  actions.appendChild(actionsRight);
 
   row.appendChild(main);
   row.appendChild(actions);
@@ -2447,11 +2709,14 @@ function renderCurrentFocus() {
 }
 
 function updateStats() {
-  const totalProf = goals.professional.length;
-  const totalPers = goals.personal.length;
+  const profActive = goals.professional.filter(g => !g.archived);
+  const persActive = goals.personal.filter(g => !g.archived);
 
-  const completedProf = goals.professional.filter(g => g.status === "done").length;
-  const completedPers = goals.personal.filter(g => g.status === "done").length;
+  const totalProf = profActive.length;
+  const totalPers = persActive.length;
+
+  const completedProf = profActive.filter(g => g.status === "done").length;
+  const completedPers = persActive.filter(g => g.status === "done").length;
 
   const elProfCount = document.getElementById("stat-prof-count");
   const elProfComplete = document.getElementById("stat-prof-complete");
@@ -2474,7 +2739,7 @@ function updateStats() {
   //   totalGoals === 0 ? 0 : Math.round((totalCompleted / totalGoals) * 100);
 
   // New: roll-up based on computed goal percents
-  const allGoals = [...goals.professional, ...goals.personal];
+  const allGoals = [...profActive, ...persActive];
   let overallPercent = 0;
 
   if (allGoals.length > 0) {
@@ -3167,6 +3432,7 @@ function setupNav() {
 function setupAuthUI() {
   const btnGoogleAuth = document.getElementById("btnGoogleAuth");
   const btnOpenEmailAuth = document.getElementById("btnOpenEmailAuth");
+  const btnManageAccount = document.getElementById("btnManageAccount");
   const btnSignOut = document.getElementById("btnSignOut");
   const userLabel = document.getElementById("userLabel");
 
@@ -3175,6 +3441,55 @@ function setupAuthUI() {
   const emailAuthForm = document.getElementById("emailAuthForm");
   const btnCloseEmailAuth = document.getElementById("btnCloseEmailAuth");
   const btnToggleAuthMode = document.getElementById("btnToggleAuthMode");
+  const btnForgotPassword = document.getElementById("btnForgotPassword");
+    // Account management elements
+    const accountManageBackdrop = document.getElementById("accountManageBackdrop");
+    const btnCloseAccountManage = document.getElementById("btnCloseAccountManage");
+    const btnCloseAccountManageFooter = document.getElementById("btnCloseAccountManageFooter");
+    const btnDeleteAccount = document.getElementById("btnDeleteAccount");
+    const accountManageError = document.getElementById("accountManageError");
+    const btnChangePassword = document.getElementById("btnChangePassword");
+    const currentPasswordInput = document.getElementById("currentPassword");
+    const newPasswordInput = document.getElementById("newPassword");
+    const confirmNewPasswordInput = document.getElementById("confirmNewPassword");
+
+    function openAccountManage() {
+      if (!accountManageBackdrop) return;
+      accountManageBackdrop.classList.remove("hidden");
+      accountManageBackdrop.setAttribute("aria-hidden", "false");
+      accountManageError.textContent = "";
+    }
+    function closeAccountManage() {
+      if (!accountManageBackdrop) return;
+      accountManageBackdrop.classList.add("hidden");
+      accountManageBackdrop.setAttribute("aria-hidden", "true");
+      accountManageError.textContent = "";
+    }
+    if (btnManageAccount) {
+      btnManageAccount.addEventListener("click", () => {
+        if (!auth.currentUser) return;
+        openAccountManage();
+      });
+    }
+    if (btnCloseAccountManage) btnCloseAccountManage.addEventListener("click", closeAccountManage);
+    if (btnCloseAccountManageFooter) btnCloseAccountManageFooter.addEventListener("click", closeAccountManage);
+    if (btnDeleteAccount) {
+      btnDeleteAccount.addEventListener("click", async () => {
+        accountManageError.textContent = "";
+        const user = auth.currentUser;
+        if (!user) return;
+        const confirmDel = confirm("Delete your account and all data? This cannot be undone.");
+        if (!confirmDel) return;
+        try {
+          // TODO: optionally clean up user data collections first
+          await deleteUser(user);
+          closeAccountManage();
+        } catch (err) {
+          console.error("Account deletion error", err);
+          accountManageError.textContent = humanizeFirebaseAuthError(err);
+        }
+      });
+    }
   const emailAuthError = document.getElementById("emailAuthError");
   const authEmailInput = document.getElementById("authEmail");
   const authPasswordInput = document.getElementById("authPassword");
@@ -3189,6 +3504,43 @@ function setupAuthUI() {
     emailAuthBackdrop.setAttribute("aria-hidden", "false");
     emailAuthError.textContent = "";
     authEmailInput.focus();
+  }
+
+  if (btnChangePassword) {
+    btnChangePassword.addEventListener("click", async () => {
+      accountManageError.textContent = "";
+      const user = auth.currentUser;
+      if (!user) return;
+      const currentPw = currentPasswordInput.value;
+      const newPw = newPasswordInput.value;
+      const confirmPw = confirmNewPasswordInput.value;
+      if (!currentPw || !newPw || !confirmPw) {
+        accountManageError.textContent = "All password fields required.";
+        return;
+      }
+      if (newPw !== confirmPw) {
+        accountManageError.textContent = "New passwords do not match.";
+        return;
+      }
+      if (newPw.length < 6) {
+        accountManageError.textContent = "Password must be at least 6 characters.";
+        return;
+      }
+      try {
+        const cred = EmailAuthProvider.credential(user.email, currentPw);
+        await reauthenticateWithCredential(user, cred);
+        await updatePassword(user, newPw);
+        accountManageError.style.color = "var(--accent)";
+        accountManageError.textContent = "Password updated.";
+        setTimeout(() => { accountManageError.style.color = "var(--accent-alt)"; }, 3000);
+        currentPasswordInput.value = "";
+        newPasswordInput.value = "";
+        confirmNewPasswordInput.value = "";
+      } catch (err) {
+        console.error("Password change error", err);
+        accountManageError.textContent = humanizeFirebaseAuthError(err);
+      }
+    });
   }
 
   function closeEmailModal() {
@@ -3233,6 +3585,27 @@ function setupAuthUI() {
     });
   }
 
+  if (btnForgotPassword) {
+    btnForgotPassword.addEventListener("click", async () => {
+      emailAuthError.textContent = "";
+      const email = authEmailInput.value.trim();
+      if (!email) {
+        emailAuthError.textContent = "Enter your email first.";
+        authEmailInput.focus();
+        return;
+      }
+      try {
+        await sendPasswordResetEmail(auth, email);
+        emailAuthError.style.color = "var(--accent)";
+        emailAuthError.textContent = "Password reset email sent.";
+        setTimeout(() => { emailAuthError.style.color = "var(--accent-alt)"; }, 3000);
+      } catch (err) {
+        console.error("Reset password error", err);
+        emailAuthError.textContent = humanizeFirebaseAuthError(err);
+      }
+    });
+  }
+
   if (emailAuthForm) {
     emailAuthForm.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -3274,11 +3647,18 @@ function setupAuthUI() {
 
   if (btnGoogleAuth) {
     btnGoogleAuth.addEventListener("click", async () => {
+      btnGoogleAuth.disabled = true;
+      btnGoogleAuth.textContent = "...";
       try {
         await signInWithPopup(auth, provider);
       } catch (err) {
         console.error("Google sign-in error:", err);
         alert("Google sign-in failed. Check console for details.");
+      } finally {
+        if (!auth.currentUser) {
+          btnGoogleAuth.disabled = false;
+          btnGoogleAuth.textContent = "Google";
+        }
       }
     });
   }
@@ -3301,6 +3681,7 @@ function setupAuthUI() {
       }
       if (btnGoogleAuth) btnGoogleAuth.disabled = true;
       if (btnOpenEmailAuth) btnOpenEmailAuth.disabled = true;
+      if (btnManageAccount) btnManageAccount.classList.remove("hidden");
       if (btnSignOut) btnSignOut.disabled = false;
 
       try {
@@ -3316,6 +3697,7 @@ function setupAuthUI() {
       }
       if (btnGoogleAuth) btnGoogleAuth.disabled = false;
       if (btnOpenEmailAuth) btnOpenEmailAuth.disabled = false;
+      if (btnManageAccount) btnManageAccount.classList.add("hidden");
       if (btnSignOut) btnSignOut.disabled = true;
 
       goals.professional = [];
@@ -3357,6 +3739,131 @@ document.addEventListener("DOMContentLoaded", () => {
   setupCalendarUI();
   renderCalendar();
 });
+
+// --- Deletion helpers ---
+
+async function deleteGoalWithChildren(uid, sectionKey, goalId) {
+  // Remove goal doc, then sub-goals and tasks under it
+  try {
+    const goalRef = doc(db, "users", uid, sectionKey + "Goals", goalId);
+    // Fetch sub-goals collection
+    const sgQuery = await getDocs(collection(db, "users", uid, sectionKey + "Goals", goalId, "subgoals"));
+    for (const sgDoc of sgQuery.docs) {
+      await deleteSubgoalWithTasks(uid, goalId, sgDoc.id, sectionKey);
+    }
+    await deleteDoc(goalRef);
+    // Update local state
+    goals[sectionKey] = goals[sectionKey].filter(g => g.id !== goalId);
+    delete subgoalsByGoal[goalId];
+  } catch (err) {
+    console.error("deleteGoalWithChildren failed", err);
+    throw err;
+  }
+}
+
+// --- Archive helpers ---
+
+async function archiveGoal(uid, sectionKey, goalId) {
+  try {
+    const ref = doc(db, "users", uid, sectionKey + "Goals", goalId);
+    await updateDoc(ref, { archived: true });
+    const g = goals[sectionKey].find(g => g.id === goalId);
+    if (g) g.archived = true;
+  } catch (err) { console.error("archiveGoal failed", err); throw err; }
+}
+
+async function unarchiveGoal(uid, sectionKey, goalId) {
+  try {
+    const ref = doc(db, "users", uid, sectionKey + "Goals", goalId);
+    await updateDoc(ref, { archived: false });
+    const g = goals[sectionKey].find(g => g.id === goalId);
+    if (g) g.archived = false;
+  } catch (err) { console.error("unarchiveGoal failed", err); throw err; }
+}
+
+async function archiveSubgoal(uid, goalId, subgoalId) {
+  try {
+    const sectionKey = inferSectionKeyForGoal(goalId);
+    const ref = doc(db, "users", uid, sectionKey + "Goals", goalId, "subgoals", subgoalId);
+    await updateDoc(ref, { archived: true });
+    const list = subgoalsByGoal[goalId] || [];
+    const sg = list.find(s => s.id === subgoalId);
+    if (sg) sg.archived = true;
+  } catch (err) { console.error("archiveSubgoal failed", err); throw err; }
+}
+
+async function unarchiveSubgoal(uid, goalId, subgoalId) {
+  try {
+    const sectionKey = inferSectionKeyForGoal(goalId);
+    const ref = doc(db, "users", uid, sectionKey + "Goals", goalId, "subgoals", subgoalId);
+    await updateDoc(ref, { archived: false });
+    const list = subgoalsByGoal[goalId] || [];
+    const sg = list.find(s => s.id === subgoalId);
+    if (sg) sg.archived = false;
+  } catch (err) { console.error("unarchiveSubgoal failed", err); throw err; }
+}
+
+async function archiveTask(uid, goalId, subgoalId, taskId) {
+  try {
+    const sectionKey = inferSectionKeyForGoal(goalId);
+    const ref = doc(db, "users", uid, sectionKey + "Goals", goalId, "subgoals", subgoalId, "tasks", taskId);
+    await updateDoc(ref, { archived: true });
+    const list = tasksBySubgoal[subgoalId] || [];
+    const t = list.find(t => t.id === taskId);
+    if (t) t.archived = true;
+  } catch (err) { console.error("archiveTask failed", err); throw err; }
+}
+
+async function unarchiveTask(uid, goalId, subgoalId, taskId) {
+  try {
+    const sectionKey = inferSectionKeyForGoal(goalId);
+    const ref = doc(db, "users", uid, sectionKey + "Goals", goalId, "subgoals", subgoalId, "tasks", taskId);
+    await updateDoc(ref, { archived: false });
+    const list = tasksBySubgoal[subgoalId] || [];
+    const t = list.find(t => t.id === taskId);
+    if (t) t.archived = false;
+  } catch (err) { console.error("unarchiveTask failed", err); throw err; }
+}
+
+// (duplicateTask removed per request)
+
+async function deleteSubgoalWithTasks(uid, goalId, subgoalId, sectionKeyOptional) {
+  try {
+    const sectionKey = sectionKeyOptional || inferSectionKeyForGoal(goalId);
+    const subRef = doc(db, "users", uid, sectionKey + "Goals", goalId, "subgoals", subgoalId);
+    const tasksQuery = await getDocs(collection(db, "users", uid, sectionKey + "Goals", goalId, "subgoals", subgoalId, "tasks"));
+    for (const tDoc of tasksQuery.docs) {
+      await deleteDoc(tDoc.ref);
+    }
+    await deleteDoc(subRef);
+    // Update local state
+    const list = subgoalsByGoal[goalId] || [];
+    subgoalsByGoal[goalId] = list.filter(sg => sg.id !== subgoalId);
+    delete tasksBySubgoal[subgoalId];
+  } catch (err) {
+    console.error("deleteSubgoalWithTasks failed", err);
+    throw err;
+  }
+}
+
+async function deleteTask(uid, goalId, subgoalId, taskId) {
+  try {
+    const sectionKey = inferSectionKeyForGoal(goalId);
+    const taskRef = doc(db, "users", uid, sectionKey + "Goals", goalId, "subgoals", subgoalId, "tasks", taskId);
+    await deleteDoc(taskRef);
+    const list = tasksBySubgoal[subgoalId] || [];
+    tasksBySubgoal[subgoalId] = list.filter(t => t.id !== taskId);
+  } catch (err) {
+    console.error("deleteTask failed", err);
+    throw err;
+  }
+}
+
+function inferSectionKeyForGoal(goalId) {
+  if (goals.professional.some(g => g.id === goalId)) return "professional";
+  if (goals.personal.some(g => g.id === goalId)) return "personal";
+  return "professional"; // fallback
+}
 
 // --- Quote Banner ---
 
@@ -3450,3 +3957,15 @@ function setupQuoteBanner() {
     fetchRandomQuote();
   });
 }
+
+// Archived toggle setup
+document.addEventListener("DOMContentLoaded", () => {
+  const archivedToggle = document.getElementById("toggleShowArchived");
+  if (archivedToggle) {
+    archivedToggle.addEventListener("change", () => {
+      showArchived = archivedToggle.checked;
+      renderGoals();
+      // Stats remain excluding archived, so we just re-render goals.
+    });
+  }
+});
