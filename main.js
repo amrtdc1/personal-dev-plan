@@ -1575,28 +1575,6 @@ function setupJournalModalUI() {
     goalFilter.addEventListener("change", renderJournalEntries);
   }
 
-  // Populate mood filter dynamically
-  if (moodFilter) {
-    const uniqueMoods = [...new Set(journalEntries.map(e => e.mood).filter(Boolean))];
-    uniqueMoods.forEach(mood => {
-      const opt = document.createElement("option");
-      opt.value = mood;
-      opt.textContent = mood;
-      moodFilter.appendChild(opt);
-    });
-  }
-
-  // Populate goal filter dynamically
-  if (goalFilter) {
-    const allGoals = [...goals.professional, ...goals.personal];
-    allGoals.forEach(g => {
-      const opt = document.createElement("option");
-      opt.value = g.id;
-      opt.textContent = g.title;
-      goalFilter.appendChild(opt);
-    });
-  }
-
   if (form) {
     form.addEventListener("submit", async e => {
       e.preventDefault();
@@ -3076,7 +3054,43 @@ function renderCurrentFocus() {
   });
 }
 
+function populateJournalFilters() {
+  const moodFilter = document.getElementById("journalMoodFilter");
+  const goalFilter = document.getElementById("journalGoalFilter");
+
+  // Populate mood filter from existing entries
+  if (moodFilter) {
+    const currentValue = moodFilter.value;
+    moodFilter.innerHTML = '<option value="">All Moods</option>';
+    const uniqueMoods = [...new Set(journalEntries.map(e => e.mood).filter(Boolean))];
+    uniqueMoods.sort();
+    uniqueMoods.forEach(mood => {
+      const opt = document.createElement("option");
+      opt.value = mood;
+      opt.textContent = mood;
+      moodFilter.appendChild(opt);
+    });
+    moodFilter.value = currentValue;
+  }
+
+  // Populate goal filter from all goals
+  if (goalFilter) {
+    const currentValue = goalFilter.value;
+    goalFilter.innerHTML = '<option value="">All Goals</option>';
+    const allGoals = [...goals.professional, ...goals.personal].filter(g => !g.archived);
+    allGoals.forEach(g => {
+      const opt = document.createElement("option");
+      opt.value = g.id;
+      opt.textContent = g.title;
+      goalFilter.appendChild(opt);
+    });
+    goalFilter.value = currentValue;
+  }
+}
+
 function renderJournalEntries() {
+  populateJournalFilters();
+  
   const container = document.getElementById("journalEntriesList");
   if (!container) return;
 
@@ -3166,6 +3180,19 @@ function createJournalEntryCard(entry) {
       tagPill.textContent = tag;
       meta.appendChild(tagPill);
     });
+  }
+
+  // Show related goal if present
+  if (entry.relatedGoalId) {
+    const allGoals = [...goals.professional, ...goals.personal];
+    const relatedGoal = allGoals.find(g => g.id === entry.relatedGoalId);
+    if (relatedGoal) {
+      const goalPill = document.createElement("span");
+      goalPill.className = "journal-tag";
+      goalPill.textContent = `📌 ${relatedGoal.title}`;
+      goalPill.style.fontWeight = "600";
+      meta.appendChild(goalPill);
+    }
   }
 
   const content = document.createElement("div");
