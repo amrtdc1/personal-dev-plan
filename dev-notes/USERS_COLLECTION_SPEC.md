@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # PDP App — Users Collection & `getUserDoc` Implementation
 
 ## Objective
