@@ -29,7 +29,8 @@ import {
   serverTimestamp,
   deleteDoc,
   getDoc,
-  setDoc
+  setDoc,
+  orderBy
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 // --- 2. Firebase config ---
@@ -57,6 +58,7 @@ const goals = {
 
 let subgoalsByGoal = {};
 let tasksBySubgoal = {};
+let journalEntries = [];
 
 let currentUserUid = null;
 
@@ -76,6 +78,10 @@ let taskBeingEdited = null;
 let taskParentSubgoalId = null;
 let taskParentSubgoalTitle = "";
 let taskParentGoalTitle = "";
+
+// Journal modal state
+let journalModalMode = "add";
+let journalEntryBeingEdited = null;
 
 // Calendar state
 let calendarCursor = new Date();
@@ -728,6 +734,27 @@ async function loadTasksForUser(uid) {
   tasksBySubgoal = map;
 }
 
+async function loadJournalEntriesForUser(uid) {
+  const entriesCol = collection(db, "journalEntries");
+  const q = query(
+    entriesCol,
+    where("ownerUid", "==", uid)
+    // orderBy("createdAt", "desc") temporarily removed - requires composite index
+  );
+
+  const snap = await getDocs(q);
+  const entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  
+  // Sort client-side by createdAt descending
+  entries.sort((a, b) => {
+    const aTime = a.createdAt?.toDate?.().getTime() || 0;
+    const bTime = b.createdAt?.toDate?.().getTime() || 0;
+    return bTime - aTime;
+  });
+  
+  journalEntries = entries;
+}
+
 async function loadGoalsForUser(uid) {
   const goalsCol = collection(db, "goals");
 
@@ -789,10 +816,12 @@ async function loadGoalsForUser(uid) {
 
   await loadSubgoalsForUser(uid);
   await loadTasksForUser(uid);
+  await loadJournalEntriesForUser(uid);
 
   renderGoals();
   updateStats();
   renderCalendar();
+  renderJournalEntries();
 }
 
 async function saveGoalStatus(uid, section, goalId, newStatus) {
@@ -1350,6 +1379,77 @@ function closeTaskModal() {
     'Parent sub-goal: <strong>(will be set when opened)</strong>';
 }
 
+function openJournalModal(mode = "add", entry = null) {
+  journalModalMode = mode;
+  journalEntryBeingEdited = entry;
+
+  const backdrop = document.getElementById("journalModalBackdrop");
+  const titleEl = document.getElementById("journalModalTitle");
+  const submitBtn = document.querySelector("#journalForm .primary-btn");
+  const form = document.getElementById("journalForm");
+
+  if (!backdrop || !titleEl || !submitBtn || !form) return;
+
+  form.reset();
+
+  // Populate mood suggestions from user's stored moods
+  const user = auth.currentUser;
+  if (user) {
+    getUserDoc(user.uid).then(userData => {
+      const moodDatalist = document.getElementById("moodSuggestions");
+      if (moodDatalist && userData?.journalMoods) {
+        moodDatalist.innerHTML = "";
+        userData.journalMoods.forEach(mood => {
+          const option = document.createElement("option");
+          option.value = mood;
+          moodDatalist.appendChild(option);
+        });
+      }
+    });
+  }
+
+  // Populate goal dropdown
+  const goalSelect = document.getElementById("journalRelatedGoal");
+  if (goalSelect) {
+    goalSelect.innerHTML = '<option value="">None</option>';
+    const allGoals = [...goals.professional, ...goals.personal];
+    allGoals.forEach(g => {
+      const opt = document.createElement("option");
+      opt.value = g.id;
+      opt.textContent = g.title;
+      goalSelect.appendChild(opt);
+    });
+  }
+
+  if (mode === "edit" && entry) {
+    titleEl.textContent = "Edit Journal Entry";
+    submitBtn.textContent = "Update Entry";
+    document.getElementById("journalTitle").value = entry.title || "";
+    document.getElementById("journalContent").value = entry.content || "";
+    document.getElementById("journalMood").value = entry.mood || "";
+    document.getElementById("journalTags").value = (entry.tags || []).join(", ");
+    document.getElementById("journalRelatedGoal").value = entry.relatedGoalId || "";
+  } else {
+    titleEl.textContent = "New Journal Entry";
+    submitBtn.textContent = "Save Entry";
+  }
+
+  backdrop.classList.remove("hidden");
+}
+
+function closeJournalModal() {
+  const backdrop = document.getElementById("journalModalBackdrop");
+  const form = document.getElementById("journalForm");
+
+  if (!backdrop || !form) return;
+
+  backdrop.classList.add("hidden");
+  form.reset();
+
+  journalModalMode = "add";
+  journalEntryBeingEdited = null;
+}
+
 function setupTaskModalUI() {
   const btnClose = document.getElementById("btnCloseTaskModal");
   const btnCancel = document.getElementById("btnCancelTask");
@@ -1430,6 +1530,127 @@ function setupTaskModalUI() {
       } catch (err) {
         console.error("Error saving task:", err);
         alert("Unable to save the task. Check console for details.");
+      }
+    });
+  }
+}
+
+function setupJournalModalUI() {
+  const btnNew = document.getElementById("btnNewJournalEntry");
+  const btnClose = document.getElementById("btnCloseJournalModal");
+  const btnCancel = document.getElementById("btnCancelJournal");
+  const backdrop = document.getElementById("journalModalBackdrop");
+  const form = document.getElementById("journalForm");
+  const toggleShowArchived = document.getElementById("toggleShowArchivedJournal");
+  const searchInput = document.getElementById("journalSearchInput");
+  const moodFilter = document.getElementById("journalMoodFilter");
+  const goalFilter = document.getElementById("journalGoalFilter");
+
+  if (btnNew) {
+    btnNew.addEventListener("click", () => openJournalModal("add"));
+  }
+
+  if (btnClose) btnClose.addEventListener("click", closeJournalModal);
+  if (btnCancel) btnCancel.addEventListener("click", closeJournalModal);
+
+  if (backdrop) {
+    backdrop.addEventListener("click", e => {
+      if (e.target === backdrop) closeJournalModal();
+    });
+  }
+
+  if (toggleShowArchived) {
+    toggleShowArchived.addEventListener("change", renderJournalEntries);
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener("input", renderJournalEntries);
+  }
+
+  if (moodFilter) {
+    moodFilter.addEventListener("change", renderJournalEntries);
+  }
+
+  if (goalFilter) {
+    goalFilter.addEventListener("change", renderJournalEntries);
+  }
+
+  // Populate mood filter dynamically
+  if (moodFilter) {
+    const uniqueMoods = [...new Set(journalEntries.map(e => e.mood).filter(Boolean))];
+    uniqueMoods.forEach(mood => {
+      const opt = document.createElement("option");
+      opt.value = mood;
+      opt.textContent = mood;
+      moodFilter.appendChild(opt);
+    });
+  }
+
+  // Populate goal filter dynamically
+  if (goalFilter) {
+    const allGoals = [...goals.professional, ...goals.personal];
+    allGoals.forEach(g => {
+      const opt = document.createElement("option");
+      opt.value = g.id;
+      opt.textContent = g.title;
+      goalFilter.appendChild(opt);
+    });
+  }
+
+  if (form) {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const user = auth.currentUser;
+      if (!user) {
+        alert("Please sign in to save a journal entry.");
+        return;
+      }
+
+      const title = document.getElementById("journalTitle").value.trim();
+      const content = document.getElementById("journalContent").value.trim();
+      const mood = document.getElementById("journalMood").value.trim();
+      const tagsRaw = document.getElementById("journalTags").value.trim();
+      const relatedGoalId = document.getElementById("journalRelatedGoal").value || null;
+
+      if (!title || !content) {
+        alert("Title and content are required.");
+        return;
+      }
+
+      const tags = tagsRaw ? tagsRaw.split(",").map(t => t.trim()).filter(Boolean) : [];
+
+      try {
+        const basePayload = {
+          title,
+          content,
+          mood: mood || null,
+          tags,
+          relatedGoalId,
+          ownerUid: user.uid,
+          archived: false
+        };
+
+        if (journalModalMode === "edit" && journalEntryBeingEdited) {
+          const entryRef = doc(db, "journalEntries", journalEntryBeingEdited.id);
+          await updateDoc(entryRef, {
+            ...basePayload,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          await addDoc(collection(db, "journalEntries"), {
+            ...basePayload,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        }
+
+        closeJournalModal();
+        await loadJournalEntriesForUser(user.uid);
+        await updateUserTagsAndMoods(user.uid, tags, mood);
+        renderJournalEntries();
+      } catch (err) {
+        console.error("Error saving journal entry:", err);
+        alert("Unable to save the entry. Check console for details.");
       }
     });
   }
@@ -2855,6 +3076,149 @@ function renderCurrentFocus() {
   });
 }
 
+function renderJournalEntries() {
+  const container = document.getElementById("journalEntriesList");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  const showArchived = document.getElementById("toggleShowArchivedJournal")?.checked || false;
+  const searchText = document.getElementById("journalSearchInput")?.value.toLowerCase() || "";
+  const moodFilter = document.getElementById("journalMoodFilter")?.value || "";
+  const goalFilter = document.getElementById("journalGoalFilter")?.value || "";
+
+  let filtered = journalEntries.filter(e => showArchived || !e.archived);
+
+  // Apply text search (title + content)
+  if (searchText) {
+    filtered = filtered.filter(e => {
+      const title = (e.title || "").toLowerCase();
+      const content = (e.content || "").toLowerCase();
+      return title.includes(searchText) || content.includes(searchText);
+    });
+  }
+
+  // Apply mood filter
+  if (moodFilter) {
+    filtered = filtered.filter(e => (e.mood || "").toLowerCase() === moodFilter.toLowerCase());
+  }
+
+  // Apply goal filter
+  if (goalFilter) {
+    filtered = filtered.filter(e => e.relatedGoalId === goalFilter);
+  }
+
+  if (filtered.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "journal-empty-state";
+    empty.innerHTML = `
+      <h3 class="subheading">No Journal Entries Found</h3>
+      <p class="meta-text">Try adjusting your filters or add a new entry.</p>
+    `;
+    container.appendChild(empty);
+    return;
+  }
+
+  filtered.forEach(entry => {
+    const card = createJournalEntryCard(entry);
+    container.appendChild(card);
+  });
+}
+
+function createJournalEntryCard(entry) {
+  const card = document.createElement("article");
+  card.className = "journal-entry-card";
+  if (entry.archived) card.classList.add("archived");
+
+  const header = document.createElement("div");
+  header.className = "journal-entry-header";
+
+  const title = document.createElement("h3");
+  title.className = "journal-entry-title";
+  title.textContent = entry.title || "Untitled Entry";
+
+  header.appendChild(title);
+
+  const meta = document.createElement("div");
+  meta.className = "journal-entry-meta";
+
+  const timestamp = document.createElement("span");
+  timestamp.className = "journal-entry-timestamp meta-text";
+  const createdDate = entry.createdAt?.toDate?.() || new Date();
+  timestamp.textContent = createdDate.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  });
+  meta.appendChild(timestamp);
+
+  if (entry.mood) {
+    const moodPill = document.createElement("span");
+    moodPill.className = "journal-mood";
+    moodPill.textContent = entry.mood;
+    meta.appendChild(moodPill);
+  }
+
+  if (entry.tags && entry.tags.length > 0) {
+    entry.tags.forEach(tag => {
+      const tagPill = document.createElement("span");
+      tagPill.className = "journal-tag";
+      tagPill.textContent = tag;
+      meta.appendChild(tagPill);
+    });
+  }
+
+  const content = document.createElement("div");
+  content.className = "journal-entry-content body-text";
+  const rawContent = entry.content || "";
+  // Render markdown preview (first 200 chars of markdown source, then render)
+  const preview = rawContent.substring(0, 200) + (rawContent.length > 200 ? "..." : "");
+  if (typeof marked !== "undefined") {
+    content.innerHTML = marked.parse(preview);
+  } else {
+    content.textContent = preview;
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "journal-entry-actions";
+
+  const editBtn = document.createElement("button");
+  editBtn.className = "icon-btn";
+  editBtn.textContent = "✏️";
+  editBtn.title = "Edit entry";
+  editBtn.addEventListener("click", () => openJournalModal("edit", entry));
+
+  actions.appendChild(editBtn);
+
+  if (entry.archived) {
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "icon-btn";
+    deleteBtn.textContent = "🗑️";
+    deleteBtn.title = "Delete entry";
+    deleteBtn.addEventListener("click", async () => {
+      if (!confirm(`Delete journal entry "${entry.title}"? This cannot be undone.`)) return;
+      await deleteJournalEntry(entry.id);
+    });
+    actions.appendChild(deleteBtn);
+  } else {
+    const archiveBtn = document.createElement("button");
+    archiveBtn.className = "icon-btn";
+    archiveBtn.textContent = "📦";
+    archiveBtn.title = "Archive entry";
+    archiveBtn.addEventListener("click", async () => {
+      await archiveJournalEntry(entry.id);
+    });
+    actions.appendChild(archiveBtn);
+  }
+
+  card.appendChild(header);
+  card.appendChild(meta);
+  card.appendChild(content);
+  card.appendChild(actions);
+
+  return card;
+}
+
 function updateStats() {
   const profActive = goals.professional.filter(g => !g.archived);
   const persActive = goals.personal.filter(g => !g.archived);
@@ -4118,6 +4482,8 @@ async function getUserDoc(uid) {
         displayName,
         firstName: null,
         lastName: null,
+        journalTags: [],
+        journalMoods: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -4130,6 +4496,36 @@ async function getUserDoc(uid) {
   } catch (err) {
     console.error("Error fetching user doc:", err);
     return null;
+  }
+}
+
+async function updateUserTagsAndMoods(uid, newTags, newMood) {
+  try {
+    const userRef = doc(db, "users", uid);
+    const snap = await getDoc(userRef);
+    
+    if (!snap.exists()) return;
+    
+    const userData = snap.data();
+    const existingTags = userData.journalTags || [];
+    const existingMoods = userData.journalMoods || [];
+    
+    // Merge new tags
+    const updatedTags = [...new Set([...existingTags, ...newTags])];
+    
+    // Merge new mood
+    let updatedMoods = existingMoods;
+    if (newMood && !existingMoods.includes(newMood)) {
+      updatedMoods = [...existingMoods, newMood];
+    }
+    
+    await updateDoc(userRef, {
+      journalTags: updatedTags,
+      journalMoods: updatedMoods,
+      updatedAt: serverTimestamp()
+    });
+  } catch (err) {
+    console.error("Error updating user tags/moods:", err);
   }
 }
 
@@ -4159,6 +4555,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupGoalModalUI();
   setupSubgoalModalUI();
   setupTaskModalUI();
+  setupJournalModalUI();
   setupCalendarUI();
   renderCalendar();
 });
@@ -4283,6 +4680,44 @@ async function deleteSubgoalWithTasks(uid, goalId, subgoalId, sectionKeyOptional
   } catch (err) {
     console.error("deleteSubgoalWithTasks failed", err);
     throw err;
+  }
+}
+
+async function archiveJournalEntry(entryId) {
+  try {
+    const entryRef = doc(db, "journalEntries", entryId);
+    await updateDoc(entryRef, { archived: true, ownerUid: auth.currentUser.uid });
+    const entry = journalEntries.find(e => e.id === entryId);
+    if (entry) entry.archived = true;
+    renderJournalEntries();
+  } catch (err) {
+    console.error("archiveJournalEntry failed", err);
+    alert("Could not archive entry. Please try again.");
+  }
+}
+
+async function unarchiveJournalEntry(entryId) {
+  try {
+    const entryRef = doc(db, "journalEntries", entryId);
+    await updateDoc(entryRef, { archived: false, ownerUid: auth.currentUser.uid });
+    const entry = journalEntries.find(e => e.id === entryId);
+    if (entry) entry.archived = false;
+    renderJournalEntries();
+  } catch (err) {
+    console.error("unarchiveJournalEntry failed", err);
+    alert("Could not unarchive entry. Please try again.");
+  }
+}
+
+async function deleteJournalEntry(entryId) {
+  try {
+    const entryRef = doc(db, "journalEntries", entryId);
+    await deleteDoc(entryRef);
+    journalEntries = journalEntries.filter(e => e.id !== entryId);
+    renderJournalEntries();
+  } catch (err) {
+    console.error("deleteJournalEntry failed", err);
+    alert("Could not delete entry. Please try again.");
   }
 }
 

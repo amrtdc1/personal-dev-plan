@@ -12,6 +12,9 @@
       rel="stylesheet"
     />
 
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.0/marked.min.js"></script>
+
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -261,6 +264,7 @@
           <button class="nav-btn active" data-section="dashboard">Dashboard</button>
           <button class="nav-btn" data-section="goals">Goals</button>
           <button class="nav-btn" data-section="calendar">Calendar</button>
+          <button class="nav-btn" data-section="journal">Journal</button>
           </nav>
           <section class="quote-banner" id="quoteBanner"></section>
         </div>
@@ -396,7 +400,39 @@
           </section>
         </section>
 
-        <section id="calendar" class="section">
+        <section id="journal" class="section">
+          <section class="card journal-card">
+            <header class="card-header">
+              <h2 class="card-title subheading">Journal</h2>
+              <p class="card-subtitle meta-text">
+                Track reflections, insights, and mentorship conversations.
+              </p>
+            </header>
+            <div class="card-body">
+              <div class="journal-controls">
+                <button id="btnNewJournalEntry" class="btn primary">+ New Entry</button>
+                <div class="journal-filters">
+                  <input type="text" id="journalSearchInput" class="filter-input" placeholder="Search entries..." />
+                  <select id="journalMoodFilter" class="filter-select">
+                    <option value="">All Moods</option>
+                  </select>
+                  <select id="journalGoalFilter" class="filter-select">
+                    <option value="">All Goals</option>
+                  </select>
+                  <label class="toggle-label">
+                    <input type="checkbox" id="toggleShowArchivedJournal" />
+                    <span class="meta-text">Show Archived</span>
+                  </label>
+                </div>
+              </div>
+              <div id="journalEntriesList" class="journal-list">
+                <!-- Journal entries will be rendered here -->
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="calendar" class="section"
           <section class="card calendar-card">
             <header class="card-header">
               <h2 class="card-title subheading">Calendar</h2>
@@ -726,6 +762,99 @@
             </button>
             <button type="submit" class="primary-btn">
               Save task
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Journal Entry Modal -->
+    <div id="journalModalBackdrop" class="modal-backdrop hidden">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="journalModalTitle">
+        <div class="modal-header">
+          <h3 id="journalModalTitle" class="subheading">New Journal Entry</h3>
+          <button
+            id="btnCloseJournalModal"
+            class="icon-btn small"
+            aria-label="Close journal modal"
+          >
+            ✕
+          </button>
+        </div>
+        <form id="journalForm" class="modal-body">
+          <div class="field-group">
+            <label for="journalTitle" class="field-label">
+              Title <span class="field-required">*</span>
+            </label>
+            <input
+              id="journalTitle"
+              name="journalTitle"
+              type="text"
+              class="field-input"
+              placeholder="e.g. Meeting with VP - Career Discussion"
+              required
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="journalContent" class="field-label">
+              Content <span class="field-required">*</span>
+            </label>
+            <textarea
+              id="journalContent"
+              name="journalContent"
+              class="field-textarea"
+              rows="8"
+              placeholder="Write your reflections, insights, or notes here. Markdown is supported."
+              required
+            ></textarea>
+          </div>
+
+          <div class="field-group field-row">
+            <div class="field-column">
+              <label for="journalMood" class="field-label">Mood (optional)</label>
+              <input
+                id="journalMood"
+                name="journalMood"
+                type="text"
+                class="field-input"
+                placeholder="e.g. Inspired, Frustrated, Hopeful"
+                list="moodSuggestions"
+              />
+              <datalist id="moodSuggestions">
+                <!-- Populated dynamically from user's stored moods -->
+              </datalist>
+            </div>
+            <div class="field-column">
+              <label for="journalTags" class="field-label">Tags (optional)</label>
+              <input
+                id="journalTags"
+                name="journalTags"
+                type="text"
+                class="field-input"
+                placeholder="Comma-separated: mentorship, vp, career"
+              />
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="journalRelatedGoal" class="field-label">Related Goal (optional)</label>
+            <select id="journalRelatedGoal" name="journalRelatedGoal" class="field-input">
+              <option value="">None</option>
+              <!-- Goals will be populated dynamically -->
+            </select>
+          </div>
+
+          <p class="field-hint meta-text">
+            Journal entries help you track reflections, mentorship conversations, and insights.
+          </p>
+
+          <div class="modal-footer">
+            <button type="button" id="btnCancelJournal" class="secondary-btn">
+              Cancel
+            </button>
+            <button type="submit" class="primary-btn">
+              Save Entry
             </button>
           </div>
         </form>
