@@ -1610,6 +1610,65 @@ function createGoalCard(goal, sectionKey, tagLabel) {
   actionGroup.className = "action-group";
   actionGroup.appendChild(editBtn);
   actionGroup.appendChild(deleteBtn);
+  
+  // Permanent delete button (only for archived goals)
+  if (goal.archived) {
+    const permanentDeleteBtn = document.createElement("button");
+    permanentDeleteBtn.type = "button";
+    permanentDeleteBtn.className = "icon-btn goal-delete-btn";
+    permanentDeleteBtn.setAttribute("aria-label", "Delete goal permanently");
+    permanentDeleteBtn.dataset.tooltip = "Delete";
+    permanentDeleteBtn.style.cssText = "color: var(--accent-alt); opacity: 1;"; // Red color, ensure visible
+    permanentDeleteBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18" />
+        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+        <line x1="10" y1="11" x2="10" y2="17" />
+        <line x1="14" y1="11" x2="14" y2="17" />
+      </svg>
+      <span class="visually-hidden">Delete</span>
+    `;
+    
+    permanentDeleteBtn.addEventListener("click", async () => {
+      if (!auth.currentUser) {
+        alert("Please sign in to delete goals.");
+        return;
+      }
+      
+      const subgoalsForThis = subgoalsByGoal[goal.id] || [];
+      let totalTasks = 0;
+      subgoalsForThis.forEach(sg => {
+        const tasks = tasksBySubgoal[sg.id] || [];
+        totalTasks += tasks.length;
+      });
+      
+      let warning = `Permanently delete goal "${goal.title}"?`;
+      if (subgoalsForThis.length > 0) {
+        warning += `\n\nThis will also delete ${subgoalsForThis.length} sub-goal${subgoalsForThis.length !== 1 ? 's' : ''}`;
+        if (totalTasks > 0) {
+          warning += ` and ${totalTasks} task${totalTasks !== 1 ? 's' : ''}`;
+        }
+        warning += '.';
+      }
+      warning += '\n\nThis cannot be undone.';
+      
+      const confirmDelete = confirm(warning);
+      
+      if (!confirmDelete) return;
+      
+      try {
+        await deleteGoalWithChildren(auth.currentUser.uid, sectionKey, goal.id);
+        renderGoals();
+        updateStats();
+      } catch (err) {
+        console.error("Delete goal error", err);
+        alert("Could not delete goal. Please try again.");
+      }
+    });
+    
+    actionGroup.appendChild(permanentDeleteBtn);
+  }
 
   const addSubIconBtn = document.createElement("button");
   addSubIconBtn.type = "button";
@@ -2179,6 +2238,57 @@ function createSubgoalItem(subgoal, parentGoal) {
   actionsRight.className = "right action-group";
   actionsRight.appendChild(editBtn);
   actionsRight.appendChild(deleteBtn);
+  
+  // Permanent delete button (only for archived subgoals)
+  if (subgoal.archived) {
+    const permanentDeleteBtn = document.createElement("button");
+    permanentDeleteBtn.type = "button";
+    permanentDeleteBtn.className = "icon-btn subgoal-delete-btn";
+    permanentDeleteBtn.setAttribute("aria-label", "Delete sub-goal permanently");
+    permanentDeleteBtn.dataset.tooltip = "Delete";
+    permanentDeleteBtn.style.color = "var(--accent-alt)"; // Red color
+    permanentDeleteBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18" />
+        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+        <line x1="10" y1="11" x2="10" y2="17" />
+        <line x1="14" y1="11" x2="14" y2="17" />
+      </svg>
+      <span class="visually-hidden">Delete</span>
+    `;
+    
+    permanentDeleteBtn.addEventListener("click", async () => {
+      if (!auth.currentUser) {
+        alert("Please sign in to delete sub-goals.");
+        return;
+      }
+      
+      const tasksForThis = tasksBySubgoal[subgoal.id] || [];
+      const taskCount = tasksForThis.length;
+      const taskWarning = taskCount > 0 
+        ? `\n\nThis will also delete ${taskCount} task${taskCount !== 1 ? 's' : ''}.` 
+        : '';
+      
+      const confirmDelete = confirm(
+        `Permanently delete sub-goal "${subgoal.title}"?${taskWarning}\n\nThis cannot be undone.`
+      );
+      
+      if (!confirmDelete) return;
+      
+      try {
+        await deleteSubgoalWithTasks(auth.currentUser.uid, parentGoal.id, subgoal.id);
+        renderGoals();
+        updateStats();
+      } catch (err) {
+        console.error("Delete sub-goal error", err);
+        alert("Could not delete sub-goal. Please try again.");
+      }
+    });
+    
+    actionsRight.appendChild(permanentDeleteBtn);
+  }
+  
   actionsRight.appendChild(addTaskBtn);
 
   actions.appendChild(actionsLeft);
@@ -2331,7 +2441,50 @@ function createTaskItem(task, parentSubgoal, parentGoal) {
   actionsRight.className = "right action-group";
   actionsRight.appendChild(editBtn);
   actionsRight.appendChild(archiveBtn);
-  // Removed duplicate and add note for simplicity
+  
+  // Delete button (only for archived tasks)
+  if (task.archived) {
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "icon-btn task-delete-btn";
+    deleteBtn.setAttribute("aria-label", "Delete task permanently");
+    deleteBtn.dataset.tooltip = "Delete";
+    deleteBtn.style.color = "var(--accent-alt)"; // Red color
+    deleteBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18" />
+        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+        <line x1="10" y1="11" x2="10" y2="17" />
+        <line x1="14" y1="11" x2="14" y2="17" />
+      </svg>
+      <span class="visually-hidden">Delete</span>
+    `;
+    
+    deleteBtn.addEventListener("click", async () => {
+      if (!auth.currentUser) {
+        alert("Please sign in to delete tasks.");
+        return;
+      }
+      
+      const confirmDelete = confirm(
+        `Permanently delete task "${task.title}"?\n\nThis cannot be undone.`
+      );
+      
+      if (!confirmDelete) return;
+      
+      try {
+        await deleteTask(auth.currentUser.uid, parentGoal.id, parentSubgoal.id, task.id);
+        renderGoals();
+        updateStats();
+      } catch (err) {
+        console.error("Delete task error", err);
+        alert("Could not delete task. Please try again.");
+      }
+    });
+    
+    actionsRight.appendChild(deleteBtn);
+  }
 
   actions.appendChild(actionsLeft);
   actions.appendChild(actionsRight);
@@ -4023,13 +4176,24 @@ document.addEventListener("DOMContentLoaded", () => {
 async function deleteGoalWithChildren(uid, sectionKey, goalId) {
   // Remove goal doc, then sub-goals and tasks under it
   try {
-    const goalRef = doc(db, "users", uid, sectionKey + "Goals", goalId);
-    // Fetch sub-goals collection
-    const sgQuery = await getDocs(collection(db, "users", uid, sectionKey + "Goals", goalId, "subgoals"));
-    for (const sgDoc of sgQuery.docs) {
-      await deleteSubgoalWithTasks(uid, goalId, sgDoc.id, sectionKey);
+    // Find all subgoals belonging to this goal
+    const subgoalsCol = collection(db, "subgoals");
+    const subgoalsQuery = query(
+      subgoalsCol,
+      where("goalId", "==", goalId),
+      where("ownerUid", "==", uid)
+    );
+    const subgoalsSnap = await getDocs(subgoalsQuery);
+    
+    // Delete each subgoal and its tasks
+    for (const sgDoc of subgoalsSnap.docs) {
+      await deleteSubgoalWithTasks(uid, goalId, sgDoc.id);
     }
+    
+    // Delete the goal itself
+    const goalRef = doc(db, "goals", goalId);
     await deleteDoc(goalRef);
+    
     // Update local state
     goals[sectionKey] = goals[sectionKey].filter(g => g.id !== goalId);
     delete subgoalsByGoal[goalId];
@@ -4103,13 +4267,23 @@ async function unarchiveTask(uid, goalId, subgoalId, taskId) {
 
 async function deleteSubgoalWithTasks(uid, goalId, subgoalId, sectionKeyOptional) {
   try {
-    const sectionKey = sectionKeyOptional || inferSectionKeyForGoal(goalId);
-    const subRef = doc(db, "users", uid, sectionKey + "Goals", goalId, "subgoals", subgoalId);
-    const tasksQuery = await getDocs(collection(db, "users", uid, sectionKey + "Goals", goalId, "subgoals", subgoalId, "tasks"));
-    for (const tDoc of tasksQuery.docs) {
-      await deleteDoc(tDoc.ref);
+    // Delete all tasks belonging to this subgoal
+    const tasksCol = collection(db, "tasks");
+    const tasksQuery = query(
+      tasksCol, 
+      where("subgoalId", "==", subgoalId),
+      where("ownerUid", "==", uid)
+    );
+    const tasksSnap = await getDocs(tasksQuery);
+    
+    for (const taskDoc of tasksSnap.docs) {
+      await deleteDoc(taskDoc.ref);
     }
+    
+    // Delete the subgoal itself
+    const subRef = doc(db, "subgoals", subgoalId);
     await deleteDoc(subRef);
+    
     // Update local state
     const list = subgoalsByGoal[goalId] || [];
     subgoalsByGoal[goalId] = list.filter(sg => sg.id !== subgoalId);
@@ -4122,8 +4296,7 @@ async function deleteSubgoalWithTasks(uid, goalId, subgoalId, sectionKeyOptional
 
 async function deleteTask(uid, goalId, subgoalId, taskId) {
   try {
-    const sectionKey = inferSectionKeyForGoal(goalId);
-    const taskRef = doc(db, "users", uid, sectionKey + "Goals", goalId, "subgoals", subgoalId, "tasks", taskId);
+    const taskRef = doc(db, "tasks", taskId);
     await deleteDoc(taskRef);
     const list = tasksBySubgoal[subgoalId] || [];
     tasksBySubgoal[subgoalId] = list.filter(t => t.id !== taskId);
