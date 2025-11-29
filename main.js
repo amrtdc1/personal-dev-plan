@@ -91,61 +91,54 @@ let calendarCursor = new Date();
 const defaultGoalsSeed = {
   professional: [
     {
-      title: "Mentorship with Current IT VP",
+      title: "Define Annual Professional Development Plan",
       description:
-        "Schedule regular 1:1 sessions and shadow key projects to learn the role and decision-making approach.",
-      timeframe: "Weekly / Monthly check-ins",
+        "Set clear growth objectives for skills, certifications, and leadership. Outline milestones and review cadence.",
+      timeframe: "Q1 planning; quarterly reviews",
       status: "not_started"
     },
     {
-      title: "Align IT Strategy with Company Goals",
+      title: "Improve Role-Specific Skills",
       description:
-        "Develop and communicate IT strategies that support company growth, efficiency, and operational improvement.",
-      timeframe: "Next 6–12 months",
+        "Identify top 3 skill areas to deepen (e.g., architecture, project management, data literacy) and set learning goals.",
+      timeframe: "6–12 months",
       status: "not_started"
     },
     {
-      title: "Develop IT Team Relationships & Growth Plans",
+      title: "Build Strong Team Relationships",
       description:
-        "Build stronger relationships with IT staff and help them define growth paths that align with company objectives.",
+        "Invest in communication, feedback, and collaboration habits to strengthen team culture and delivery.",
       timeframe: "Ongoing",
       status: "not_started"
     }
   ],
   personal: [
     {
-      title: "Increase Quality Time with Family",
+      title: "Establish Weekly Wellbeing Rhythm",
       description:
-        "Protect evenings and weekends for time with my wife and kids, focusing on presence over work.",
+        "Create consistent routines for sleep, nutrition, movement, and reflection to sustain energy and clarity.",
       timeframe: "Weekly rhythm",
       status: "not_started"
     },
     {
-      title: "Support Kids' Educational & Spiritual Growth",
+      title: "Invest in Family & Community",
       description:
-        "Be an active steward of their schooling and spiritual life through conversations, support, and example.",
-      timeframe: "Ongoing",
+        "Prioritize meaningful time with loved ones and service in community; plan monthly activities.",
+      timeframe: "Monthly planning; weekly touchpoints",
       status: "not_started"
     },
     {
-      title: "Complete NMC University Course",
+      title: "Lifelong Learning Habit",
       description:
-        "Enroll in and work through the NMC University Bible course to deepen my own spiritual foundation.",
+        "Set a reading/learning plan (books, courses, podcasts) aligned to personal and professional growth.",
       timeframe: "This year",
       status: "not_started"
     },
     {
-      title: "Maintain Weekly Exercise Routine",
+      title: "Maintain Consistent Exercise",
       description:
-        "Carve out consistent time each week for physical activity to support long-term health and energy.",
+        "Schedule regular movement (walks, strength, cardio) to support long-term health.",
       timeframe: "3–4x per week",
-      status: "not_started"
-    },
-    {
-      title: "Coach Kids' Sports",
-      description:
-        "Dedicate time to coaching my kids’ sports teams as a way to invest in their growth and our relationship.",
-      timeframe: "Seasonal",
       status: "not_started"
     }
   ]
