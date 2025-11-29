@@ -1487,7 +1487,7 @@ function createGoalCard(goal, sectionKey, tagLabel) {
   tagRow.style.alignItems = "center";
 
   const typeTag = document.createElement("span");
-  typeTag.className = "goal-tag meta-text";
+  typeTag.className = `goal-type ${sectionKey}`;
   typeTag.textContent = tagLabel;
 
   tagRow.appendChild(typeTag);
@@ -2561,7 +2561,7 @@ function renderCalendar() {
   console.log("Calendar events:", events);
   console.log("Grid has", cells.length, "cells");
   
-  // Goals and sub-goals as bars - render inside cells
+  // Goals and sub-goals as bars - render inside cells as per-day fragments
   events.filter(e => e.type === "goal" || e.type === "subgoal").forEach(event => {
     if (!rangeOverlaps(event.startDate, event.endDate, gridStart, gridEnd)) {
       console.log(`Event "${event.title}" doesn't overlap visible range`);
@@ -2583,55 +2583,47 @@ function renderCalendar() {
     
     console.log(`Event "${event.title}" spans cells ${startCell} to ${endCell}`);
     
-    // Add bar to first cell and make it span visually
-    const firstCellElement = container.children[7 + startCell]; // +7 for headers
-    if (!firstCellElement) {
-      console.log(`First cell element not found for "${event.title}"`);
-      return;
-    }
+    // Calculate week rows (each week is 7 cells)
+    const startRow = Math.floor(startCell / 7);
+    const endRow = Math.floor(endCell / 7);
     
-    const eventsLayer = firstCellElement.querySelector(".calendar-events");
-    if (!eventsLayer) {
-      console.log(`Events layer not found for "${event.title}"`);
-      return;
-    }
-    
-    const bar = document.createElement("div");
-    bar.className = `calendar-bar-inline ${event.type}`;
-    bar.style.backgroundColor = event.color;
-    bar.title = event.title;
-    
-    // Calculate width to span multiple cells
-    const numCells = endCell - startCell + 1;
-    const cellWidth = 100; // percentage
-    const gap = 1; // px gap between cells
-    
-    // Width formula: (numCells * 100%) + ((numCells - 1) * gap)
-    bar.style.width = `calc(${numCells * cellWidth}% + ${(numCells - 1) * gap}px)`;
-    bar.style.position = "relative";
-    bar.style.zIndex = "10";
-    
-    console.log(`  Rendering bar with width for ${numCells} cells`);
-    
-    bar.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (!auth.currentUser) {
-        alert("Please sign in to edit.");
-        return;
-      }
-      
-      if (event.type === "goal") {
-        openGoalModal("edit", event.data);
-      } else if (event.type === "subgoal") {
-        const parentGoal = allGoals.find(g => g.id === event.goalId);
-        openSubgoalModal("edit", {
-          subgoal: event.data,
-          parentGoalTitle: parentGoal?.title || ""
+    // Render per-day fragments for each covered cell to avoid overflow/stacking issues
+    for (let row = startRow; row <= endRow; row++) {
+      const rowStartCell = row * 7;
+      const rowEndCell = Math.min(rowStartCell + 6, cells.length - 1);
+      const segmentStart = Math.max(startCell, rowStartCell);
+      const segmentEnd = Math.min(endCell, rowEndCell);
+      for (let idx = segmentStart; idx <= segmentEnd; idx++) {
+        const cellElement = container.children[7 + idx];
+        if (!cellElement) continue;
+        const eventsLayer = cellElement.querySelector(".calendar-events");
+        if (!eventsLayer) continue;
+        const isStart = idx === startCell;
+        const isEnd = idx === endCell;
+        const frag = document.createElement("div");
+        frag.className = `calendar-bar-fragment ${event.type} ${isStart ? 'start' : (isEnd ? 'end' : 'middle')}`;
+        frag.style.backgroundColor = event.color;
+        frag.title = event.title;
+        frag.style.zIndex = "11";
+        frag.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (!auth.currentUser) {
+            alert("Please sign in to edit.");
+            return;
+          }
+          if (event.type === "goal") {
+            openGoalModal("edit", event.data);
+          } else if (event.type === "subgoal") {
+            const parentGoal = allGoals.find(g => g.id === event.goalId);
+            openSubgoalModal("edit", {
+              subgoal: event.data,
+              parentGoalTitle: parentGoal?.title || ""
+            });
+          }
         });
+        eventsLayer.appendChild(frag);
       }
-    });
-    
-    eventsLayer.appendChild(bar);
+    }
   });
   
   // Tasks as dots

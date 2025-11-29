@@ -1,3 +1,22 @@
+/* Calendar grid layout */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.calendar-day-header {
+  text-align: center;
+  font-weight: 600;
+  padding: 0.5rem;
+  border-right: 1px solid rgba(148, 163, 184, 0.35);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.calendar-day-header:last-child {
+  border-right: none;
+}
 /* Utility */
 .hidden { display: none !important; }
 
@@ -2115,31 +2134,32 @@ body[data-theme="light"] .calendar-legend-dot {
   background: var(--accent);
 }
 
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
-  background: var(--border-subtle);
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.75rem;
-  overflow: hidden;
-  position: relative;
-  isolation: isolate;
+/* New per-cell bar fragments */
+.calendar-bar-fragment {
+  height: 10px;
+  border-radius: 0;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  width: 100%;
 }
-
-.calendar-day-header {
-  background: var(--bg-elevated);
-  padding: 0.5rem 0.25rem;
-  text-align: center;
+.calendar-bar-fragment:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+}
+.calendar-bar-fragment.goal {
+  height: 12px;
   font-weight: 600;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  z-index: 11;
 }
-
-body[data-theme="light"] .calendar-day-header {
-  background: rgba(241, 245, 249, 0.98);
+.calendar-bar-fragment.subgoal {
+  height: 7px;
+  opacity: 0.9;
+  z-index: 10;
 }
+.calendar-bar-fragment.start { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+.calendar-bar-fragment.end { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
 
 body[data-theme="cwm"] .calendar-day-header {
   background: rgba(24, 44, 40, 0.96);
@@ -2153,6 +2173,12 @@ body[data-theme="cwm"] .calendar-day-header {
   position: relative;
   display: flex;
   flex-direction: column;
+  border-right: 1px solid rgba(148, 163, 184, 0.35);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.calendar-cell:nth-child(7n) {
+  border-right: none;
 }
 
 body[data-theme="light"] .calendar-cell {
@@ -2195,35 +2221,9 @@ body[data-theme="cwm"] .calendar-cell {
   align-items: flex-start;
   overflow: visible;
   position: relative;
+  min-height: 80px; /* Ensure consistent height for absolute positioning */
 }
 
-.calendar-bar-inline {
-  height: 10px;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-  flex-shrink: 0;
-  min-width: 100%;
-}
-
-.calendar-bar-inline:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.35);
-  z-index: 20;
-}
-
-.calendar-bar-inline.goal {
-  height: 12px;
-  font-weight: 600;
-  z-index: 11;
-}
-
-.calendar-bar-inline.subgoal {
-  height: 7px;
-  opacity: 0.85;
-  z-index: 10;
-}
 
 .calendar-bar {
   position: absolute;
@@ -2264,9 +2264,10 @@ body[data-theme="cwm"] .calendar-cell {
   cursor: pointer;
   transition: transform 0.1s ease, box-shadow 0.1s ease;
   flex-shrink: 0;
-  position: relative;
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
   z-index: 1; /* below sub-goal bars (10) and goals (11) */
-  margin-top: 32px; /* ensure visual separation below bars */
 }
 
 .calendar-dot:hover {
@@ -2323,39 +2324,54 @@ body[data-theme="cwm"] .focus-goal-card {
   border: 1px solid;
 }
 
+/* Goal type pills (shared by focus cards and goal cards) */
+.goal-type {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid;
+}
+
 /* Professional goals - Gray */
-.focus-goal-type.professional {
+.focus-goal-type.professional,
+.goal-type.professional {
   background: rgba(100, 116, 139, 0.15);
   color: #475569;
   border-color: rgba(100, 116, 139, 0.4);
 }
 
-body[data-theme="dark"] .focus-goal-type.professional {
+body[data-theme="dark"] .focus-goal-type.professional,
+body[data-theme="dark"] .goal-type.professional {
   background: rgba(148, 163, 184, 0.2);
   color: #cbd5e1;
   border-color: rgba(148, 163, 184, 0.4);
 }
 
-body[data-theme="cwm"] .focus-goal-type.professional {
+body[data-theme="cwm"] .focus-goal-type.professional,
+body[data-theme="cwm"] .goal-type.professional {
   background: rgba(30, 71, 65, 0.25);
   color: #7ec9be;
   border-color: rgba(30, 71, 65, 0.5);
 }
 
 /* Personal goals - Blue */
-.focus-goal-type.personal {
+.focus-goal-type.personal,
+.goal-type.personal {
   background: rgba(59, 130, 246, 0.15);
   color: #3b82f6;
   border-color: rgba(59, 130, 246, 0.4);
 }
 
-body[data-theme="dark"] .focus-goal-type.personal {
+body[data-theme="dark"] .focus-goal-type.personal,
+body[data-theme="dark"] .goal-type.personal {
   background: rgba(59, 130, 246, 0.2);
   color: #60a5fa;
   border-color: rgba(59, 130, 246, 0.5);
 }
 
-body[data-theme="cwm"] .focus-goal-type.personal {
+body[data-theme="cwm"] .focus-goal-type.personal,
+body[data-theme="cwm"] .goal-type.personal {
   background: rgba(255, 212, 0, 0.2);
   color: #ffd400;
   border-color: rgba(255, 212, 0, 0.5);
