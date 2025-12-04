@@ -1540,7 +1540,13 @@ function setupJournalModalUI() {
   const goalFilter = document.getElementById("journalGoalFilter");
 
   if (btnNew) {
-    btnNew.addEventListener("click", () => openJournalModal("add"));
+    btnNew.addEventListener("click", () => {
+      if (!auth.currentUser) {
+        alert("Please sign in to add a journal entry.");
+        return;
+      }
+      openJournalModal("add");
+    });
   }
 
   if (btnClose) btnClose.addEventListener("click", closeJournalModal);
@@ -4461,7 +4467,10 @@ function setupAuthUI() {
       goals.personal = [];
       subgoalsByGoal = {};
       tasksBySubgoal = {};
+      journalEntries = [];
       renderGoals();
+      renderCalendar();
+      renderJournalEntries();
       updateStats();
     }
   });
