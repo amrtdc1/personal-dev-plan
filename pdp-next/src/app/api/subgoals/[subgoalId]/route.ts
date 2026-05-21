@@ -5,6 +5,7 @@ import {
 } from "@/lib/server/instant-write";
 import { requireInstantUser } from "@/lib/server/instant-auth";
 import {
+  findOwnedSubgoal,
   instantRouteErrorResponse,
   requireRouteParam,
 } from "@/lib/server/instant-route";
@@ -14,6 +15,18 @@ type RouteContext = {
     subgoalId: string;
   }>;
 };
+
+export async function GET(request: Request, context: RouteContext) {
+  try {
+    const user = await requireInstantUser(request);
+    const { subgoalId } = await context.params;
+    requireRouteParam(subgoalId, "Subgoal id");
+    const subgoal = await findOwnedSubgoal(user.id, subgoalId);
+    return NextResponse.json({ subgoal });
+  } catch (error) {
+    return instantRouteErrorResponse(error);
+  }
+}
 
 export async function PATCH(request: Request, context: RouteContext) {
   try {
