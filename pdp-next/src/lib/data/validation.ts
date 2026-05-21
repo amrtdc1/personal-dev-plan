@@ -7,6 +7,27 @@ import type {
 import type { SaveGoalInput, SaveSubgoalInput, SaveTaskInput } from "@/lib/data/repository";
 
 const ITEM_STATUSES: ItemStatus[] = ["not_started", "in_progress", "done"];
+const ALLOWED_COLLEGE_LOGO_HOSTS = new Set([
+  "a.espncdn.com",
+  "a1.espncdn.com",
+  "site.api.espn.com",
+  "site.web.api.espn.com",
+]);
+
+type UserProfileWriteInput = {
+  uid: string;
+  email: string;
+  displayName: string | null;
+  theme: "light" | "dark" | "cwm";
+  palette: "ocean" | "sunset" | "forest" | "royal" | "candy" | "dusk" | "lava" | "mint";
+  timezone: string;
+  retentionDays: number;
+  createdAt: string;
+  updatedAt: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  collegeLogoUrl?: string | null;
+};
 
 export function validateGoalWrite(input: SaveGoalInput) {
   const trimmedTitle = input.title.trim();
@@ -43,6 +64,19 @@ export function validateTaskWrite(input: SaveTaskInput) {
   return {
     trimmedTitle,
     trimmedNotes,
+  };
+}
+
+export function validateUserProfileWrite(input: UserProfileWriteInput) {
+  const trimmedEmail = input.email.trim().toLowerCase();
+  assertRequiredText(trimmedEmail, "Profile email");
+
+  const sanitizedCollegeLogoUrl = sanitizeCollegeLogoUrlForPersist(input.collegeLogoUrl);
+
+  return {
+    ...input,
+    email: trimmedEmail,
+    collegeLogoUrl: sanitizedCollegeLogoUrl,
   };
 }
 
@@ -90,6 +124,31 @@ export function assertOwnedTask(task: Task | null, ownerUid: string) {
 function assertRequiredText(value: string, label: string) {
   if (!value) {
     throw new Error(`${label} is required.`);
+  }
+}
+
+function sanitizeCollegeLogoUrlForPersist(url: string | null | undefined) {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") {
+      throw new Error("College logo URL must use https.");
+    }
+
+    if (!ALLOWED_COLLEGE_LOGO_HOSTS.has(parsed.hostname)) {
+      throw new Error("College logo URL host is not allowlisted.");
+    }
+
+    return parsed.toString();
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error("College logo URL is invalid.");
   }
 }
 

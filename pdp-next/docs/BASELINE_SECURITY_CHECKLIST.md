@@ -20,9 +20,9 @@ Track minimum security controls required before parity cutover.
 | Error handling | Do not leak sensitive internals in client-visible error messages | In Progress | Shared route error handling now normalizes unexpected server errors to safe 500 responses; add regression tests for this contract |
 | Dependency hygiene | Keep dependencies patched and lockfile tracked | In Progress | Lockfile committed; recurring audit process not yet defined |
 | CSP and response headers | Set security headers and lock trusted origins | In Progress | Next headers added; CSP policy not finalized |
-| Remote media restrictions | Restrict external image domains and sanitize stored URLs | In Progress | ESPN logo URL sanitization + domain allowlist added in provider, and Next image remote patterns now restrict configured hosts; persist-path validation still pending |
+| Remote media restrictions | Restrict external image domains and sanitize stored URLs | Done | ESPN logo URL sanitization + domain allowlist added in provider, Next image remote patterns restrict configured hosts, and profile write persist-path validation enforces https + allowlisted domains |
 
 ## Immediate Actions (Next)
 1. Define and implement centralized payload validation for goals/subgoals/tasks/journal writes.
 2. Integrate strict markdown rendering into journal display/edit flows.
-3. Add persist-path validation for college logo URLs when profile theme fields are saved.
+3. Finalize CSP policy and lock trusted script/image/connect origins.
