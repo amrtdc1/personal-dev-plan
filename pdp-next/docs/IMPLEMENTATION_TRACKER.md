@@ -13,7 +13,7 @@
 - [x] Implement first user bootstrap flow
 - [x] Implement first repository-backed reads (`userProfiles`, `goals`)
 - [x] Implement first repository-backed goal create/update flows
-- [ ] Define feature parity matrix from legacy app
+- [x] Define feature parity matrix from legacy app
 - [ ] Implement soft-delete lifecycle primitives (60-day retention)
 - [ ] Implement core Goals/Sub-goals/Tasks parity
 - [ ] Implement offline-first write queue and sync UX
@@ -22,7 +22,7 @@
 - [ ] Complete staged cutover from legacy app
 
 ## Immediate Next Tasks
-- [ ] Build legacy parity checklist from current `main.js`
+- [x] Build legacy parity checklist from current `main.js`
 - [x] Add repository-backed subgoal and task reads
 - [x] Add repository-backed subgoal and task write flows
 - [ ] Add architecture ADR for auth provider decision
