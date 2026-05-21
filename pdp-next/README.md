@@ -51,6 +51,10 @@ The smoke check validates:
 - PWA manifest (`/manifest.webmanifest`) is served
 - protected goals API (`/api/goals`) rejects anonymous access with `401`
 
+Automation:
+- GitHub Actions now runs the same smoke check automatically on successful non-`main` deployment status events (including Vercel preview deployments).
+- If a deployment event does not include a URL, run the workflow manually from Actions using the `preview_url` input.
+
 ## Docs
 
 - `docs/IMPLEMENTATION_TRACKER.md`
