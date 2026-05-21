@@ -14,7 +14,7 @@ Track minimum security controls required before parity cutover.
 | Client-side XSS prevention | Do not render untrusted HTML directly from user input | In Progress | Legacy journal preview used markdown HTML rendering; Next.js parity flow must sanitize or render safely |
 | Server-side ownership checks | Every read/write/delete validates current user owns target record | In Progress | Protected owner-scoped goals/subgoals/tasks routes are implemented; remaining work is broader endpoint expansion and automated route tests |
 | Destructive action safeguards | Confirm dialogs, scoped deletes, and audit-friendly metadata | In Progress | UI confirms exist in legacy; new stack still needs server-enforced guardrails |
-| Soft-delete lifecycle | 60-day retention with restore and purge windows | In Progress | Archive/restore flows and cascade tests are implemented, including restore-window enforcement; purge automation is still pending |
+| Soft-delete lifecycle | 60-day retention with restore and purge windows | Done | Archive/restore flows, restore-window enforcement, and owner-scoped purge execution are implemented with regression coverage |
 | Auth session integrity | Auth-only access to private user data and mutation paths | In Progress | Magic Code baseline and protected auth-gated goals/subgoals/tasks routes are in place; add route-level regression tests for contract hardening |
 | Input validation | Validate all persisted payloads (title, dates, status enums, ordering indexes) | In Progress | Centralized validation helpers now cover repository writes and reorder/status mutations; server-route validation and schema-level enforcement still need to be added |
 | Error handling | Do not leak sensitive internals in client-visible error messages | In Progress | Shared route error handling now normalizes unexpected server errors to safe 500 responses; add regression tests for this contract |
@@ -23,7 +23,6 @@ Track minimum security controls required before parity cutover.
 | Remote media restrictions | Restrict external image domains and sanitize stored URLs | Not Started | Required for upcoming logo/theme provider integration |
 
 ## Immediate Actions (Next)
-1. Implement purge execution for soft-deleted records.
-2. Define and implement centralized payload validation for goals/subgoals/tasks/journal writes.
-3. Introduce safe markdown strategy for journal (sanitize or strict markdown renderer).
-4. Add domain allowlist validation for remote logo URLs before render/persist.
+1. Define and implement centralized payload validation for goals/subgoals/tasks/journal writes.
+2. Introduce safe markdown strategy for journal (sanitize or strict markdown renderer).
+3. Add domain allowlist validation for remote logo URLs before render/persist.

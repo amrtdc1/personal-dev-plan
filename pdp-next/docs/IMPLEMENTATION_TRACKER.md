@@ -41,6 +41,7 @@
 - [x] Harden protected API error contract (unexpected errors -> safe 500 responses)
 - [x] Enforce restore-window retention checks on restore endpoints
 - [x] Add protected API tests for auth/ownership/query validation/error mapping
+- [x] Implement owner-scoped purge execution for expired soft-deleted records
 - [ ] Stand up Vercel preview deployment for migration smoke testing
 
 ## Checkpoint Packaging (Lower Commit Cadence)

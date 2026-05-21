@@ -13,6 +13,13 @@ type SoftDeleteLifecycle = {
   purgeAt: string;
 };
 
+type PurgeSummary = {
+  goals: number;
+  subgoals: number;
+  tasks: number;
+  purgedAt: string;
+};
+
 export async function archiveGoal(ownerUid: string, goalId: string) {
   const instantAdmin = getInstantAdmin();
   const goal = await findOwnedGoal(ownerUid, goalId);
@@ -291,6 +298,81 @@ export async function restoreTask(ownerUid: string, taskId: string) {
   };
 }
 
+export async function purgeExpiredOwnedData(ownerUid: string): Promise<PurgeSummary> {
+  const instantAdmin = getInstantAdmin();
+  const nowIso = new Date().toISOString();
+
+  const [{ goals = [] }, { subgoals = [] }, { tasks = [] }] = await Promise.all([
+    instantAdmin.query({
+      goals: {
+        $: {
+          where: {
+            ownerUid,
+          },
+        },
+      },
+    }),
+    instantAdmin.query({
+      subgoals: {
+        $: {
+          where: {
+            ownerUid,
+          },
+        },
+      },
+    }),
+    instantAdmin.query({
+      tasks: {
+        $: {
+          where: {
+            ownerUid,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const expiredGoalIds = new Set(
+    (goals as Array<{ id: string; deletedAt: string | null; purgeAt: string | null }>).
+      filter((goal) => isExpiredSoftDeletedEntity(goal.deletedAt, goal.purgeAt, nowIso))
+      .map((goal) => goal.id),
+  );
+
+  const expiredSubgoalIds = new Set(
+    (subgoals as Array<{ id: string; goalId: string; deletedAt: string | null; purgeAt: string | null }>).
+      filter(
+        (subgoal) =>
+          isExpiredSoftDeletedEntity(subgoal.deletedAt, subgoal.purgeAt, nowIso) || expiredGoalIds.has(subgoal.goalId),
+      )
+      .map((subgoal) => subgoal.id),
+  );
+
+  const expiredTaskIds = new Set(
+    (tasks as Array<{ id: string; subgoalId: string; deletedAt: string | null; purgeAt: string | null }>).
+      filter(
+        (task) => isExpiredSoftDeletedEntity(task.deletedAt, task.purgeAt, nowIso) || expiredSubgoalIds.has(task.subgoalId),
+      )
+      .map((task) => task.id),
+  );
+
+  const deleteMutations = [
+    ...Array.from(expiredTaskIds, (taskId) => instantAdmin.tx.tasks[taskId].delete()),
+    ...Array.from(expiredSubgoalIds, (subgoalId) => instantAdmin.tx.subgoals[subgoalId].delete()),
+    ...Array.from(expiredGoalIds, (goalId) => instantAdmin.tx.goals[goalId].delete()),
+  ];
+
+  if (deleteMutations.length > 0) {
+    await instantAdmin.transact(deleteMutations);
+  }
+
+  return {
+    goals: expiredGoalIds.size,
+    subgoals: expiredSubgoalIds.size,
+    tasks: expiredTaskIds.size,
+    purgedAt: nowIso,
+  };
+}
+
 async function listOwnedSubgoals(ownerUid: string, goalId: string) {
   const instantAdmin = getInstantAdmin();
   const { subgoals = [] } = await instantAdmin.query({
@@ -345,4 +427,17 @@ function assertRestoreWindowOpen(restoreUntil: string | null, entityLabel: strin
       `${entityLabel} can no longer be restored because the restore window has expired.`,
     );
   }
+}
+
+function isExpiredSoftDeletedEntity(deletedAt: string | null, purgeAt: string | null, nowIso: string) {
+  if (!deletedAt || !purgeAt) {
+    return false;
+  }
+
+  const purgeAtMs = Date.parse(purgeAt);
+  if (Number.isNaN(purgeAtMs)) {
+    return false;
+  }
+
+  return purgeAtMs <= Date.parse(nowIso);
 }
