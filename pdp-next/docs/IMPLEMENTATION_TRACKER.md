@@ -43,6 +43,7 @@
 - [x] Add protected API tests for auth/ownership/query validation/error mapping
 - [x] Implement owner-scoped purge execution for expired soft-deleted records
 - [x] Stand up Vercel preview deployment for migration smoke testing
+- [x] Wire preview smoke check into PR validation via GitHub Actions deployment status
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).
