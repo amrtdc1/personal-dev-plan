@@ -3,6 +3,13 @@ import allowlistData from "@/lib/theming/data/espn-d1-allowlist.json";
 const COLLEGE_FOOTBALL_TEAMS_ENDPOINT =
   "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams";
 
+const ALLOWED_LOGO_HOSTS = new Set([
+  "a.espncdn.com",
+  "a1.espncdn.com",
+  "site.api.espn.com",
+  "site.web.api.espn.com",
+]);
+
 type EspnLogo = {
   href?: string;
   rel?: string[];
@@ -66,17 +73,39 @@ function pickLogo(team: EspnTeam, preferredRel: string): string | null {
 
   const exactRel = logos.find((logo) => Array.isArray(logo.rel) && logo.rel.includes(preferredRel));
   if (exactRel?.href) {
-    return exactRel.href;
+    return sanitizeCollegeLogoUrl(exactRel.href);
   }
 
   const fullDefault = logos.find(
     (logo) => Array.isArray(logo.rel) && logo.rel.includes("full") && logo.rel.includes("default")
   );
   if (fullDefault?.href) {
-    return fullDefault.href;
+    return sanitizeCollegeLogoUrl(fullDefault.href);
   }
 
-  return logos.find((logo) => typeof logo.href === "string")?.href ?? null;
+  const firstLogoHref = logos.find((logo) => typeof logo.href === "string")?.href;
+  return sanitizeCollegeLogoUrl(firstLogoHref);
+}
+
+export function sanitizeCollegeLogoUrl(url: string | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") {
+      return null;
+    }
+
+    if (!ALLOWED_LOGO_HOSTS.has(parsed.hostname)) {
+      return null;
+    }
+
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 function normalizeTeam(team: EspnTeam, allowlistEntry: D1AllowlistEntry): CollegeThemeTeam {
