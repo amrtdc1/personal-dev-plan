@@ -1,4 +1,7 @@
 import { getInstantAdmin } from "@/lib/instantdb/admin";
+import { InstantAuthError } from "@/lib/server/instant-errors";
+
+export { InstantAuthError } from "@/lib/server/instant-errors";
 
 export async function requireInstantUser(request: Request) {
   const user = await getInstantAdmin().auth.getUserFromRequest(request);
@@ -8,11 +11,4 @@ export async function requireInstantUser(request: Request) {
   }
 
   return user;
-}
-
-export class InstantAuthError extends Error {
-  constructor(message = "Authentication required.") {
-    super(message);
-    this.name = "InstantAuthError";
-  }
 }

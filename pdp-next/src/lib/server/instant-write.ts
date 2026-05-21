@@ -6,11 +6,11 @@ import {
 } from "@/lib/data/validation";
 import { statusToPercent } from "@/lib/domain/status";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
+import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {
   findOwnedGoal,
   findOwnedSubgoal,
   findOwnedTask,
-  InstantRouteBadRequestError,
 } from "@/lib/server/instant-route";
 
 type GoalWritePayload = {
