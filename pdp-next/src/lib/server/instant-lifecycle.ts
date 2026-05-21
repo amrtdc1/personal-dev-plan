@@ -1,6 +1,7 @@
 import { env } from "@/lib/config/env";
 import type { Subgoal, Task } from "@/lib/domain/types";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
+import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {
   findOwnedGoal,
   findOwnedSubgoal,
@@ -81,6 +82,8 @@ export async function restoreGoal(ownerUid: string, goalId: string) {
   if (!goal.deletedAt) {
     return goal;
   }
+
+  assertRestoreWindowOpen(goal.restoreUntil, "Goal");
 
   const now = new Date().toISOString();
   const cascadeDeletedAt = goal.deletedAt;
@@ -187,6 +190,8 @@ export async function restoreSubgoal(ownerUid: string, subgoalId: string) {
     return subgoal;
   }
 
+  assertRestoreWindowOpen(subgoal.restoreUntil, "Subgoal");
+
   const now = new Date().toISOString();
   const cascadeDeletedAt = subgoal.deletedAt;
   const tasks = await listOwnedTasks(ownerUid, subgoalId);
@@ -262,6 +267,8 @@ export async function restoreTask(ownerUid: string, taskId: string) {
     return task;
   }
 
+  assertRestoreWindowOpen(task.restoreUntil, "Task");
+
   const now = new Date().toISOString();
 
   await instantAdmin.transact(
@@ -328,4 +335,14 @@ function buildSoftDeleteLifecycle(nowIso: string): SoftDeleteLifecycle {
 
 function shouldRestoreCascadeEntity(entityDeletedAt: string | null, parentDeletedAt: string) {
   return entityDeletedAt === parentDeletedAt;
+}
+
+function assertRestoreWindowOpen(restoreUntil: string | null, entityLabel: string) {
+  const expiry = restoreUntil ? Date.parse(restoreUntil) : Number.NaN;
+
+  if (Number.isNaN(expiry) || expiry < Date.now()) {
+    throw new InstantRouteBadRequestError(
+      `${entityLabel} can no longer be restored because the restore window has expired.`,
+    );
+  }
 }

@@ -285,6 +285,8 @@ export const dataRepository: DataRepository = {
       return goal;
     }
 
+    assertRestoreWindowOpen(goal.restoreUntil, "Goal");
+
     const now = new Date().toISOString();
     const cascadeDeletedAt = goal.deletedAt;
     const subgoals = await dataRepository.listSubgoals(ownerUid, goalId, { includeDeleted: true });
@@ -513,6 +515,8 @@ export const dataRepository: DataRepository = {
       return subgoal;
     }
 
+    assertRestoreWindowOpen(subgoal.restoreUntil, "Subgoal");
+
     const now = new Date().toISOString();
     const cascadeDeletedAt = subgoal.deletedAt;
     const tasks = await dataRepository.listTasks(ownerUid, subgoalId, { includeDeleted: true });
@@ -697,6 +701,8 @@ export const dataRepository: DataRepository = {
       return task;
     }
 
+    assertRestoreWindowOpen(task.restoreUntil, "Task");
+
     const now = new Date().toISOString();
 
     await db.transact(
@@ -836,6 +842,14 @@ function shouldRestoreCascadeEntity(entityDeletedAt: string | null, parentDelete
   }
 
   return entityDeletedAt === parentDeletedAt;
+}
+
+function assertRestoreWindowOpen(restoreUntil: string | null, entityLabel: string) {
+  const expiry = restoreUntil ? Date.parse(restoreUntil) : Number.NaN;
+
+  if (Number.isNaN(expiry) || expiry < Date.now()) {
+    throw new Error(`${entityLabel} can no longer be restored because the restore window has expired.`);
+  }
 }
 
 async function reorderEntities<TEntity extends { id: string; orderIndex: number; updatedAt: string }>(input: {

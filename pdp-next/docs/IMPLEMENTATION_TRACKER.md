@@ -39,7 +39,7 @@
 - [x] Expand route-level server-side ownership checks across protected data paths
 - [x] Centralize payload validation and shared ownership guard helpers
 - [x] Harden protected API error contract (unexpected errors -> safe 500 responses)
-- [ ] Enforce restore-window retention checks on restore endpoints
+- [x] Enforce restore-window retention checks on restore endpoints
 - [ ] Add protected API tests for auth/ownership/query validation/error mapping
 - [ ] Stand up Vercel preview deployment for migration smoke testing
 

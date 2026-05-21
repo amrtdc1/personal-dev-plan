@@ -198,7 +198,9 @@ describe("dataRepository soft-delete cascade", () => {
     const cascadeDeletedAt = "2026-05-20T09:00:00.000Z";
 
     queryOnceMock
-      .mockResolvedValueOnce({ data: { goals: [buildGoal({ deletedAt: cascadeDeletedAt, isFocus: false })] } })
+      .mockResolvedValueOnce({
+        data: { goals: [buildGoal({ deletedAt: cascadeDeletedAt, restoreUntil: RESTORE_ISO, isFocus: false })] },
+      })
       .mockResolvedValueOnce({
         data: {
           subgoals: [
@@ -245,6 +247,26 @@ describe("dataRepository soft-delete cascade", () => {
     );
   });
 
+  it("rejects restoring a goal when the restore window has expired", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        goals: [
+          buildGoal({
+            id: "goal-expired",
+            deletedAt: "2026-05-01T09:00:00.000Z",
+            restoreUntil: "2026-05-10T09:00:00.000Z",
+            isFocus: false,
+          }),
+        ],
+      },
+    });
+
+    await expect(dataRepository.restoreGoal("user-1", "goal-expired")).rejects.toThrow(
+      "Goal can no longer be restored because the restore window has expired.",
+    );
+    expect(transactMock).not.toHaveBeenCalled();
+  });
+
   it("soft deletes a subgoal and cascades to its active tasks", async () => {
     queryOnceMock
       .mockResolvedValueOnce({ data: { subgoals: [buildSubgoal({ id: "subgoal-1" })] } })
@@ -275,6 +297,44 @@ describe("dataRepository soft-delete cascade", () => {
     expect(mutations).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ entityId: "task-b" })]),
     );
+  });
+
+  it("rejects restoring a subgoal when the restore window has expired", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        subgoals: [
+          buildSubgoal({
+            id: "subgoal-expired",
+            deletedAt: "2026-05-01T09:00:00.000Z",
+            restoreUntil: "2026-05-10T09:00:00.000Z",
+          }),
+        ],
+      },
+    });
+
+    await expect(dataRepository.restoreSubgoal("user-1", "subgoal-expired")).rejects.toThrow(
+      "Subgoal can no longer be restored because the restore window has expired.",
+    );
+    expect(transactMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects restoring a task when the restore window has expired", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        tasks: [
+          buildTask({
+            id: "task-expired",
+            deletedAt: "2026-05-01T09:00:00.000Z",
+            restoreUntil: "2026-05-10T09:00:00.000Z",
+          }),
+        ],
+      },
+    });
+
+    await expect(dataRepository.restoreTask("user-1", "task-expired")).rejects.toThrow(
+      "Task can no longer be restored because the restore window has expired.",
+    );
+    expect(transactMock).not.toHaveBeenCalled();
   });
 
   it("updates goal status and percent complete", async () => {
