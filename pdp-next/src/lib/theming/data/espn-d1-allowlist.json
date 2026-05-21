@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "generatedAt": "2026-05-21",
+  "source": {
+    "localSample": "../assets/college-football-teams.json",
+    "divisionEndpoint": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/groups",
+    "notes": "Starter allowlist is the intersection of local sample team IDs and ESPN NCAA Division I groups (FBS/FCS)."
+  },
+  "teams": [
+    {
+      "id": "9",
+      "displayName": "Arizona State Sun Devils",
+      "abbreviation": "ASU",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "12",
+      "displayName": "Arizona Wildcats",
+      "abbreviation": "ARIZ",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "8",
+      "displayName": "Arkansas Razorbacks",
+      "abbreviation": "ARK",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "2",
+      "displayName": "Auburn Tigers",
+      "abbreviation": "AUB",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "13",
+      "displayName": "Cal Poly Mustangs",
+      "abbreviation": "CP",
+      "subdivision": "FCS"
+    },
+    {
+      "id": "25",
+      "displayName": "California Golden Bears",
+      "abbreviation": "CAL",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "38",
+      "displayName": "Colorado Buffaloes",
+      "abbreviation": "COLO",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "36",
+      "displayName": "Colorado State Rams",
+      "abbreviation": "CSU",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "48",
+      "displayName": "Delaware Blue Hens",
+      "abbreviation": "DEL",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "50",
+      "displayName": "Florida A&M Rattlers",
+      "abbreviation": "FAMU",
+      "subdivision": "FCS"
+    },
+    {
+      "id": "57",
+      "displayName": "Florida Gators",
+      "abbreviation": "FLA",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "52",
+      "displayName": "Florida State Seminoles",
+      "abbreviation": "FSU",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "46",
+      "displayName": "Georgetown Hoyas",
+      "abbreviation": "GTWN",
+      "subdivision": "FCS"
+    },
+    {
+      "id": "61",
+      "displayName": "Georgia Bulldogs",
+      "abbreviation": "UGA",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "59",
+      "displayName": "Georgia Tech Yellow Jackets",
+      "abbreviation": "GT",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "62",
+      "displayName": "Hawai'i Rainbow Warriors",
+      "abbreviation": "HAW",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "47",
+      "displayName": "Howard Bison",
+      "abbreviation": "HOW",
+      "subdivision": "FCS"
+    },
+    {
+      "id": "70",
+      "displayName": "Idaho Vandals",
+      "abbreviation": "IDHO",
+      "subdivision": "FCS"
+    },
+    {
+      "id": "66",
+      "displayName": "Iowa State Cyclones",
+      "abbreviation": "ISU",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "55",
+      "displayName": "Jacksonville State Gamecocks",
+      "abbreviation": "JXST",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "16",
+      "displayName": "Sacramento State Hornets",
+      "abbreviation": "SAC",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "21",
+      "displayName": "San Diego State Aztecs",
+      "abbreviation": "SDSU",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "23",
+      "displayName": "San José State Spartans",
+      "abbreviation": "SJSU",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "6",
+      "displayName": "South Alabama Jaguars",
+      "abbreviation": "USA",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "58",
+      "displayName": "South Florida Bulls",
+      "abbreviation": "USF",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "24",
+      "displayName": "Stanford Cardinal",
+      "abbreviation": "STAN",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "56",
+      "displayName": "Stetson Hatters",
+      "abbreviation": "STET",
+      "subdivision": "FCS"
+    },
+    {
+      "id": "5",
+      "displayName": "UAB Blazers",
+      "abbreviation": "UAB",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "26",
+      "displayName": "UCLA Bruins",
+      "abbreviation": "UCLA",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "41",
+      "displayName": "UConn Huskies",
+      "abbreviation": "CONN",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "30",
+      "displayName": "USC Trojans",
+      "abbreviation": "USC",
+      "subdivision": "FBS"
+    },
+    {
+      "id": "43",
+      "displayName": "Yale Bulldogs",
+      "abbreviation": "YALE",
+      "subdivision": "FCS"
+    }
+  ]
+}
