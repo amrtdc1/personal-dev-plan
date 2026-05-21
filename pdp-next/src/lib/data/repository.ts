@@ -1,7 +1,12 @@
 import { id, type InstaQLParams, type InstantUnknownSchemaDef } from "@instantdb/react";
 import { db, isInstantConfigured } from "@/lib/instantdb/client";
+import { env } from "@/lib/config/env";
 import { statusToPercent } from "@/lib/domain/status";
 import type { Goal, GoalType, JournalEntry, Subgoal, Task, UserProfile } from "@/lib/domain/types";
+
+type ListOptions = {
+  includeDeleted?: boolean;
+};
 
 export type SaveGoalInput = {
   goalId?: string;
@@ -39,12 +44,18 @@ export type SaveTaskInput = {
 };
 
 export type DataRepository = {
-  listGoals: (ownerUid: string, type: GoalType) => Promise<Goal[]>;
+  listGoals: (ownerUid: string, type: GoalType, options?: ListOptions) => Promise<Goal[]>;
   saveGoal: (input: SaveGoalInput) => Promise<Goal>;
-  listSubgoals: (ownerUid: string, goalId: string) => Promise<Subgoal[]>;
+  softDeleteGoal: (ownerUid: string, goalId: string) => Promise<Goal>;
+  restoreGoal: (ownerUid: string, goalId: string) => Promise<Goal>;
+  listSubgoals: (ownerUid: string, goalId: string, options?: ListOptions) => Promise<Subgoal[]>;
   saveSubgoal: (input: SaveSubgoalInput) => Promise<Subgoal>;
-  listTasks: (ownerUid: string, subgoalId: string) => Promise<Task[]>;
+  softDeleteSubgoal: (ownerUid: string, subgoalId: string) => Promise<Subgoal>;
+  restoreSubgoal: (ownerUid: string, subgoalId: string) => Promise<Subgoal>;
+  listTasks: (ownerUid: string, subgoalId: string, options?: ListOptions) => Promise<Task[]>;
   saveTask: (input: SaveTaskInput) => Promise<Task>;
+  softDeleteTask: (ownerUid: string, taskId: string) => Promise<Task>;
+  restoreTask: (ownerUid: string, taskId: string) => Promise<Task>;
   listJournalEntries: (ownerUid: string) => Promise<JournalEntry[]>;
   getUserProfile: (ownerUid: string) => Promise<UserProfile | null>;
 };
@@ -57,7 +68,7 @@ export class UnsupportedRepositoryError extends Error {
 }
 
 export const dataRepository: DataRepository = {
-  async listGoals(ownerUid, type) {
+  async listGoals(ownerUid, type, options) {
     const data = await runClientQuery<{ goals?: Goal[] }>({
       goals: {
         $: {
@@ -69,7 +80,7 @@ export const dataRepository: DataRepository = {
       },
     });
 
-    return [...(data.goals ?? [])].sort(compareGoals);
+    return filterDeleted(data.goals ?? [], options).sort(compareGoals);
   },
   async saveGoal(input) {
     ensureClientMutationSupport();
@@ -151,7 +162,138 @@ export const dataRepository: DataRepository = {
 
     return goal;
   },
-  async listSubgoals(ownerUid, goalId) {
+  async softDeleteGoal(ownerUid, goalId) {
+    ensureClientMutationSupport();
+
+    const goal = await findGoalById(ownerUid, goalId);
+    if (!goal) {
+      throw new Error("Goal was not found for this user.");
+    }
+
+    if (goal.deletedAt) {
+      return goal;
+    }
+
+    const now = new Date().toISOString();
+    const lifecycle = buildSoftDeleteLifecycle(now);
+    const subgoals = await dataRepository.listSubgoals(ownerUid, goalId, { includeDeleted: true });
+    const taskGroups = await Promise.all(
+      subgoals.map((subgoal) => dataRepository.listTasks(ownerUid, subgoal.id, { includeDeleted: true })),
+    );
+    const tasks = taskGroups.flat();
+
+    const goalMutation = db.tx.goals[goalId].update({
+      deletedAt: now,
+      deletedBy: ownerUid,
+      restoreUntil: lifecycle.restoreUntil,
+      purgeAt: lifecycle.purgeAt,
+      updatedAt: now,
+      isFocus: false,
+    });
+
+    const subgoalMutations = subgoals
+      .filter((subgoal) => !subgoal.deletedAt)
+      .map((subgoal) =>
+        db.tx.subgoals[subgoal.id].update({
+          deletedAt: now,
+          deletedBy: ownerUid,
+          restoreUntil: lifecycle.restoreUntil,
+          purgeAt: lifecycle.purgeAt,
+          updatedAt: now,
+        }),
+      );
+
+    const taskMutations = tasks
+      .filter((task) => !task.deletedAt)
+      .map((task) =>
+        db.tx.tasks[task.id].update({
+          deletedAt: now,
+          deletedBy: ownerUid,
+          restoreUntil: lifecycle.restoreUntil,
+          purgeAt: lifecycle.purgeAt,
+          updatedAt: now,
+        }),
+      );
+
+    await db.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
+
+    return {
+      ...goal,
+      deletedAt: now,
+      deletedBy: ownerUid,
+      restoreUntil: lifecycle.restoreUntil,
+      purgeAt: lifecycle.purgeAt,
+      updatedAt: now,
+      isFocus: false,
+    };
+  },
+  async restoreGoal(ownerUid, goalId) {
+    ensureClientMutationSupport();
+
+    const goal = await findGoalById(ownerUid, goalId);
+    if (!goal) {
+      throw new Error("Goal was not found for this user.");
+    }
+
+    if (!goal.deletedAt) {
+      return goal;
+    }
+
+    const now = new Date().toISOString();
+    const cascadeDeletedAt = goal.deletedAt;
+    const subgoals = await dataRepository.listSubgoals(ownerUid, goalId, { includeDeleted: true });
+    const subgoalsToRestore = subgoals.filter((subgoal) =>
+      shouldRestoreCascadeEntity(subgoal.deletedAt, cascadeDeletedAt),
+    );
+    const taskGroups = await Promise.all(
+      subgoalsToRestore.map((subgoal) =>
+        dataRepository.listTasks(ownerUid, subgoal.id, { includeDeleted: true }),
+      ),
+    );
+    const tasks = taskGroups.flat();
+
+    const goalMutation = db.tx.goals[goalId].update({
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+      updatedAt: now,
+    });
+
+    const subgoalMutations = subgoalsToRestore.map((subgoal) =>
+        db.tx.subgoals[subgoal.id].update({
+          deletedAt: null,
+          deletedBy: null,
+          restoreUntil: null,
+          purgeAt: null,
+          updatedAt: now,
+        }),
+      );
+
+    const taskMutations = tasks
+      .filter((task) => shouldRestoreCascadeEntity(task.deletedAt, cascadeDeletedAt))
+      .map((task) =>
+        db.tx.tasks[task.id].update({
+          deletedAt: null,
+          deletedBy: null,
+          restoreUntil: null,
+          purgeAt: null,
+          updatedAt: now,
+        }),
+      );
+
+    await db.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
+
+    return {
+      ...goal,
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+      updatedAt: now,
+    };
+  },
+  async listSubgoals(ownerUid, goalId, options) {
     const data = await runClientQuery<{ subgoals?: Subgoal[] }>({
       subgoals: {
         $: {
@@ -163,7 +305,7 @@ export const dataRepository: DataRepository = {
       },
     });
 
-    return [...(data.subgoals ?? [])].sort(compareSubgoals);
+    return filterDeleted(data.subgoals ?? [], options).sort(compareSubgoals);
   },
   async saveSubgoal(input) {
     ensureClientMutationSupport();
@@ -242,7 +384,101 @@ export const dataRepository: DataRepository = {
 
     return subgoal;
   },
-  async listTasks(ownerUid, subgoalId) {
+  async softDeleteSubgoal(ownerUid, subgoalId) {
+    ensureClientMutationSupport();
+
+    const subgoal = await findSubgoalById(ownerUid, subgoalId);
+    if (!subgoal) {
+      throw new Error("Subgoal was not found for this user.");
+    }
+
+    if (subgoal.deletedAt) {
+      return subgoal;
+    }
+
+    const now = new Date().toISOString();
+    const lifecycle = buildSoftDeleteLifecycle(now);
+    const tasks = await dataRepository.listTasks(ownerUid, subgoalId, { includeDeleted: true });
+
+    const subgoalMutation = db.tx.subgoals[subgoalId].update({
+      deletedAt: now,
+      deletedBy: ownerUid,
+      restoreUntil: lifecycle.restoreUntil,
+      purgeAt: lifecycle.purgeAt,
+      updatedAt: now,
+    });
+
+    const taskMutations = tasks
+      .filter((task) => !task.deletedAt)
+      .map((task) =>
+        db.tx.tasks[task.id].update({
+          deletedAt: now,
+          deletedBy: ownerUid,
+          restoreUntil: lifecycle.restoreUntil,
+          purgeAt: lifecycle.purgeAt,
+          updatedAt: now,
+        }),
+      );
+
+    await db.transact([subgoalMutation, ...taskMutations]);
+
+    return {
+      ...subgoal,
+      deletedAt: now,
+      deletedBy: ownerUid,
+      restoreUntil: lifecycle.restoreUntil,
+      purgeAt: lifecycle.purgeAt,
+      updatedAt: now,
+    };
+  },
+  async restoreSubgoal(ownerUid, subgoalId) {
+    ensureClientMutationSupport();
+
+    const subgoal = await findSubgoalById(ownerUid, subgoalId);
+    if (!subgoal) {
+      throw new Error("Subgoal was not found for this user.");
+    }
+
+    if (!subgoal.deletedAt) {
+      return subgoal;
+    }
+
+    const now = new Date().toISOString();
+    const cascadeDeletedAt = subgoal.deletedAt;
+    const tasks = await dataRepository.listTasks(ownerUid, subgoalId, { includeDeleted: true });
+
+    const subgoalMutation = db.tx.subgoals[subgoalId].update({
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+      updatedAt: now,
+    });
+
+    const taskMutations = tasks
+      .filter((task) => shouldRestoreCascadeEntity(task.deletedAt, cascadeDeletedAt))
+      .map((task) =>
+        db.tx.tasks[task.id].update({
+          deletedAt: null,
+          deletedBy: null,
+          restoreUntil: null,
+          purgeAt: null,
+          updatedAt: now,
+        }),
+      );
+
+    await db.transact([subgoalMutation, ...taskMutations]);
+
+    return {
+      ...subgoal,
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+      updatedAt: now,
+    };
+  },
+  async listTasks(ownerUid, subgoalId, options) {
     const data = await runClientQuery<{ tasks?: Task[] }>({
       tasks: {
         $: {
@@ -254,7 +490,7 @@ export const dataRepository: DataRepository = {
       },
     });
 
-    return [...(data.tasks ?? [])].sort(compareTasks);
+    return filterDeleted(data.tasks ?? [], options).sort(compareTasks);
   },
   async saveTask(input) {
     ensureClientMutationSupport();
@@ -315,6 +551,73 @@ export const dataRepository: DataRepository = {
 
     return task;
   },
+  async softDeleteTask(ownerUid, taskId) {
+    ensureClientMutationSupport();
+
+    const task = await findTaskById(ownerUid, taskId);
+    if (!task) {
+      throw new Error("Task was not found for this user.");
+    }
+
+    if (task.deletedAt) {
+      return task;
+    }
+
+    const now = new Date().toISOString();
+    const lifecycle = buildSoftDeleteLifecycle(now);
+
+    await db.transact(
+      db.tx.tasks[taskId].update({
+        deletedAt: now,
+        deletedBy: ownerUid,
+        restoreUntil: lifecycle.restoreUntil,
+        purgeAt: lifecycle.purgeAt,
+        updatedAt: now,
+      }),
+    );
+
+    return {
+      ...task,
+      deletedAt: now,
+      deletedBy: ownerUid,
+      restoreUntil: lifecycle.restoreUntil,
+      purgeAt: lifecycle.purgeAt,
+      updatedAt: now,
+    };
+  },
+  async restoreTask(ownerUid, taskId) {
+    ensureClientMutationSupport();
+
+    const task = await findTaskById(ownerUid, taskId);
+    if (!task) {
+      throw new Error("Task was not found for this user.");
+    }
+
+    if (!task.deletedAt) {
+      return task;
+    }
+
+    const now = new Date().toISOString();
+
+    await db.transact(
+      db.tx.tasks[taskId].update({
+        deletedAt: null,
+        deletedBy: null,
+        restoreUntil: null,
+        purgeAt: null,
+        updatedAt: now,
+      }),
+    );
+
+    return {
+      ...task,
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+      updatedAt: now,
+    };
+  },
   async listJournalEntries() {
     throw new UnsupportedRepositoryError();
   },
@@ -363,19 +666,97 @@ function ensureClientMutationSupport() {
   }
 }
 
+async function findGoalById(ownerUid: string, goalId: string) {
+  const data = await runClientQuery<{ goals?: Goal[] }>({
+    goals: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  return (data.goals ?? []).find((goal) => goal.id === goalId) ?? null;
+}
+
+async function findSubgoalById(ownerUid: string, subgoalId: string) {
+  const data = await runClientQuery<{ subgoals?: Subgoal[] }>({
+    subgoals: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  return (data.subgoals ?? []).find((subgoal) => subgoal.id === subgoalId) ?? null;
+}
+
+async function findTaskById(ownerUid: string, taskId: string) {
+  const data = await runClientQuery<{ tasks?: Task[] }>({
+    tasks: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  return (data.tasks ?? []).find((task) => task.id === taskId) ?? null;
+}
+
+function filterDeleted<
+  TEntity extends {
+    deletedAt: string | null;
+  },
+>(entities: TEntity[], options?: ListOptions) {
+  if (options?.includeDeleted) {
+    return [...entities];
+  }
+
+  return entities.filter((entity) => entity.deletedAt === null);
+}
+
+function buildSoftDeleteLifecycle(deletedAtIso: string) {
+  const deletedAt = new Date(deletedAtIso);
+  const purgeAtDate = new Date(deletedAt);
+  purgeAtDate.setDate(purgeAtDate.getDate() + env.softDeleteRetentionDays);
+
+  const purgeAt = purgeAtDate.toISOString();
+
+  return {
+    restoreUntil: purgeAt,
+    purgeAt,
+  };
+}
+
+function shouldRestoreCascadeEntity(entityDeletedAt: string | null, parentDeletedAt: string) {
+  if (!entityDeletedAt) {
+    return false;
+  }
+
+  return entityDeletedAt === parentDeletedAt;
+}
+
 async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {
-  const goals = await dataRepository.listGoals(ownerUid, type);
-  return goals.length;
+  const goals = await dataRepository.listGoals(ownerUid, type, { includeDeleted: true });
+  const maxIndex = goals.reduce((max, goal) => Math.max(max, goal.orderIndex), -1);
+  return maxIndex + 1;
 }
 
 async function getNextSubgoalOrderIndex(ownerUid: string, goalId: string) {
-  const subgoals = await dataRepository.listSubgoals(ownerUid, goalId);
-  return subgoals.length;
+  const subgoals = await dataRepository.listSubgoals(ownerUid, goalId, { includeDeleted: true });
+  const maxIndex = subgoals.reduce((max, subgoal) => Math.max(max, subgoal.orderIndex), -1);
+  return maxIndex + 1;
 }
 
 async function getNextTaskOrderIndex(ownerUid: string, subgoalId: string) {
-  const tasks = await dataRepository.listTasks(ownerUid, subgoalId);
-  return tasks.length;
+  const tasks = await dataRepository.listTasks(ownerUid, subgoalId, { includeDeleted: true });
+  const maxIndex = tasks.reduce((max, task) => Math.max(max, task.orderIndex), -1);
+  return maxIndex + 1;
 }
 
 function buildGoalTimeframe(

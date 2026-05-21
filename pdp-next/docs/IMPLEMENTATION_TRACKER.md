@@ -14,7 +14,7 @@
 - [x] Implement first repository-backed reads (`userProfiles`, `goals`)
 - [x] Implement first repository-backed goal create/update flows
 - [x] Define feature parity matrix from legacy app
-- [ ] Implement soft-delete lifecycle primitives (60-day retention)
+- [x] Implement soft-delete lifecycle primitives (60-day retention)
 - [ ] Implement core Goals/Sub-goals/Tasks parity
 - [ ] Implement offline-first write queue and sync UX
 - [ ] Implement ICS export + tokenized subscription feed

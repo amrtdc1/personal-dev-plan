@@ -40,6 +40,7 @@ export function MigrationDataPreview() {
   const [taskDueDate, setTaskDueDate] = useState("");
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [taskSaveError, setTaskSaveError] = useState<string | null>(null);
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
 
   const allGoals = useMemo(
     () => [
@@ -65,16 +66,19 @@ export function MigrationDataPreview() {
       try {
         const [profile, professionalGoals, personalGoals] = await Promise.all([
           dataRepository.getUserProfile(currentUser.id),
-          dataRepository.listGoals(currentUser.id, "professional"),
-          dataRepository.listGoals(currentUser.id, "personal"),
+          dataRepository.listGoals(currentUser.id, "professional", { includeDeleted: true }),
+          dataRepository.listGoals(currentUser.id, "personal", { includeDeleted: true }),
         ]);
 
-        const sampleGoal = professionalGoals[0] ?? personalGoals[0] ?? null;
+        const sampleGoal =
+          professionalGoals.find((goal) => !goal.deletedAt) ??
+          personalGoals.find((goal) => !goal.deletedAt) ??
+          null;
         const sampleSubgoals = sampleGoal
-          ? await dataRepository.listSubgoals(currentUser.id, sampleGoal.id)
+          ? await dataRepository.listSubgoals(currentUser.id, sampleGoal.id, { includeDeleted: true })
           : [];
         const sampleTasks = sampleSubgoals[0]
-          ? await dataRepository.listTasks(currentUser.id, sampleSubgoals[0].id)
+          ? await dataRepository.listTasks(currentUser.id, sampleSubgoals[0].id, { includeDeleted: true })
           : [];
 
         if (!isCancelled) {
@@ -137,6 +141,67 @@ export function MigrationDataPreview() {
       setSubgoalSaveError(getErrorMessage(repositoryError, "We could not save the subgoal."));
     } finally {
       setIsSavingSubgoal(false);
+    }
+  }
+
+  async function handleGoalArchiveToggle(goal: Goal) {
+    if (!user) {
+      return;
+    }
+
+    setLifecycleError(null);
+    try {
+      if (goal.deletedAt) {
+        await dataRepository.restoreGoal(user.id, goal.id);
+      } else {
+        await dataRepository.softDeleteGoal(user.id, goal.id);
+      }
+
+      if (!goal.deletedAt && editingGoalId === goal.id) {
+        resetGoalForm();
+      }
+
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setLifecycleError(getErrorMessage(repositoryError, "We could not update goal archive state."));
+    }
+  }
+
+  async function handleSubgoalArchiveToggle(subgoal: Subgoal) {
+    if (!user) {
+      return;
+    }
+
+    setLifecycleError(null);
+    try {
+      if (subgoal.deletedAt) {
+        await dataRepository.restoreSubgoal(user.id, subgoal.id);
+      } else {
+        await dataRepository.softDeleteSubgoal(user.id, subgoal.id);
+      }
+
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setLifecycleError(getErrorMessage(repositoryError, "We could not update subgoal archive state."));
+    }
+  }
+
+  async function handleTaskArchiveToggle(task: Task) {
+    if (!user) {
+      return;
+    }
+
+    setLifecycleError(null);
+    try {
+      if (task.deletedAt) {
+        await dataRepository.restoreTask(user.id, task.id);
+      } else {
+        await dataRepository.softDeleteTask(user.id, task.id);
+      }
+
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setLifecycleError(getErrorMessage(repositoryError, "We could not update task archive state."));
     }
   }
 
@@ -242,11 +307,16 @@ export function MigrationDataPreview() {
       </div>
 
       {loadError ? <p className="mt-4 text-sm text-red-700">{loadError}</p> : null}
+      {lifecycleError ? <p className="mt-2 text-sm text-red-700">{lifecycleError}</p> : null}
 
       <div className="mt-5 grid gap-4 md:grid-cols-3">
         <MetricCard label="Profile" value={snapshot?.profile ? "Ready" : "Missing"} />
         <MetricCard label="Professional goals" value={String(snapshot?.professionalGoals.length ?? 0)} />
         <MetricCard label="Personal goals" value={String(snapshot?.personalGoals.length ?? 0)} />
+        <MetricCard
+          label="Archived goals"
+          value={String(allGoals.filter((goal) => goal.deletedAt !== null).length)}
+        />
         <MetricCard label="Sample subgoals" value={String(snapshot?.sampleSubgoals.length ?? 0)} />
         <MetricCard label="Sample tasks" value={String(snapshot?.sampleTasks.length ?? 0)} />
       </div>
@@ -389,11 +459,13 @@ export function MigrationDataPreview() {
             title="Professional"
             goals={snapshot?.professionalGoals ?? []}
             onEdit={startEditing}
+            onToggleArchive={handleGoalArchiveToggle}
           />
           <GoalList
             title="Personal"
             goals={snapshot?.personalGoals ?? []}
             onEdit={startEditing}
+            onToggleArchive={handleGoalArchiveToggle}
           />
         </article>
 
@@ -409,8 +481,24 @@ export function MigrationDataPreview() {
                 <ul className="mt-2 space-y-2 text-sm text-slate-700">
                   {snapshot.sampleSubgoals.slice(0, 5).map((subgoal) => (
                     <li key={subgoal.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                      <p className="font-medium text-slate-900">{subgoal.title}</p>
-                      <p className="mt-1 text-xs text-slate-500">{subgoal.id}</p>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-slate-900">
+                            {subgoal.title}
+                            {subgoal.deletedAt ? (
+                              <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Archived</span>
+                            ) : null}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">{subgoal.id}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSubgoalArchiveToggle(subgoal)}
+                          className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                        >
+                          {subgoal.deletedAt ? "Restore" : "Archive"}
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -423,8 +511,24 @@ export function MigrationDataPreview() {
                 <ul className="mt-2 space-y-2 text-sm text-slate-700">
                   {snapshot.sampleTasks.slice(0, 5).map((task) => (
                     <li key={task.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                      <p className="font-medium text-slate-900">{task.title}</p>
-                      <p className="mt-1 text-xs text-slate-500">{task.id}</p>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-slate-900">
+                            {task.title}
+                            {task.deletedAt ? (
+                              <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Archived</span>
+                            ) : null}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">{task.id}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleTaskArchiveToggle(task)}
+                          className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                        >
+                          {task.deletedAt ? "Restore" : "Archive"}
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -534,10 +638,12 @@ function GoalList({
   title,
   goals,
   onEdit,
+  onToggleArchive,
 }: {
   title: string;
   goals: Goal[];
   onEdit: (goal: Goal) => void;
+  onToggleArchive: (goal: Goal) => void;
 }) {
   return (
     <div className="mt-3">
@@ -548,18 +654,33 @@ function GoalList({
             <li key={goal.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-medium text-slate-900">{goal.title}</p>
+                  <p className="font-medium text-slate-900">
+                    {goal.title}
+                    {goal.deletedAt ? (
+                      <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Archived</span>
+                    ) : null}
+                  </p>
                   <p className="mt-1 text-xs text-slate-500">
                     {goal.status.replaceAll("_", " ")} · {goal.timeframe || "No timeframe"}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onEdit(goal)}
-                  className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                >
-                  Edit
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(goal)}
+                    disabled={goal.deletedAt !== null}
+                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onToggleArchive(goal)}
+                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                  >
+                    {goal.deletedAt ? "Restore" : "Archive"}
+                  </button>
+                </div>
               </div>
             </li>
           ))}
