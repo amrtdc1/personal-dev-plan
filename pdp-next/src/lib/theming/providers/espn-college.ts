@@ -1,0 +1,132 @@
+import allowlistData from "@/lib/theming/data/espn-d1-allowlist.json";
+
+const COLLEGE_FOOTBALL_TEAMS_ENDPOINT =
+  "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams";
+
+type EspnLogo = {
+  href?: string;
+  rel?: string[];
+};
+
+type EspnTeam = {
+  id?: string;
+  displayName?: string;
+  abbreviation?: string;
+  slug?: string;
+  color?: string;
+  alternateColor?: string;
+  logos?: EspnLogo[];
+};
+
+type EspnTeamsPayload = {
+  sports?: Array<{
+    leagues?: Array<{
+      teams?: Array<{
+        team?: EspnTeam;
+      }>;
+    }>;
+  }>;
+};
+
+type D1AllowlistEntry = {
+  id: string;
+  displayName: string;
+  abbreviation: string;
+  subdivision: "FBS" | "FCS";
+};
+
+export type CollegeThemeTeam = {
+  id: string;
+  displayName: string;
+  abbreviation: string;
+  slug: string;
+  subdivision: "FBS" | "FCS";
+  logoUrl: string | null;
+  darkLogoUrl: string | null;
+  colors: {
+    primary: string | null;
+    secondary: string | null;
+  };
+};
+
+const ALLOWLIST_ENTRIES: D1AllowlistEntry[] = (allowlistData.teams ?? []) as D1AllowlistEntry[];
+const ALLOWLIST_BY_ID = new Map(ALLOWLIST_ENTRIES.map((entry) => [entry.id, entry]));
+
+function normalizeHex(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.startsWith("#") ? value : `#${value}`;
+  return /^#[0-9a-fA-F]{6}$/.test(normalized) ? normalized.toLowerCase() : null;
+}
+
+function pickLogo(team: EspnTeam, preferredRel: string): string | null {
+  const logos = Array.isArray(team.logos) ? team.logos : [];
+
+  const exactRel = logos.find((logo) => Array.isArray(logo.rel) && logo.rel.includes(preferredRel));
+  if (exactRel?.href) {
+    return exactRel.href;
+  }
+
+  const fullDefault = logos.find(
+    (logo) => Array.isArray(logo.rel) && logo.rel.includes("full") && logo.rel.includes("default")
+  );
+  if (fullDefault?.href) {
+    return fullDefault.href;
+  }
+
+  return logos.find((logo) => typeof logo.href === "string")?.href ?? null;
+}
+
+function normalizeTeam(team: EspnTeam, allowlistEntry: D1AllowlistEntry): CollegeThemeTeam {
+  return {
+    id: allowlistEntry.id,
+    displayName: team.displayName ?? allowlistEntry.displayName,
+    abbreviation: team.abbreviation ?? allowlistEntry.abbreviation,
+    slug: team.slug ?? "",
+    subdivision: allowlistEntry.subdivision,
+    logoUrl: pickLogo(team, "primary_logo_on_white_color"),
+    darkLogoUrl: pickLogo(team, "primary_logo_on_black_color"),
+    colors: {
+      primary: normalizeHex(team.color),
+      secondary: normalizeHex(team.alternateColor),
+    },
+  };
+}
+
+export function normalizeEspnCollegeTeams(payload: EspnTeamsPayload): CollegeThemeTeam[] {
+  const rawTeams = payload.sports?.[0]?.leagues?.[0]?.teams ?? [];
+  const normalizedTeams: CollegeThemeTeam[] = [];
+
+  for (const rawTeam of rawTeams) {
+    const team = rawTeam.team;
+    if (!team?.id) {
+      continue;
+    }
+
+    const allowlistEntry = ALLOWLIST_BY_ID.get(team.id);
+    if (!allowlistEntry) {
+      continue;
+    }
+
+    normalizedTeams.push(normalizeTeam(team, allowlistEntry));
+  }
+
+  normalizedTeams.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  return normalizedTeams;
+}
+
+export async function fetchEspnCollegeTeams(fetchImpl: typeof fetch = fetch): Promise<CollegeThemeTeam[]> {
+  const response = await fetchImpl(COLLEGE_FOOTBALL_TEAMS_ENDPOINT);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ESPN teams: ${response.status}`);
+  }
+
+  const payload = (await response.json()) as EspnTeamsPayload;
+  return normalizeEspnCollegeTeams(payload);
+}
+
+export function getD1AllowlistIds(): string[] {
+  return ALLOWLIST_ENTRIES.map((entry) => entry.id);
+}
