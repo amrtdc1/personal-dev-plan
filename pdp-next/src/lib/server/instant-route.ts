@@ -2,25 +2,15 @@ import { NextResponse } from "next/server";
 import type { Goal, ItemStatus, Subgoal, Task } from "@/lib/domain/types";
 import { validateStatusUpdate } from "@/lib/data/validation";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
-import { InstantAuthError } from "@/lib/server/instant-auth";
+import { resolveInstantRouteError } from "@/lib/server/instant-error-response";
+import {
+  InstantRouteBadRequestError,
+  InstantRouteNotFoundError,
+} from "@/lib/server/instant-errors";
 
 type StatusUpdatePayload = {
   status?: ItemStatus;
 };
-
-export class InstantRouteBadRequestError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InstantRouteBadRequestError";
-  }
-}
-
-export class InstantRouteNotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InstantRouteNotFoundError";
-  }
-}
 
 export function requireRouteParam(value: string, label: string) {
   if (!value) {
@@ -106,21 +96,6 @@ export async function findOwnedTask(ownerUid: string, taskId: string) {
 }
 
 export function instantRouteErrorResponse(error: unknown) {
-  if (error instanceof InstantAuthError) {
-    return NextResponse.json({ error: error.message }, { status: 401 });
-  }
-
-  if (error instanceof InstantRouteNotFoundError) {
-    return NextResponse.json({ error: error.message }, { status: 404 });
-  }
-
-  if (error instanceof InstantRouteBadRequestError) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
-  }
-
-  if (error instanceof Error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
-  }
-
-  return NextResponse.json({ error: "Unexpected server error." }, { status: 500 });
+  const response = resolveInstantRouteError(error);
+  return NextResponse.json(response.payload, { status: response.status });
 }

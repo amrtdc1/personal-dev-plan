@@ -1,7 +1,7 @@
 import type { Goal, GoalType, Subgoal, Task } from "@/lib/domain/types";
 import { validateReorderIds } from "@/lib/data/validation";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
-import { InstantRouteBadRequestError } from "@/lib/server/instant-route";
+import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 
 type ReorderGoalsPayload = {
   type?: GoalType;
