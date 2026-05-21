@@ -44,6 +44,7 @@
 - [x] Implement owner-scoped purge execution for expired soft-deleted records
 - [x] Stand up Vercel preview deployment for migration smoke testing
 - [x] Wire preview smoke check into PR validation via GitHub Actions deployment status
+- [x] Add regression tests for protected write payload parsers (goals/subgoals/tasks)
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).
