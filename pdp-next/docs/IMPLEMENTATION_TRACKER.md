@@ -42,7 +42,7 @@
 - [x] Enforce restore-window retention checks on restore endpoints
 - [x] Add protected API tests for auth/ownership/query validation/error mapping
 - [x] Implement owner-scoped purge execution for expired soft-deleted records
-- [ ] Stand up Vercel preview deployment for migration smoke testing
+- [x] Stand up Vercel preview deployment for migration smoke testing
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).
