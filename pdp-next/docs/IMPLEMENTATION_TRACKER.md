@@ -46,6 +46,7 @@
 - [x] Wire preview smoke check into PR validation via GitHub Actions deployment status
 - [x] Add regression tests for protected write payload parsers (goals/subgoals/tasks)
 - [x] Add ESPN logo URL sanitization and remote image domain allowlist guardrails
+- [x] Add strict markdown renderer utility with XSS-focused regression tests for journal content
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).
