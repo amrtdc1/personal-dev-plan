@@ -14,9 +14,17 @@ function createTxTable(table: string) {
         return {
           update(payload: Record<string, unknown>) {
             return {
+              op: "update",
               table,
               entityId: String(entityId),
               payload,
+            };
+          },
+          delete() {
+            return {
+              op: "delete",
+              table,
+              entityId: String(entityId),
             };
           },
         };
@@ -335,6 +343,114 @@ describe("dataRepository soft-delete cascade", () => {
       "Task can no longer be restored because the restore window has expired.",
     );
     expect(transactMock).not.toHaveBeenCalled();
+  });
+
+  it("purges expired deleted records and cascades purge to descendants of expired goals", async () => {
+    queryOnceMock.mockImplementation(async (query: Record<string, unknown>) => {
+      if ("goals" in query) {
+        return {
+          data: {
+            goals: [
+              buildGoal({
+                id: "goal-expired",
+                deletedAt: "2026-05-01T09:00:00.000Z",
+                purgeAt: "2026-05-20T09:00:00.000Z",
+              }),
+              buildGoal({
+                id: "goal-active",
+                deletedAt: null,
+                purgeAt: null,
+              }),
+              buildGoal({
+                id: "goal-not-expired",
+                deletedAt: "2026-05-20T09:00:00.000Z",
+                purgeAt: "2026-05-30T09:00:00.000Z",
+              }),
+            ],
+          },
+        };
+      }
+
+      if ("subgoals" in query) {
+        return {
+          data: {
+            subgoals: [
+              buildSubgoal({
+                id: "subgoal-under-expired-goal",
+                goalId: "goal-expired",
+                deletedAt: "2026-05-20T09:00:00.000Z",
+                purgeAt: "2026-05-30T09:00:00.000Z",
+              }),
+              buildSubgoal({
+                id: "subgoal-expired-direct",
+                goalId: "goal-active",
+                deletedAt: "2026-05-15T09:00:00.000Z",
+                purgeAt: "2026-05-20T09:00:00.000Z",
+              }),
+              buildSubgoal({
+                id: "subgoal-not-expired",
+                goalId: "goal-not-expired",
+                deletedAt: "2026-05-20T09:00:00.000Z",
+                purgeAt: "2026-05-30T09:00:00.000Z",
+              }),
+            ],
+          },
+        };
+      }
+
+      return {
+        data: {
+          tasks: [
+            buildTask({
+              id: "task-under-purged-subgoal",
+              subgoalId: "subgoal-under-expired-goal",
+              deletedAt: "2026-05-20T09:00:00.000Z",
+              purgeAt: "2026-05-30T09:00:00.000Z",
+            }),
+            buildTask({
+              id: "task-expired-direct",
+              subgoalId: "subgoal-not-expired",
+              deletedAt: "2026-05-10T09:00:00.000Z",
+              purgeAt: "2026-05-20T09:00:00.000Z",
+            }),
+            buildTask({
+              id: "task-not-expired",
+              subgoalId: "subgoal-not-expired",
+              deletedAt: "2026-05-20T09:00:00.000Z",
+              purgeAt: "2026-05-30T09:00:00.000Z",
+            }),
+          ],
+        },
+      };
+    });
+
+    const summary = await dataRepository.purgeExpiredDeletedEntities("user-1");
+
+    expect(summary).toEqual({
+      goals: 1,
+      subgoals: 2,
+      tasks: 2,
+      purgedAt: NOW_ISO,
+    });
+
+    expect(transactMock).toHaveBeenCalledTimes(1);
+    const [mutations] = transactMock.mock.calls[0] as [Array<{ op: string; table: string; entityId: string }>];
+    expect(mutations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ op: "delete", table: "goals", entityId: "goal-expired" }),
+        expect.objectContaining({ op: "delete", table: "subgoals", entityId: "subgoal-under-expired-goal" }),
+        expect.objectContaining({ op: "delete", table: "subgoals", entityId: "subgoal-expired-direct" }),
+        expect.objectContaining({ op: "delete", table: "tasks", entityId: "task-under-purged-subgoal" }),
+        expect.objectContaining({ op: "delete", table: "tasks", entityId: "task-expired-direct" }),
+      ]),
+    );
+    expect(mutations).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ entityId: "goal-not-expired" }),
+        expect.objectContaining({ entityId: "subgoal-not-expired" }),
+        expect.objectContaining({ entityId: "task-not-expired" }),
+      ]),
+    );
   });
 
   it("updates goal status and percent complete", async () => {

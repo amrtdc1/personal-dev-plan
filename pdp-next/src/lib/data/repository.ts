@@ -21,8 +21,11 @@ type ListOptions = {
 
 type TransactionMutation =
   | ReturnType<(typeof db.tx.goals)[string]["update"]>
+  | ReturnType<(typeof db.tx.goals)[string]["delete"]>
   | ReturnType<(typeof db.tx.subgoals)[string]["update"]>
-  | ReturnType<(typeof db.tx.tasks)[string]["update"]>;
+  | ReturnType<(typeof db.tx.subgoals)[string]["delete"]>
+  | ReturnType<(typeof db.tx.tasks)[string]["update"]>
+  | ReturnType<(typeof db.tx.tasks)[string]["delete"]>;
 
 export type SaveGoalInput = {
   goalId?: string;
@@ -78,6 +81,12 @@ export type DataRepository = {
   reorderTasks: (ownerUid: string, subgoalId: string, orderedTaskIds: string[]) => Promise<Task[]>;
   softDeleteTask: (ownerUid: string, taskId: string) => Promise<Task>;
   restoreTask: (ownerUid: string, taskId: string) => Promise<Task>;
+  purgeExpiredDeletedEntities: (ownerUid: string) => Promise<{
+    goals: number;
+    subgoals: number;
+    tasks: number;
+    purgedAt: string;
+  }>;
   listJournalEntries: (ownerUid: string) => Promise<JournalEntry[]>;
   getUserProfile: (ownerUid: string) => Promise<UserProfile | null>;
 };
@@ -724,6 +733,60 @@ export const dataRepository: DataRepository = {
       updatedAt: now,
     };
   },
+  async purgeExpiredDeletedEntities(ownerUid) {
+    ensureClientMutationSupport();
+
+    const nowIso = new Date().toISOString();
+    const [goals, subgoals, tasks] = await Promise.all([
+      dataRepository.listGoals(ownerUid, "professional", { includeDeleted: true }).then(async (professionalGoals) => {
+        const personalGoals = await dataRepository.listGoals(ownerUid, "personal", { includeDeleted: true });
+        return [...professionalGoals, ...personalGoals];
+      }),
+      listAllSubgoalsForOwner(ownerUid),
+      listAllTasksForOwner(ownerUid),
+    ]);
+
+    const expiredGoalIds = new Set(
+      goals
+        .filter((goal) => isExpiredSoftDeletedEntity(goal.deletedAt, goal.purgeAt, nowIso))
+        .map((goal) => goal.id),
+    );
+
+    const expiredSubgoalIds = new Set(
+      subgoals
+        .filter(
+          (subgoal) =>
+            isExpiredSoftDeletedEntity(subgoal.deletedAt, subgoal.purgeAt, nowIso) || expiredGoalIds.has(subgoal.goalId),
+        )
+        .map((subgoal) => subgoal.id),
+    );
+
+    const expiredTaskIds = new Set(
+      tasks
+        .filter(
+          (task) =>
+            isExpiredSoftDeletedEntity(task.deletedAt, task.purgeAt, nowIso) || expiredSubgoalIds.has(task.subgoalId),
+        )
+        .map((task) => task.id),
+    );
+
+    const mutations: TransactionMutation[] = [
+      ...Array.from(expiredTaskIds, (taskId) => db.tx.tasks[taskId].delete()),
+      ...Array.from(expiredSubgoalIds, (subgoalId) => db.tx.subgoals[subgoalId].delete()),
+      ...Array.from(expiredGoalIds, (goalId) => db.tx.goals[goalId].delete()),
+    ];
+
+    if (mutations.length > 0) {
+      await db.transact(mutations);
+    }
+
+    return {
+      goals: expiredGoalIds.size,
+      subgoals: expiredSubgoalIds.size,
+      tasks: expiredTaskIds.size,
+      purgedAt: nowIso,
+    };
+  },
   async listJournalEntries() {
     throw new UnsupportedRepositoryError();
   },
@@ -850,6 +913,47 @@ function assertRestoreWindowOpen(restoreUntil: string | null, entityLabel: strin
   if (Number.isNaN(expiry) || expiry < Date.now()) {
     throw new Error(`${entityLabel} can no longer be restored because the restore window has expired.`);
   }
+}
+
+function isExpiredSoftDeletedEntity(deletedAt: string | null, purgeAt: string | null, nowIso: string) {
+  if (!deletedAt || !purgeAt) {
+    return false;
+  }
+
+  const purgeAtMs = Date.parse(purgeAt);
+  if (Number.isNaN(purgeAtMs)) {
+    return false;
+  }
+
+  return purgeAtMs <= Date.parse(nowIso);
+}
+
+async function listAllSubgoalsForOwner(ownerUid: string) {
+  const data = await runClientQuery<{ subgoals?: Subgoal[] }>({
+    subgoals: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  return data.subgoals ?? [];
+}
+
+async function listAllTasksForOwner(ownerUid: string) {
+  const data = await runClientQuery<{ tasks?: Task[] }>({
+    tasks: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  return data.tasks ?? [];
 }
 
 async function reorderEntities<TEntity extends { id: string; orderIndex: number; updatedAt: string }>(input: {
