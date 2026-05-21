@@ -26,8 +26,8 @@ export default function Home() {
             <li>Completed: environment template and docs baseline</li>
             <li>Completed: initial PWA manifest and service worker placeholder</li>
             <li>Completed: InstantDB Magic Code auth slice</li>
-            <li>Completed: repository-backed profile and goals read slice</li>
-            <li>Next: create/update flows for goals, subgoals, and tasks</li>
+            <li>Completed: repository-backed goals, subgoals, and tasks CRUD/status/reorder flows</li>
+            <li>Completed: first protected Instant server mutation route</li>
           </ul>
         </article>
 
@@ -45,8 +45,8 @@ export default function Home() {
       <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Next coding steps</h2>
         <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
-          <li>Implement create and update flows for goals in InstantDB.</li>
-          <li>Wire subgoals and tasks behind the same repository contract.</li>
+          <li>Expand protected server mutations beyond goal status updates.</li>
+          <li>Push the current schema to InstantDB and add locked-down permissions.</li>
           <li>Introduce offline queue strategy and reconcile flow.</li>
           <li>Add Google as an optional secondary auth provider.</li>
         </ol>

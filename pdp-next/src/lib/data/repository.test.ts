@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { vi } from "vitest";
 import type { Goal, Subgoal, Task } from "@/lib/domain/types";
 
 const { queryOnceMock, transactMock } = vi.hoisted(() => ({
@@ -275,5 +275,148 @@ describe("dataRepository soft-delete cascade", () => {
     expect(mutations).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ entityId: "task-b" })]),
     );
+  });
+
+  it("updates goal status and percent complete", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        goals: [buildGoal({ id: "goal-status", status: "not_started", percentComplete: 0 })],
+      },
+    });
+
+    const result = await dataRepository.updateGoalStatus("user-1", "goal-status", "done");
+
+    expect(result.status).toBe("done");
+    expect(result.percentComplete).toBe(100);
+    expect(result.updatedAt).toBe(NOW_ISO);
+    expect(transactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: "goals",
+        entityId: "goal-status",
+        payload: expect.objectContaining({
+          status: "done",
+          percentComplete: 100,
+          updatedAt: NOW_ISO,
+        }),
+      }),
+    );
+  });
+
+  it("reorders goals using the supplied id order", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        goals: [
+          buildGoal({ id: "goal-a", orderIndex: 0, updatedAt: "2026-05-10T00:00:00.000Z" }),
+          buildGoal({ id: "goal-b", orderIndex: 1, updatedAt: "2026-05-11T00:00:00.000Z" }),
+        ],
+      },
+    });
+
+    const result = await dataRepository.reorderGoals("user-1", "professional", ["goal-b", "goal-a"]);
+
+    expect(result.map((goal) => [goal.id, goal.orderIndex])).toEqual([
+      ["goal-b", 0],
+      ["goal-a", 1],
+    ]);
+
+    expect(transactMock).toHaveBeenCalledTimes(1);
+    const [mutations] = transactMock.mock.calls[0] as [Array<{ table: string; entityId: string; payload: Record<string, unknown> }>];
+
+    expect(mutations).toEqual([
+      expect.objectContaining({
+        table: "goals",
+        entityId: "goal-b",
+        payload: expect.objectContaining({ orderIndex: 0, updatedAt: NOW_ISO }),
+      }),
+      expect.objectContaining({
+        table: "goals",
+        entityId: "goal-a",
+        payload: expect.objectContaining({ orderIndex: 1, updatedAt: NOW_ISO }),
+      }),
+    ]);
+  });
+
+  it("updates subgoal status and percent complete", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        subgoals: [buildSubgoal({ id: "subgoal-status", status: "not_started", percentComplete: 0 })],
+      },
+    });
+
+    const result = await dataRepository.updateSubgoalStatus("user-1", "subgoal-status", "in_progress");
+
+    expect(result.status).toBe("in_progress");
+    expect(result.percentComplete).toBe(50);
+    expect(transactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: "subgoals",
+        entityId: "subgoal-status",
+        payload: expect.objectContaining({
+          status: "in_progress",
+          percentComplete: 50,
+          updatedAt: NOW_ISO,
+        }),
+      }),
+    );
+  });
+
+  it("reorders subgoals using the supplied id order", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        subgoals: [
+          buildSubgoal({ id: "subgoal-a", orderIndex: 0 }),
+          buildSubgoal({ id: "subgoal-b", orderIndex: 1 }),
+        ],
+      },
+    });
+
+    const result = await dataRepository.reorderSubgoals("user-1", "goal-1", ["subgoal-b", "subgoal-a"]);
+
+    expect(result.map((subgoal) => [subgoal.id, subgoal.orderIndex])).toEqual([
+      ["subgoal-b", 0],
+      ["subgoal-a", 1],
+    ]);
+  });
+
+  it("updates task status and percent complete", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        tasks: [buildTask({ id: "task-status", status: "not_started", percentComplete: 0 })],
+      },
+    });
+
+    const result = await dataRepository.updateTaskStatus("user-1", "task-status", "done");
+
+    expect(result.status).toBe("done");
+    expect(result.percentComplete).toBe(100);
+    expect(transactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: "tasks",
+        entityId: "task-status",
+        payload: expect.objectContaining({
+          status: "done",
+          percentComplete: 100,
+          updatedAt: NOW_ISO,
+        }),
+      }),
+    );
+  });
+
+  it("reorders tasks using the supplied id order", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        tasks: [
+          buildTask({ id: "task-a", orderIndex: 0 }),
+          buildTask({ id: "task-b", orderIndex: 1 }),
+        ],
+      },
+    });
+
+    const result = await dataRepository.reorderTasks("user-1", "subgoal-1", ["task-b", "task-a"]);
+
+    expect(result.map((task) => [task.id, task.orderIndex])).toEqual([
+      ["task-b", 0],
+      ["task-a", 1],
+    ]);
   });
 });

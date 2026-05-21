@@ -1,12 +1,28 @@
-import { id, type InstaQLParams, type InstantUnknownSchemaDef } from "@instantdb/react";
+import { id, type InstaQLParams } from "@instantdb/react";
 import { db, isInstantConfigured } from "@/lib/instantdb/client";
 import { env } from "@/lib/config/env";
 import { statusToPercent } from "@/lib/domain/status";
-import type { Goal, GoalType, JournalEntry, Subgoal, Task, UserProfile } from "@/lib/domain/types";
+import type { Goal, GoalType, ItemStatus, JournalEntry, Subgoal, Task, UserProfile } from "@/lib/domain/types";
+import type { AppSchema } from "@/lib/instantdb/schema";
+import {
+  assertOwnedGoal,
+  assertOwnedSubgoal,
+  assertOwnedTask,
+  validateGoalWrite,
+  validateReorderIds,
+  validateStatusUpdate,
+  validateSubgoalWrite,
+  validateTaskWrite,
+} from "@/lib/data/validation";
 
 type ListOptions = {
   includeDeleted?: boolean;
 };
+
+type TransactionMutation =
+  | ReturnType<(typeof db.tx.goals)[string]["update"]>
+  | ReturnType<(typeof db.tx.subgoals)[string]["update"]>
+  | ReturnType<(typeof db.tx.tasks)[string]["update"]>;
 
 export type SaveGoalInput = {
   goalId?: string;
@@ -46,14 +62,20 @@ export type SaveTaskInput = {
 export type DataRepository = {
   listGoals: (ownerUid: string, type: GoalType, options?: ListOptions) => Promise<Goal[]>;
   saveGoal: (input: SaveGoalInput) => Promise<Goal>;
+  updateGoalStatus: (ownerUid: string, goalId: string, status: ItemStatus) => Promise<Goal>;
+  reorderGoals: (ownerUid: string, type: GoalType, orderedGoalIds: string[]) => Promise<Goal[]>;
   softDeleteGoal: (ownerUid: string, goalId: string) => Promise<Goal>;
   restoreGoal: (ownerUid: string, goalId: string) => Promise<Goal>;
   listSubgoals: (ownerUid: string, goalId: string, options?: ListOptions) => Promise<Subgoal[]>;
   saveSubgoal: (input: SaveSubgoalInput) => Promise<Subgoal>;
+  updateSubgoalStatus: (ownerUid: string, subgoalId: string, status: ItemStatus) => Promise<Subgoal>;
+  reorderSubgoals: (ownerUid: string, goalId: string, orderedSubgoalIds: string[]) => Promise<Subgoal[]>;
   softDeleteSubgoal: (ownerUid: string, subgoalId: string) => Promise<Subgoal>;
   restoreSubgoal: (ownerUid: string, subgoalId: string) => Promise<Subgoal>;
   listTasks: (ownerUid: string, subgoalId: string, options?: ListOptions) => Promise<Task[]>;
   saveTask: (input: SaveTaskInput) => Promise<Task>;
+  updateTaskStatus: (ownerUid: string, taskId: string, status: ItemStatus) => Promise<Task>;
+  reorderTasks: (ownerUid: string, subgoalId: string, orderedTaskIds: string[]) => Promise<Task[]>;
   softDeleteTask: (ownerUid: string, taskId: string) => Promise<Task>;
   restoreTask: (ownerUid: string, taskId: string) => Promise<Task>;
   listJournalEntries: (ownerUid: string) => Promise<JournalEntry[]>;
@@ -86,18 +108,7 @@ export const dataRepository: DataRepository = {
     ensureClientMutationSupport();
 
     const now = new Date().toISOString();
-    const trimmedTitle = input.title.trim();
-    const trimmedDescription = input.description.trim();
-
-    if (!trimmedTitle) {
-      throw new Error("Goal title is required.");
-    }
-
-    if (input.projectedStartDate && input.projectedEndDate) {
-      if (input.projectedStartDate > input.projectedEndDate) {
-        throw new Error("Projected end date must be on or after the start date.");
-      }
-    }
+    const { trimmedTitle, trimmedDescription } = validateGoalWrite(input);
 
     const nextOrderIndex = input.existingGoal
       ? input.existingGoal.type === input.type
@@ -162,13 +173,51 @@ export const dataRepository: DataRepository = {
 
     return goal;
   },
+  async updateGoalStatus(ownerUid, goalId, status) {
+    ensureClientMutationSupport();
+
+    validateStatusUpdate(status);
+
+    const goal = assertOwnedGoal(await findGoalById(ownerUid, goalId), ownerUid);
+
+    const now = new Date().toISOString();
+    const percentComplete = statusToPercent(status);
+
+    await db.transact(
+      db.tx.goals[goalId].update({
+        status,
+        percentComplete,
+        updatedAt: now,
+      }),
+    );
+
+    return {
+      ...goal,
+      status,
+      percentComplete,
+      updatedAt: now,
+    };
+  },
+  async reorderGoals(ownerUid, type, orderedGoalIds) {
+    ensureClientMutationSupport();
+
+    const goals = await dataRepository.listGoals(ownerUid, type);
+    validateReorderIds(goals, orderedGoalIds, "goal");
+
+    return reorderEntities({
+      entities: goals,
+      orderedIds: orderedGoalIds,
+      updateMutation: (goalId, orderIndex, updatedAt) =>
+        db.tx.goals[goalId].update({
+          orderIndex,
+          updatedAt,
+        }),
+    });
+  },
   async softDeleteGoal(ownerUid, goalId) {
     ensureClientMutationSupport();
 
-    const goal = await findGoalById(ownerUid, goalId);
-    if (!goal) {
-      throw new Error("Goal was not found for this user.");
-    }
+    const goal = assertOwnedGoal(await findGoalById(ownerUid, goalId), ownerUid);
 
     if (goal.deletedAt) {
       return goal;
@@ -230,10 +279,7 @@ export const dataRepository: DataRepository = {
   async restoreGoal(ownerUid, goalId) {
     ensureClientMutationSupport();
 
-    const goal = await findGoalById(ownerUid, goalId);
-    if (!goal) {
-      throw new Error("Goal was not found for this user.");
-    }
+    const goal = assertOwnedGoal(await findGoalById(ownerUid, goalId), ownerUid);
 
     if (!goal.deletedAt) {
       return goal;
@@ -311,18 +357,7 @@ export const dataRepository: DataRepository = {
     ensureClientMutationSupport();
 
     const now = new Date().toISOString();
-    const trimmedTitle = input.title.trim();
-    const trimmedDescription = input.description.trim();
-
-    if (!trimmedTitle) {
-      throw new Error("Subgoal title is required.");
-    }
-
-    if (input.projectedStartDate && input.projectedEndDate) {
-      if (input.projectedStartDate > input.projectedEndDate) {
-        throw new Error("Projected end date must be on or after the start date.");
-      }
-    }
+    const { trimmedTitle, trimmedDescription } = validateSubgoalWrite(input);
 
     const nextOrderIndex = input.existingSubgoal
       ? input.existingSubgoal.goalId === input.goalId
@@ -384,13 +419,51 @@ export const dataRepository: DataRepository = {
 
     return subgoal;
   },
+  async updateSubgoalStatus(ownerUid, subgoalId, status) {
+    ensureClientMutationSupport();
+
+    validateStatusUpdate(status);
+
+    const subgoal = assertOwnedSubgoal(await findSubgoalById(ownerUid, subgoalId), ownerUid);
+
+    const now = new Date().toISOString();
+    const percentComplete = statusToPercent(status);
+
+    await db.transact(
+      db.tx.subgoals[subgoalId].update({
+        status,
+        percentComplete,
+        updatedAt: now,
+      }),
+    );
+
+    return {
+      ...subgoal,
+      status,
+      percentComplete,
+      updatedAt: now,
+    };
+  },
+  async reorderSubgoals(ownerUid, goalId, orderedSubgoalIds) {
+    ensureClientMutationSupport();
+
+    const subgoals = await dataRepository.listSubgoals(ownerUid, goalId);
+    validateReorderIds(subgoals, orderedSubgoalIds, "subgoal");
+
+    return reorderEntities({
+      entities: subgoals,
+      orderedIds: orderedSubgoalIds,
+      updateMutation: (subgoalId, orderIndex, updatedAt) =>
+        db.tx.subgoals[subgoalId].update({
+          orderIndex,
+          updatedAt,
+        }),
+    });
+  },
   async softDeleteSubgoal(ownerUid, subgoalId) {
     ensureClientMutationSupport();
 
-    const subgoal = await findSubgoalById(ownerUid, subgoalId);
-    if (!subgoal) {
-      throw new Error("Subgoal was not found for this user.");
-    }
+    const subgoal = assertOwnedSubgoal(await findSubgoalById(ownerUid, subgoalId), ownerUid);
 
     if (subgoal.deletedAt) {
       return subgoal;
@@ -434,10 +507,7 @@ export const dataRepository: DataRepository = {
   async restoreSubgoal(ownerUid, subgoalId) {
     ensureClientMutationSupport();
 
-    const subgoal = await findSubgoalById(ownerUid, subgoalId);
-    if (!subgoal) {
-      throw new Error("Subgoal was not found for this user.");
-    }
+    const subgoal = assertOwnedSubgoal(await findSubgoalById(ownerUid, subgoalId), ownerUid);
 
     if (!subgoal.deletedAt) {
       return subgoal;
@@ -496,12 +566,7 @@ export const dataRepository: DataRepository = {
     ensureClientMutationSupport();
 
     const now = new Date().toISOString();
-    const trimmedTitle = input.title.trim();
-    const trimmedNotes = input.notes.trim();
-
-    if (!trimmedTitle) {
-      throw new Error("Task title is required.");
-    }
+    const { trimmedTitle, trimmedNotes } = validateTaskWrite(input);
 
     const nextOrderIndex = input.existingTask
       ? input.existingTask.subgoalId === input.subgoalId
@@ -551,13 +616,51 @@ export const dataRepository: DataRepository = {
 
     return task;
   },
+  async updateTaskStatus(ownerUid, taskId, status) {
+    ensureClientMutationSupport();
+
+    validateStatusUpdate(status);
+
+    const task = assertOwnedTask(await findTaskById(ownerUid, taskId), ownerUid);
+
+    const now = new Date().toISOString();
+    const percentComplete = statusToPercent(status);
+
+    await db.transact(
+      db.tx.tasks[taskId].update({
+        status,
+        percentComplete,
+        updatedAt: now,
+      }),
+    );
+
+    return {
+      ...task,
+      status,
+      percentComplete,
+      updatedAt: now,
+    };
+  },
+  async reorderTasks(ownerUid, subgoalId, orderedTaskIds) {
+    ensureClientMutationSupport();
+
+    const tasks = await dataRepository.listTasks(ownerUid, subgoalId);
+    validateReorderIds(tasks, orderedTaskIds, "task");
+
+    return reorderEntities({
+      entities: tasks,
+      orderedIds: orderedTaskIds,
+      updateMutation: (taskId, orderIndex, updatedAt) =>
+        db.tx.tasks[taskId].update({
+          orderIndex,
+          updatedAt,
+        }),
+    });
+  },
   async softDeleteTask(ownerUid, taskId) {
     ensureClientMutationSupport();
 
-    const task = await findTaskById(ownerUid, taskId);
-    if (!task) {
-      throw new Error("Task was not found for this user.");
-    }
+    const task = assertOwnedTask(await findTaskById(ownerUid, taskId), ownerUid);
 
     if (task.deletedAt) {
       return task;
@@ -588,10 +691,7 @@ export const dataRepository: DataRepository = {
   async restoreTask(ownerUid, taskId) {
     ensureClientMutationSupport();
 
-    const task = await findTaskById(ownerUid, taskId);
-    if (!task) {
-      throw new Error("Task was not found for this user.");
-    }
+    const task = assertOwnedTask(await findTaskById(ownerUid, taskId), ownerUid);
 
     if (!task.deletedAt) {
       return task;
@@ -636,10 +736,7 @@ export const dataRepository: DataRepository = {
   },
 };
 
-async function runClientQuery<
-  TData,
-  TQuery extends InstaQLParams<InstantUnknownSchemaDef> = InstaQLParams<InstantUnknownSchemaDef>,
->(query: TQuery) {
+async function runClientQuery<TData>(query: InstaQLParams<AppSchema>) {
   if (!isInstantConfigured) {
     throw new UnsupportedRepositoryError("InstantDB is not configured.");
   }
@@ -650,7 +747,7 @@ async function runClientQuery<
     );
   }
 
-  const result = await db.queryOnce(query);
+  const result = await db.queryOnce(query as Parameters<typeof db.queryOnce>[0]);
   return (result.data ?? {}) as TData;
 }
 
@@ -739,6 +836,36 @@ function shouldRestoreCascadeEntity(entityDeletedAt: string | null, parentDelete
   }
 
   return entityDeletedAt === parentDeletedAt;
+}
+
+async function reorderEntities<TEntity extends { id: string; orderIndex: number; updatedAt: string }>(input: {
+  entities: TEntity[];
+  orderedIds: string[];
+  updateMutation: (entityId: string, orderIndex: number, updatedAt: string) => TransactionMutation;
+}) {
+  const now = new Date().toISOString();
+  const entityById = new Map(input.entities.map((entity) => [entity.id, entity]));
+  const reordered = input.orderedIds.map((entityId, orderIndex) => {
+    const entity = entityById.get(entityId);
+
+    if (!entity) {
+      throw new Error("Reorder request referenced an entity that was not loaded.");
+    }
+
+    return {
+      ...entity,
+      orderIndex,
+      updatedAt: now,
+    };
+  });
+
+  const mutations = reordered.map((entity) =>
+    input.updateMutation(entity.id, entity.orderIndex, entity.updatedAt),
+  );
+
+  await db.transact(mutations);
+
+  return reordered;
 }
 
 async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {
