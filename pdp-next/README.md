@@ -31,6 +31,26 @@ npm run lint
 npm run build
 ```
 
+## Vercel Preview Smoke Check
+
+This repository is connected to Vercel for automatic preview deployments per feature branch.
+After pushing a branch and waiting for the preview URL, run:
+
+```bash
+npm run smoke:preview -- https://<your-preview-url>
+```
+
+or set `PREVIEW_URL` and run:
+
+```bash
+PREVIEW_URL=https://<your-preview-url> npm run smoke:preview
+```
+
+The smoke check validates:
+- app shell (`/`) is reachable
+- PWA manifest (`/manifest.webmanifest`) is served
+- protected goals API (`/api/goals`) rejects anonymous access with `401`
+
 ## Docs
 
 - `docs/IMPLEMENTATION_TRACKER.md`
@@ -65,6 +85,6 @@ The app now exposes Instant's first-party auth sync route at `/api/instant` and 
 
 1. Expand protected server mutations beyond goal status updates.
 2. Stand up `instant.perms.ts` and push permissions after the schema stabilizes.
-3. Vercel preview deployment and smoke-test workflow.
+3. Harden preview smoke checks and wire into PR validation.
 4. Offline write queue and sync reconciliation.
 5. Secure calendar feed and ICS export routes.
