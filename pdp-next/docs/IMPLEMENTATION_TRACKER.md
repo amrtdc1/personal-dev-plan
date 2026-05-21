@@ -23,8 +23,8 @@
 
 ## Immediate Next Tasks
 - [ ] Build legacy parity checklist from current `main.js`
-- [ ] Add repository-backed subgoal and task reads
-- [ ] Add repository-backed subgoal and task write flows
+- [x] Add repository-backed subgoal and task reads
+- [x] Add repository-backed subgoal and task write flows
 - [ ] Add architecture ADR for auth provider decision
 - [ ] Add baseline security checklist (XSS, ownership checks, destructive actions)
 - [x] Generate starter D1 allowlist from local ESPN payload sample

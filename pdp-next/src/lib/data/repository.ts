@@ -16,11 +16,35 @@ export type SaveGoalInput = {
   existingGoal?: Goal;
 };
 
+export type SaveSubgoalInput = {
+  subgoalId?: string;
+  ownerUid: string;
+  goalId: string;
+  title: string;
+  description: string;
+  projectedStartDate: string | null;
+  projectedEndDate: string | null;
+  timeframeLabel?: string;
+  existingSubgoal?: Subgoal;
+};
+
+export type SaveTaskInput = {
+  taskId?: string;
+  ownerUid: string;
+  subgoalId: string;
+  title: string;
+  notes: string;
+  dueDate: string | null;
+  existingTask?: Task;
+};
+
 export type DataRepository = {
   listGoals: (ownerUid: string, type: GoalType) => Promise<Goal[]>;
   saveGoal: (input: SaveGoalInput) => Promise<Goal>;
   listSubgoals: (ownerUid: string, goalId: string) => Promise<Subgoal[]>;
+  saveSubgoal: (input: SaveSubgoalInput) => Promise<Subgoal>;
   listTasks: (ownerUid: string, subgoalId: string) => Promise<Task[]>;
+  saveTask: (input: SaveTaskInput) => Promise<Task>;
   listJournalEntries: (ownerUid: string) => Promise<JournalEntry[]>;
   getUserProfile: (ownerUid: string) => Promise<UserProfile | null>;
 };
@@ -141,6 +165,83 @@ export const dataRepository: DataRepository = {
 
     return [...(data.subgoals ?? [])].sort(compareSubgoals);
   },
+  async saveSubgoal(input) {
+    ensureClientMutationSupport();
+
+    const now = new Date().toISOString();
+    const trimmedTitle = input.title.trim();
+    const trimmedDescription = input.description.trim();
+
+    if (!trimmedTitle) {
+      throw new Error("Subgoal title is required.");
+    }
+
+    if (input.projectedStartDate && input.projectedEndDate) {
+      if (input.projectedStartDate > input.projectedEndDate) {
+        throw new Error("Projected end date must be on or after the start date.");
+      }
+    }
+
+    const nextOrderIndex = input.existingSubgoal
+      ? input.existingSubgoal.goalId === input.goalId
+        ? input.existingSubgoal.orderIndex
+        : await getNextSubgoalOrderIndex(input.ownerUid, input.goalId)
+      : await getNextSubgoalOrderIndex(input.ownerUid, input.goalId);
+
+    const subgoalId = input.existingSubgoal?.id ?? input.subgoalId ?? id();
+    const subgoal: Subgoal = {
+      id: subgoalId,
+      ownerUid: input.ownerUid,
+      goalId: input.goalId,
+      title: trimmedTitle,
+      description: trimmedDescription,
+      timeframe: buildGoalTimeframe(
+        input.timeframeLabel,
+        input.projectedStartDate,
+        input.projectedEndDate,
+      ),
+      projectedStartDate: input.projectedStartDate,
+      projectedEndDate: input.projectedEndDate,
+      actualStartDate: input.existingSubgoal?.actualStartDate ?? null,
+      actualEndDate: input.existingSubgoal?.actualEndDate ?? null,
+      status: input.existingSubgoal?.status ?? "not_started",
+      percentComplete:
+        input.existingSubgoal?.percentComplete ??
+        statusToPercent(input.existingSubgoal?.status ?? "not_started"),
+      orderIndex: nextOrderIndex,
+      createdAt: input.existingSubgoal?.createdAt ?? now,
+      updatedAt: now,
+      deletedAt: input.existingSubgoal?.deletedAt ?? null,
+      deletedBy: input.existingSubgoal?.deletedBy ?? null,
+      restoreUntil: input.existingSubgoal?.restoreUntil ?? null,
+      purgeAt: input.existingSubgoal?.purgeAt ?? null,
+    };
+
+    await db.transact(
+      db.tx.subgoals[subgoalId].update({
+        ownerUid: subgoal.ownerUid,
+        goalId: subgoal.goalId,
+        title: subgoal.title,
+        description: subgoal.description,
+        timeframe: subgoal.timeframe,
+        projectedStartDate: subgoal.projectedStartDate,
+        projectedEndDate: subgoal.projectedEndDate,
+        actualStartDate: subgoal.actualStartDate,
+        actualEndDate: subgoal.actualEndDate,
+        status: subgoal.status,
+        percentComplete: subgoal.percentComplete,
+        orderIndex: subgoal.orderIndex,
+        createdAt: subgoal.createdAt,
+        updatedAt: subgoal.updatedAt,
+        deletedAt: subgoal.deletedAt,
+        deletedBy: subgoal.deletedBy,
+        restoreUntil: subgoal.restoreUntil,
+        purgeAt: subgoal.purgeAt,
+      }),
+    );
+
+    return subgoal;
+  },
   async listTasks(ownerUid, subgoalId) {
     const data = await runClientQuery<{ tasks?: Task[] }>({
       tasks: {
@@ -154,6 +255,65 @@ export const dataRepository: DataRepository = {
     });
 
     return [...(data.tasks ?? [])].sort(compareTasks);
+  },
+  async saveTask(input) {
+    ensureClientMutationSupport();
+
+    const now = new Date().toISOString();
+    const trimmedTitle = input.title.trim();
+    const trimmedNotes = input.notes.trim();
+
+    if (!trimmedTitle) {
+      throw new Error("Task title is required.");
+    }
+
+    const nextOrderIndex = input.existingTask
+      ? input.existingTask.subgoalId === input.subgoalId
+        ? input.existingTask.orderIndex
+        : await getNextTaskOrderIndex(input.ownerUid, input.subgoalId)
+      : await getNextTaskOrderIndex(input.ownerUid, input.subgoalId);
+
+    const taskId = input.existingTask?.id ?? input.taskId ?? id();
+    const task: Task = {
+      id: taskId,
+      ownerUid: input.ownerUid,
+      subgoalId: input.subgoalId,
+      title: trimmedTitle,
+      notes: trimmedNotes,
+      dueDate: input.dueDate,
+      status: input.existingTask?.status ?? "not_started",
+      percentComplete:
+        input.existingTask?.percentComplete ??
+        statusToPercent(input.existingTask?.status ?? "not_started"),
+      orderIndex: nextOrderIndex,
+      createdAt: input.existingTask?.createdAt ?? now,
+      updatedAt: now,
+      deletedAt: input.existingTask?.deletedAt ?? null,
+      deletedBy: input.existingTask?.deletedBy ?? null,
+      restoreUntil: input.existingTask?.restoreUntil ?? null,
+      purgeAt: input.existingTask?.purgeAt ?? null,
+    };
+
+    await db.transact(
+      db.tx.tasks[taskId].update({
+        ownerUid: task.ownerUid,
+        subgoalId: task.subgoalId,
+        title: task.title,
+        notes: task.notes,
+        dueDate: task.dueDate,
+        status: task.status,
+        percentComplete: task.percentComplete,
+        orderIndex: task.orderIndex,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+        deletedAt: task.deletedAt,
+        deletedBy: task.deletedBy,
+        restoreUntil: task.restoreUntil,
+        purgeAt: task.purgeAt,
+      }),
+    );
+
+    return task;
   },
   async listJournalEntries() {
     throw new UnsupportedRepositoryError();
@@ -206,6 +366,16 @@ function ensureClientMutationSupport() {
 async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {
   const goals = await dataRepository.listGoals(ownerUid, type);
   return goals.length;
+}
+
+async function getNextSubgoalOrderIndex(ownerUid: string, goalId: string) {
+  const subgoals = await dataRepository.listSubgoals(ownerUid, goalId);
+  return subgoals.length;
+}
+
+async function getNextTaskOrderIndex(ownerUid: string, subgoalId: string) {
+  const tasks = await dataRepository.listTasks(ownerUid, subgoalId);
+  return tasks.length;
 }
 
 function buildGoalTimeframe(

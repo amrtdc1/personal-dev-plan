@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { Goal, UserProfile } from "@/lib/domain/types";
+import type { Goal, Subgoal, Task, UserProfile } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 
@@ -10,8 +10,8 @@ type RepositorySnapshot = {
   professionalGoals: Goal[];
   personalGoals: Goal[];
   sampleGoalId: string | null;
-  sampleSubgoals: { id: string; title: string }[];
-  sampleTasks: { id: string; title: string }[];
+  sampleSubgoals: Subgoal[];
+  sampleTasks: Task[];
 };
 
 export function MigrationDataPreview() {
@@ -30,6 +30,16 @@ export function MigrationDataPreview() {
   const [goalIsFocus, setGoalIsFocus] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [subgoalTitle, setSubgoalTitle] = useState("");
+  const [subgoalDescription, setSubgoalDescription] = useState("");
+  const [subgoalTimeframeLabel, setSubgoalTimeframeLabel] = useState("");
+  const [isSavingSubgoal, setIsSavingSubgoal] = useState(false);
+  const [subgoalSaveError, setSubgoalSaveError] = useState<string | null>(null);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskNotes, setTaskNotes] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [isSavingTask, setIsSavingTask] = useState(false);
+  const [taskSaveError, setTaskSaveError] = useState<string | null>(null);
 
   const allGoals = useMemo(
     () => [
@@ -73,14 +83,8 @@ export function MigrationDataPreview() {
             professionalGoals,
             personalGoals,
             sampleGoalId: sampleGoal?.id ?? null,
-            sampleSubgoals: sampleSubgoals.map((subgoal) => ({
-              id: subgoal.id,
-              title: subgoal.title,
-            })),
-            sampleTasks: sampleTasks.map((task) => ({
-              id: task.id,
-              title: task.title,
-            })),
+            sampleSubgoals,
+            sampleTasks,
           });
         }
       } catch (repositoryError) {
@@ -103,6 +107,66 @@ export function MigrationDataPreview() {
 
   if (isLoading || error || !user) {
     return null;
+  }
+
+  async function handleSubgoalSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user || !snapshot?.sampleGoalId) {
+      return;
+    }
+
+    setIsSavingSubgoal(true);
+    setSubgoalSaveError(null);
+
+    try {
+      await dataRepository.saveSubgoal({
+        ownerUid: user.id,
+        goalId: snapshot.sampleGoalId,
+        title: subgoalTitle,
+        description: subgoalDescription,
+        projectedStartDate: null,
+        projectedEndDate: null,
+        timeframeLabel: subgoalTimeframeLabel,
+      });
+
+      setSubgoalTitle("");
+      setSubgoalDescription("");
+      setSubgoalTimeframeLabel("");
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setSubgoalSaveError(getErrorMessage(repositoryError, "We could not save the subgoal."));
+    } finally {
+      setIsSavingSubgoal(false);
+    }
+  }
+
+  async function handleTaskSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user || !snapshot?.sampleSubgoals[0]) {
+      return;
+    }
+
+    setIsSavingTask(true);
+    setTaskSaveError(null);
+
+    try {
+      await dataRepository.saveTask({
+        ownerUid: user.id,
+        subgoalId: snapshot.sampleSubgoals[0].id,
+        title: taskTitle,
+        notes: taskNotes,
+        dueDate: taskDueDate || null,
+      });
+
+      setTaskTitle("");
+      setTaskNotes("");
+      setTaskDueDate("");
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setTaskSaveError(getErrorMessage(repositoryError, "We could not save the task."));
+    } finally {
+      setIsSavingTask(false);
+    }
   }
 
   async function handleGoalSubmit(event: FormEvent<HTMLFormElement>) {
@@ -367,6 +431,84 @@ export function MigrationDataPreview() {
               ) : (
                 <p className="mt-2 text-sm text-slate-600">No tasks found for the sampled subgoal yet.</p>
               )}
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <form className="rounded-lg border border-slate-200 bg-white p-3" onSubmit={handleSubgoalSubmit}>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Create subgoal (sampled goal)</p>
+                  <label className="mt-2 block text-sm text-slate-700">
+                    Title
+                    <input
+                      value={subgoalTitle}
+                      onChange={(event) => setSubgoalTitle(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      placeholder="Break goal into measurable outcomes"
+                    />
+                  </label>
+                  <label className="mt-2 block text-sm text-slate-700">
+                    Description
+                    <textarea
+                      value={subgoalDescription}
+                      onChange={(event) => setSubgoalDescription(event.target.value)}
+                      className="mt-1 min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    />
+                  </label>
+                  <label className="mt-2 block text-sm text-slate-700">
+                    Timeframe label
+                    <input
+                      value={subgoalTimeframeLabel}
+                      onChange={(event) => setSubgoalTimeframeLabel(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      placeholder="Q4 2026"
+                    />
+                  </label>
+                  {subgoalSaveError ? <p className="mt-2 text-sm text-red-700">{subgoalSaveError}</p> : null}
+                  <button
+                    type="submit"
+                    disabled={isSavingSubgoal}
+                    className="mt-3 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {isSavingSubgoal ? "Saving..." : "Create subgoal"}
+                  </button>
+                </form>
+
+                <form className="rounded-lg border border-slate-200 bg-white p-3" onSubmit={handleTaskSubmit}>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Create task (first subgoal)</p>
+                  <label className="mt-2 block text-sm text-slate-700">
+                    Title
+                    <input
+                      value={taskTitle}
+                      onChange={(event) => setTaskTitle(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      placeholder="Define milestone and owner"
+                    />
+                  </label>
+                  <label className="mt-2 block text-sm text-slate-700">
+                    Notes
+                    <textarea
+                      value={taskNotes}
+                      onChange={(event) => setTaskNotes(event.target.value)}
+                      className="mt-1 min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    />
+                  </label>
+                  <label className="mt-2 block text-sm text-slate-700">
+                    Due date
+                    <input
+                      type="date"
+                      value={taskDueDate}
+                      onChange={(event) => setTaskDueDate(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    />
+                  </label>
+                  {taskSaveError ? <p className="mt-2 text-sm text-red-700">{taskSaveError}</p> : null}
+                  <button
+                    type="submit"
+                    disabled={isSavingTask || snapshot.sampleSubgoals.length === 0}
+                    className="mt-3 rounded-full bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {isSavingTask ? "Saving..." : "Create task"}
+                  </button>
+                </form>
+              </div>
             </>
           ) : (
             <p className="mt-2 text-sm text-slate-600">
