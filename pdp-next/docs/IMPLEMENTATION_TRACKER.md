@@ -25,8 +25,8 @@
 - [x] Build legacy parity checklist from current `main.js`
 - [x] Add repository-backed subgoal and task reads
 - [x] Add repository-backed subgoal and task write flows
-- [ ] Add architecture ADR for auth provider decision
-- [ ] Add baseline security checklist (XSS, ownership checks, destructive actions)
+- [x] Add architecture ADR for auth provider decision
+- [x] Add baseline security checklist (XSS, ownership checks, destructive actions)
 - [x] Generate starter D1 allowlist from local ESPN payload sample
 - [x] Add non-invasive ESPN theming provider scaffold and normalization contract
 
