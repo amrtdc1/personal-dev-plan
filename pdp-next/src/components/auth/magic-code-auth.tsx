@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { env } from "@/lib/config/env";
+import { validateUserProfileWrite } from "@/lib/data/validation";
 import { db, isInstantConfigured } from "@/lib/instantdb/client";
 
 type AuthStage = "enter-email" | "enter-code";
@@ -60,19 +61,34 @@ function SignedInPanel() {
 
     async function bootstrapProfile() {
       try {
+        const profilePayload = validateUserProfileWrite({
+          uid: currentUser.id,
+          email: currentUser.email ?? "",
+          firstName: null,
+          lastName: null,
+          displayName: currentUser.email ?? null,
+          theme: "light",
+          palette: "ocean",
+          timezone: getDefaultTimezone(),
+          retentionDays: env.softDeleteRetentionDays,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          collegeLogoUrl: null,
+        });
+
         await db.transact(
           db.tx.userProfiles[currentUser.id].update({
-            uid: currentUser.id,
-            email: currentUser.email ?? "",
-            firstName: null,
-            lastName: null,
-            displayName: currentUser.email ?? null,
-            theme: "light",
-            palette: "ocean",
-            timezone: getDefaultTimezone(),
-            retentionDays: env.softDeleteRetentionDays,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            uid: profilePayload.uid,
+            email: profilePayload.email,
+            firstName: profilePayload.firstName ?? null,
+            lastName: profilePayload.lastName ?? null,
+            displayName: profilePayload.displayName,
+            theme: profilePayload.theme,
+            palette: profilePayload.palette,
+            timezone: profilePayload.timezone,
+            retentionDays: profilePayload.retentionDays,
+            createdAt: profilePayload.createdAt,
+            updatedAt: profilePayload.updatedAt,
           }),
         );
       } catch (transactionError) {

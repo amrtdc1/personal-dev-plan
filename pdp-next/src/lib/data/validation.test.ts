@@ -8,6 +8,7 @@ import {
   validateStatusUpdate,
   validateSubgoalWrite,
   validateTaskWrite,
+  validateUserProfileWrite,
 } from "@/lib/data/validation";
 
 describe("data validation helpers", () => {
@@ -92,5 +93,59 @@ describe("data validation helpers", () => {
     expect(() => assertOwnedGoal(goal, "user-2")).toThrow("Goal does not belong to this user.");
     expect(() => assertOwnedSubgoal(null, "user-1")).toThrow("Subgoal was not found for this user.");
     expect(() => assertOwnedTask(task, "user-2")).toThrow("Task does not belong to this user.");
+  });
+
+  it("normalizes and validates user profile writes", () => {
+    const result = validateUserProfileWrite({
+      uid: "user-1",
+      email: "  USER@EXAMPLE.COM ",
+      firstName: null,
+      lastName: null,
+      displayName: "User",
+      theme: "light",
+      palette: "ocean",
+      timezone: "UTC",
+      retentionDays: 60,
+      createdAt: "2026-05-21T00:00:00.000Z",
+      updatedAt: "2026-05-21T00:00:00.000Z",
+      collegeLogoUrl: "https://a.espncdn.com/i/teamlogos/ncaa/500/9.png",
+    });
+
+    expect(result.email).toBe("user@example.com");
+    expect(result.collegeLogoUrl).toBe("https://a.espncdn.com/i/teamlogos/ncaa/500/9.png");
+  });
+
+  it("rejects profile writes with non-https college logo URLs", () => {
+    expect(() =>
+      validateUserProfileWrite({
+        uid: "user-1",
+        email: "user@example.com",
+        displayName: "User",
+        theme: "light",
+        palette: "ocean",
+        timezone: "UTC",
+        retentionDays: 60,
+        createdAt: "2026-05-21T00:00:00.000Z",
+        updatedAt: "2026-05-21T00:00:00.000Z",
+        collegeLogoUrl: "http://a.espncdn.com/i/teamlogos/ncaa/500/9.png",
+      }),
+    ).toThrow("College logo URL must use https.");
+  });
+
+  it("rejects profile writes with non-allowlisted college logo hosts", () => {
+    expect(() =>
+      validateUserProfileWrite({
+        uid: "user-1",
+        email: "user@example.com",
+        displayName: "User",
+        theme: "light",
+        palette: "ocean",
+        timezone: "UTC",
+        retentionDays: 60,
+        createdAt: "2026-05-21T00:00:00.000Z",
+        updatedAt: "2026-05-21T00:00:00.000Z",
+        collegeLogoUrl: "https://evil.example.com/logo.png",
+      }),
+    ).toThrow("College logo URL host is not allowlisted.");
   });
 });

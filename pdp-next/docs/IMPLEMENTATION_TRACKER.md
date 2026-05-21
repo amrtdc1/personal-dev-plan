@@ -47,6 +47,7 @@
 - [x] Add regression tests for protected write payload parsers (goals/subgoals/tasks)
 - [x] Add ESPN logo URL sanitization and remote image domain allowlist guardrails
 - [x] Add strict markdown renderer utility with XSS-focused regression tests for journal content
+- [x] Enforce persist-path validation for college logo URLs on profile writes
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).
