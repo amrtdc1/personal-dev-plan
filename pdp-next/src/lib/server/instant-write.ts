@@ -6,118 +6,29 @@ import {
 } from "@/lib/data/validation";
 import { statusToPercent } from "@/lib/domain/status";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
-import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {
   findOwnedGoal,
   findOwnedSubgoal,
   findOwnedTask,
 } from "@/lib/server/instant-route";
+import {
+  parseGoalWritePayload,
+  parseSubgoalWritePayload,
+  parseTaskWritePayload,
+} from "@/lib/server/instant-write-params";
+import type {
+  ParsedGoalWritePayload,
+  ParsedSubgoalWritePayload,
+  ParsedTaskWritePayload,
+} from "@/lib/server/instant-write-params";
 
-type GoalWritePayload = {
-  type?: GoalType;
-  title?: string;
-  description?: string;
-  projectedStartDate?: string | null;
-  projectedEndDate?: string | null;
-  timeframeLabel?: string;
-  isFocus?: boolean;
+export {
+  parseGoalWritePayload,
+  parseSubgoalWritePayload,
+  parseTaskWritePayload,
 };
 
-type SubgoalWritePayload = {
-  goalId?: string;
-  title?: string;
-  description?: string;
-  projectedStartDate?: string | null;
-  projectedEndDate?: string | null;
-  timeframeLabel?: string;
-};
-
-type TaskWritePayload = {
-  subgoalId?: string;
-  title?: string;
-  notes?: string;
-  dueDate?: string | null;
-};
-
-export async function parseGoalWritePayload(request: Request) {
-  const payload = await parseJsonPayload<GoalWritePayload>(request);
-
-  if (!payload.type || !isGoalType(payload.type)) {
-    throw new InstantRouteBadRequestError("Goal type is required.");
-  }
-
-  if (typeof payload.title !== "string") {
-    throw new InstantRouteBadRequestError("Goal title is required.");
-  }
-
-  if (typeof payload.description !== "string") {
-    throw new InstantRouteBadRequestError("Goal description is required.");
-  }
-
-  if (typeof payload.isFocus !== "boolean") {
-    throw new InstantRouteBadRequestError("Goal focus flag is required.");
-  }
-
-  return {
-    type: payload.type,
-    title: payload.title,
-    description: payload.description,
-    projectedStartDate: parseOptionalString(payload.projectedStartDate),
-    projectedEndDate: parseOptionalString(payload.projectedEndDate),
-    timeframeLabel: payload.timeframeLabel,
-    isFocus: payload.isFocus,
-  };
-}
-
-export async function parseSubgoalWritePayload(request: Request) {
-  const payload = await parseJsonPayload<SubgoalWritePayload>(request);
-
-  if (!payload.goalId) {
-    throw new InstantRouteBadRequestError("Goal id is required.");
-  }
-
-  if (typeof payload.title !== "string") {
-    throw new InstantRouteBadRequestError("Subgoal title is required.");
-  }
-
-  if (typeof payload.description !== "string") {
-    throw new InstantRouteBadRequestError("Subgoal description is required.");
-  }
-
-  return {
-    goalId: payload.goalId,
-    title: payload.title,
-    description: payload.description,
-    projectedStartDate: parseOptionalString(payload.projectedStartDate),
-    projectedEndDate: parseOptionalString(payload.projectedEndDate),
-    timeframeLabel: payload.timeframeLabel,
-  };
-}
-
-export async function parseTaskWritePayload(request: Request) {
-  const payload = await parseJsonPayload<TaskWritePayload>(request);
-
-  if (!payload.subgoalId) {
-    throw new InstantRouteBadRequestError("Subgoal id is required.");
-  }
-
-  if (typeof payload.title !== "string") {
-    throw new InstantRouteBadRequestError("Task title is required.");
-  }
-
-  if (typeof payload.notes !== "string") {
-    throw new InstantRouteBadRequestError("Task notes are required.");
-  }
-
-  return {
-    subgoalId: payload.subgoalId,
-    title: payload.title,
-    notes: payload.notes,
-    dueDate: parseOptionalString(payload.dueDate),
-  };
-}
-
-export async function createGoal(ownerUid: string, payload: Awaited<ReturnType<typeof parseGoalWritePayload>>) {
+export async function createGoal(ownerUid: string, payload: ParsedGoalWritePayload) {
   const instantAdmin = getInstantAdmin();
   const now = new Date().toISOString();
   const nextOrderIndex = await getNextGoalOrderIndex(ownerUid, payload.type);
@@ -190,7 +101,7 @@ export async function createGoal(ownerUid: string, payload: Awaited<ReturnType<t
 export async function updateGoal(
   ownerUid: string,
   goalId: string,
-  payload: Awaited<ReturnType<typeof parseGoalWritePayload>>,
+  payload: ParsedGoalWritePayload,
 ) {
   const instantAdmin = getInstantAdmin();
   const existingGoal = await findOwnedGoal(ownerUid, goalId);
@@ -248,7 +159,7 @@ export async function updateGoal(
 
 export async function createSubgoal(
   ownerUid: string,
-  payload: Awaited<ReturnType<typeof parseSubgoalWritePayload>>,
+  payload: ParsedSubgoalWritePayload,
 ) {
   const instantAdmin = getInstantAdmin();
   await findOwnedGoal(ownerUid, payload.goalId);
@@ -318,7 +229,7 @@ export async function createSubgoal(
 export async function updateSubgoal(
   ownerUid: string,
   subgoalId: string,
-  payload: Awaited<ReturnType<typeof parseSubgoalWritePayload>>,
+  payload: ParsedSubgoalWritePayload,
 ) {
   const instantAdmin = getInstantAdmin();
   const existingSubgoal = await findOwnedSubgoal(ownerUid, subgoalId);
@@ -370,7 +281,7 @@ export async function updateSubgoal(
   return subgoal;
 }
 
-export async function createTask(ownerUid: string, payload: Awaited<ReturnType<typeof parseTaskWritePayload>>) {
+export async function createTask(ownerUid: string, payload: ParsedTaskWritePayload) {
   const instantAdmin = getInstantAdmin();
   await findOwnedSubgoal(ownerUid, payload.subgoalId);
 
@@ -429,7 +340,7 @@ export async function createTask(ownerUid: string, payload: Awaited<ReturnType<t
 export async function updateTask(
   ownerUid: string,
   taskId: string,
-  payload: Awaited<ReturnType<typeof parseTaskWritePayload>>,
+  payload: ParsedTaskWritePayload,
 ) {
   const instantAdmin = getInstantAdmin();
   const existingTask = await findOwnedTask(ownerUid, taskId);
@@ -473,26 +384,6 @@ export async function updateTask(
   );
 
   return task;
-}
-
-async function parseJsonPayload<TPayload>(request: Request) {
-  try {
-    return (await request.json()) as TPayload;
-  } catch {
-    throw new InstantRouteBadRequestError("Request body must be valid JSON.");
-  }
-}
-
-function parseOptionalString(value: unknown) {
-  if (value === undefined || value === null || value === "") {
-    return null;
-  }
-
-  if (typeof value !== "string") {
-    throw new InstantRouteBadRequestError("Optional date fields must be strings when provided.");
-  }
-
-  return value;
 }
 
 async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {
@@ -568,6 +459,3 @@ function getGoalThemeColor(type: GoalType) {
   return type === "professional" ? "#2563eb" : "#ec4899";
 }
 
-function isGoalType(value: string): value is GoalType {
-  return value === "professional" || value === "personal";
-}
