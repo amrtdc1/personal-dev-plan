@@ -23,8 +23,7 @@ Track minimum security controls required before parity cutover.
 | Remote media restrictions | Restrict external image domains and sanitize stored URLs | Not Started | Required for upcoming logo/theme provider integration |
 
 ## Immediate Actions (Next)
-1. Add protected route tests for auth, ownership, query validation, and error status mapping.
-2. Implement purge execution for soft-deleted records.
-3. Define and implement centralized payload validation for goals/subgoals/tasks/journal writes.
-4. Introduce safe markdown strategy for journal (sanitize or strict markdown renderer).
-5. Add domain allowlist validation for remote logo URLs before render/persist.
+1. Implement purge execution for soft-deleted records.
+2. Define and implement centralized payload validation for goals/subgoals/tasks/journal writes.
+3. Introduce safe markdown strategy for journal (sanitize or strict markdown renderer).
+4. Add domain allowlist validation for remote logo URLs before render/persist.
