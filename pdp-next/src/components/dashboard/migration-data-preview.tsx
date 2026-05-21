@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { Goal, Subgoal, Task, UserProfile } from "@/lib/domain/types";
+import type { Goal, ItemStatus, Subgoal, Task, UserProfile } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 
@@ -40,7 +40,7 @@ export function MigrationDataPreview() {
   const [taskDueDate, setTaskDueDate] = useState("");
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [taskSaveError, setTaskSaveError] = useState<string | null>(null);
-  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const allGoals = useMemo(
     () => [
@@ -149,7 +149,7 @@ export function MigrationDataPreview() {
       return;
     }
 
-    setLifecycleError(null);
+    setActionError(null);
     try {
       if (goal.deletedAt) {
         await dataRepository.restoreGoal(user.id, goal.id);
@@ -163,7 +163,7 @@ export function MigrationDataPreview() {
 
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
-      setLifecycleError(getErrorMessage(repositoryError, "We could not update goal archive state."));
+      setActionError(getErrorMessage(repositoryError, "We could not update goal archive state."));
     }
   }
 
@@ -172,7 +172,7 @@ export function MigrationDataPreview() {
       return;
     }
 
-    setLifecycleError(null);
+    setActionError(null);
     try {
       if (subgoal.deletedAt) {
         await dataRepository.restoreSubgoal(user.id, subgoal.id);
@@ -182,7 +182,7 @@ export function MigrationDataPreview() {
 
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
-      setLifecycleError(getErrorMessage(repositoryError, "We could not update subgoal archive state."));
+      setActionError(getErrorMessage(repositoryError, "We could not update subgoal archive state."));
     }
   }
 
@@ -191,7 +191,7 @@ export function MigrationDataPreview() {
       return;
     }
 
-    setLifecycleError(null);
+    setActionError(null);
     try {
       if (task.deletedAt) {
         await dataRepository.restoreTask(user.id, task.id);
@@ -201,7 +201,110 @@ export function MigrationDataPreview() {
 
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
-      setLifecycleError(getErrorMessage(repositoryError, "We could not update task archive state."));
+      setActionError(getErrorMessage(repositoryError, "We could not update task archive state."));
+    }
+  }
+
+  async function handleGoalStatusChange(goal: Goal, status: ItemStatus) {
+    if (!user || goal.deletedAt) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await dataRepository.updateGoalStatus(user.id, goal.id, status);
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not update goal status."));
+    }
+  }
+
+  async function handleSubgoalStatusChange(subgoal: Subgoal, status: ItemStatus) {
+    if (!user || subgoal.deletedAt) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await dataRepository.updateSubgoalStatus(user.id, subgoal.id, status);
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not update subgoal status."));
+    }
+  }
+
+  async function handleTaskStatusChange(task: Task, status: ItemStatus) {
+    if (!user || task.deletedAt) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await dataRepository.updateTaskStatus(user.id, task.id, status);
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not update task status."));
+    }
+  }
+
+  async function handleGoalMove(goal: Goal, direction: "up" | "down") {
+    if (!user) {
+      return;
+    }
+
+    const orderedIds = buildReorderedActiveIds(
+      allGoals.filter((candidate) => candidate.type === goal.type),
+      goal.id,
+      direction,
+    );
+    if (!orderedIds) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await dataRepository.reorderGoals(user.id, goal.type, orderedIds);
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not reorder goals."));
+    }
+  }
+
+  async function handleSubgoalMove(subgoal: Subgoal, direction: "up" | "down") {
+    if (!user) {
+      return;
+    }
+
+    const orderedIds = buildReorderedActiveIds(snapshot?.sampleSubgoals ?? [], subgoal.id, direction);
+    if (!orderedIds) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await dataRepository.reorderSubgoals(user.id, subgoal.goalId, orderedIds);
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not reorder subgoals."));
+    }
+  }
+
+  async function handleTaskMove(task: Task, direction: "up" | "down") {
+    if (!user) {
+      return;
+    }
+
+    const orderedIds = buildReorderedActiveIds(snapshot?.sampleTasks ?? [], task.id, direction);
+    if (!orderedIds) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await dataRepository.reorderTasks(user.id, task.subgoalId, orderedIds);
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not reorder tasks."));
     }
   }
 
@@ -307,7 +410,7 @@ export function MigrationDataPreview() {
       </div>
 
       {loadError ? <p className="mt-4 text-sm text-red-700">{loadError}</p> : null}
-      {lifecycleError ? <p className="mt-2 text-sm text-red-700">{lifecycleError}</p> : null}
+      {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
 
       <div className="mt-5 grid gap-4 md:grid-cols-3">
         <MetricCard label="Profile" value={snapshot?.profile ? "Ready" : "Missing"} />
@@ -460,12 +563,16 @@ export function MigrationDataPreview() {
             goals={snapshot?.professionalGoals ?? []}
             onEdit={startEditing}
             onToggleArchive={handleGoalArchiveToggle}
+            onStatusChange={handleGoalStatusChange}
+            onMove={handleGoalMove}
           />
           <GoalList
             title="Personal"
             goals={snapshot?.personalGoals ?? []}
             onEdit={startEditing}
             onToggleArchive={handleGoalArchiveToggle}
+            onStatusChange={handleGoalStatusChange}
+            onMove={handleGoalMove}
           />
         </article>
 
@@ -490,14 +597,47 @@ export function MigrationDataPreview() {
                             ) : null}
                           </p>
                           <p className="mt-1 text-xs text-slate-500">{subgoal.id}</p>
+                          <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Status
+                            <select
+                              value={subgoal.status}
+                              onChange={(event) => handleSubgoalStatusChange(subgoal, event.target.value as ItemStatus)}
+                              disabled={subgoal.deletedAt !== null}
+                              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                            >
+                              <option value="not_started">Not started</option>
+                              <option value="in_progress">In progress</option>
+                              <option value="done">Done</option>
+                            </select>
+                          </label>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleSubgoalArchiveToggle(subgoal)}
-                          className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                        >
-                          {subgoal.deletedAt ? "Restore" : "Archive"}
-                        </button>
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSubgoalMove(subgoal, "up")}
+                              disabled={subgoal.deletedAt !== null}
+                              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                            >
+                              Up
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSubgoalMove(subgoal, "down")}
+                              disabled={subgoal.deletedAt !== null}
+                              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                            >
+                              Down
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleSubgoalArchiveToggle(subgoal)}
+                            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                          >
+                            {subgoal.deletedAt ? "Restore" : "Archive"}
+                          </button>
+                        </div>
                       </div>
                     </li>
                   ))}
@@ -520,14 +660,47 @@ export function MigrationDataPreview() {
                             ) : null}
                           </p>
                           <p className="mt-1 text-xs text-slate-500">{task.id}</p>
+                          <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Status
+                            <select
+                              value={task.status}
+                              onChange={(event) => handleTaskStatusChange(task, event.target.value as ItemStatus)}
+                              disabled={task.deletedAt !== null}
+                              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                            >
+                              <option value="not_started">Not started</option>
+                              <option value="in_progress">In progress</option>
+                              <option value="done">Done</option>
+                            </select>
+                          </label>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleTaskArchiveToggle(task)}
-                          className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                        >
-                          {task.deletedAt ? "Restore" : "Archive"}
-                        </button>
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleTaskMove(task, "up")}
+                              disabled={task.deletedAt !== null}
+                              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                            >
+                              Up
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleTaskMove(task, "down")}
+                              disabled={task.deletedAt !== null}
+                              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                            >
+                              Down
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleTaskArchiveToggle(task)}
+                            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                          >
+                            {task.deletedAt ? "Restore" : "Archive"}
+                          </button>
+                        </div>
                       </div>
                     </li>
                   ))}
@@ -639,11 +812,15 @@ function GoalList({
   goals,
   onEdit,
   onToggleArchive,
+  onStatusChange,
+  onMove,
 }: {
   title: string;
   goals: Goal[];
   onEdit: (goal: Goal) => void;
   onToggleArchive: (goal: Goal) => void;
+  onStatusChange: (goal: Goal, status: ItemStatus) => void;
+  onMove: (goal: Goal, direction: "up" | "down") => void;
 }) {
   return (
     <div className="mt-3">
@@ -663,8 +840,37 @@ function GoalList({
                   <p className="mt-1 text-xs text-slate-500">
                     {goal.status.replaceAll("_", " ")} · {goal.timeframe || "No timeframe"}
                   </p>
+                  <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Status
+                    <select
+                      value={goal.status}
+                      onChange={(event) => onStatusChange(goal, event.target.value as ItemStatus)}
+                      disabled={goal.deletedAt !== null}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                    >
+                      <option value="not_started">Not started</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </label>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onMove(goal, "up")}
+                    disabled={goal.deletedAt !== null}
+                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                  >
+                    Up
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMove(goal, "down")}
+                    disabled={goal.deletedAt !== null}
+                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                  >
+                    Down
+                  </button>
                   <button
                     type="button"
                     onClick={() => onEdit(goal)}
@@ -701,4 +907,27 @@ function getErrorMessage(error: unknown, fallbackMessage: string) {
   }
 
   return fallbackMessage;
+}
+
+function buildReorderedActiveIds<TEntity extends { id: string; deletedAt: string | null }>(
+  entities: TEntity[],
+  entityId: string,
+  direction: "up" | "down",
+) {
+  const activeIds = entities.filter((entity) => entity.deletedAt === null).map((entity) => entity.id);
+  const currentIndex = activeIds.indexOf(entityId);
+
+  if (currentIndex === -1) {
+    return null;
+  }
+
+  const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+  if (targetIndex < 0 || targetIndex >= activeIds.length) {
+    return null;
+  }
+
+  const nextIds = [...activeIds];
+  const [movedId] = nextIds.splice(currentIndex, 1);
+  nextIds.splice(targetIndex, 0, movedId);
+  return nextIds;
 }

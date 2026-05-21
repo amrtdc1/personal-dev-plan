@@ -1,7 +1,7 @@
 # Implementation Tracker
 
 ## Current Phase
-- Phase 1 foundation and first data slices in progress
+- Phase 1 foundation complete; core parity and schema hardening in progress
 - Quick enablement completed: starter D1 allowlist + ESPN provider scaffold for post-parity theming track
 
 ## Milestones
@@ -15,6 +15,7 @@
 - [x] Implement first repository-backed goal create/update flows
 - [x] Define feature parity matrix from legacy app
 - [x] Implement soft-delete lifecycle primitives (60-day retention)
+- [x] Implement status and ordering parity for goals/subgoals/tasks
 - [ ] Implement core Goals/Sub-goals/Tasks parity
 - [ ] Implement offline-first write queue and sync UX
 - [ ] Implement ICS export + tokenized subscription feed
@@ -29,6 +30,14 @@
 - [x] Add baseline security checklist (XSS, ownership checks, destructive actions)
 - [x] Generate starter D1 allowlist from local ESPN payload sample
 - [x] Add non-invasive ESPN theming provider scaffold and normalization contract
+- [x] Add soft-delete cascade semantics and repository lifecycle tests
+- [x] Add status mutation and ordering mutation flows for goals/subgoals/tasks
+- [x] Formalize InstantDB schema for fresh-start migration (no Firebase backfill)
+- [x] Add first protected server mutation route for goal status updates
+- [x] Expand protected status mutation routes for subgoals and tasks
+- [ ] Expand route-level server-side ownership checks across protected data paths
+- [x] Centralize payload validation and shared ownership guard helpers
+- [ ] Stand up Vercel preview deployment for migration smoke testing
 
 ## Planned Enhancement Track: College Athletics Themes
 - Reference spec: `docs/COLLEGE_ATHLETICS_THEME_SPEC.md`
@@ -52,7 +61,7 @@
 	- Slice 3: Dark/light auto-derivation tuning + accessibility QA + persistence hardening.
 
 ## Status Check
-- On track with the migration sequence: foundation first, then auth, then profile bootstrap, then repository-backed reads.
-- Current gap is expected: writes, parity mapping, offline queueing, and calendar export are still pending by design and have not been skipped.
+- On track with the migration sequence: foundation, auth, profile bootstrap, repository-backed CRUD slices, and lifecycle primitives are complete.
+- Current gap is expected: broader protected route coverage, offline queueing, and calendar export are still pending by design and have not been skipped.
 - No current work has diverged from the agreed architecture of Next.js + InstantDB + incremental in-place migration.
 - College athletics theming is now explicitly in-plan as a post-parity enhancement track, so it will not get lost while migration-critical work continues.

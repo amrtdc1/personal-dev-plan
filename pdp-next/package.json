@@ -9,9 +9,12 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "generate:d1-allowlist": "node scripts/generate-d1-allowlist.mjs"
+    "generate:d1-allowlist": "node scripts/generate-d1-allowlist.mjs",
+    "instant:push:schema": "npx instant-cli@latest push schema",
+    "instant:push:perms": "npx instant-cli@latest push perms"
   },
   "dependencies": {
+    "@instantdb/admin": "^1.0.39",
     "@instantdb/react": "^1.0.38",
     "next": "16.2.6",
     "react": "19.2.4",
