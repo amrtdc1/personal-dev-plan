@@ -140,10 +140,10 @@ function SignedInShell() {
 
   const navItems = useMemo(
     () => [
-      { id: "dashboard" as const, label: "Dashboard" },
-      { id: "goals" as const, label: "Goals" },
-      { id: "calendar" as const, label: "Calendar" },
-      { id: "journal" as const, label: "Journal" },
+      { id: "dashboard" as const, label: "Dashboard", shortLabel: "Home", icon: "dashboard" as const },
+      { id: "goals" as const, label: "Goals", shortLabel: "Goals", icon: "goals" as const },
+      { id: "calendar" as const, label: "Calendar", shortLabel: "Calendar", icon: "calendar" as const },
+      { id: "journal" as const, label: "Journal", shortLabel: "Journal", icon: "journal" as const },
     ],
     [],
   );
@@ -231,46 +231,52 @@ function SignedInShell() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 py-6 md:px-8 md:py-8">
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 pb-24 pt-4 md:px-8 md:pb-8 md:pt-8">
       <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
           <div>
             <p className="text-sm font-medium uppercase tracking-wide text-blue-700">PDP Workspace</p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">Welcome back</h1>
             <p className="mt-2 text-sm text-slate-600">Signed in as {currentUser.email}</p>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
+          <div className="flex items-center justify-end gap-2 self-start">
+            <div className="inline-flex rounded-full border border-slate-300 bg-white p-1 shadow-sm">
               <button
                 type="button"
                 onClick={() => void handleQuickThemeChange("light")}
                 disabled={isThemeSaving}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition ${
                   themeChoice === "light" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
+                aria-label="Set light mode"
+                title="Light mode"
               >
-                Light
+                <SunIcon className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => void handleQuickThemeChange("dark")}
                 disabled={isThemeSaving}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition ${
                   themeChoice === "dark" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
+                aria-label="Set dark mode"
+                title="Dark mode"
               >
-                Dark
+                <MoonIcon className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => void handleQuickThemeChange("system")}
                 disabled={isThemeSaving}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition ${
                   themeChoice === "system" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
+                aria-label="Set system mode"
+                title="System mode"
               >
-                System
+                <SystemIcon className="h-4 w-4" />
               </button>
             </div>
 
@@ -314,7 +320,7 @@ function SignedInShell() {
 
         {themeError ? <p className="mt-3 text-sm text-red-700">{themeError}</p> : null}
 
-        <nav className="mt-4 flex flex-wrap gap-2" aria-label="Primary app sections">
+        <nav className="mt-4 hidden flex-wrap gap-2 sm:flex" aria-label="Primary app sections">
           {navItems.map((item) => {
             const isActive = activeSection === item.id;
             return (
@@ -346,6 +352,38 @@ function SignedInShell() {
       {activeSection === "calendar" ? <CalendarWorkspace /> : null}
       {activeSection === "journal" ? <JournalWorkspace /> : null}
       {activeSection === "profile" ? <ProfileSettings /> : null}
+
+      <nav
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur sm:hidden"
+        aria-label="Mobile app sections"
+      >
+        <div className="mx-auto grid max-w-6xl grid-cols-4">
+          {navItems.map((item) => {
+            const isActive = activeSection === item.id;
+            return (
+              <button
+                key={`mobile-${item.id}`}
+                type="button"
+                onClick={() => setActiveSection(item.id)}
+                className={`flex flex-col items-center gap-1 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 text-[11px] font-medium transition ${
+                  isActive ? "text-slate-900" : "text-slate-500"
+                }`}
+                aria-current={isActive ? "page" : undefined}
+              >
+                <span
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${
+                    isActive ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
+                  }`}
+                  aria-hidden="true"
+                >
+                  <SectionIcon type={item.icon} className="h-4 w-4" />
+                </span>
+                <span>{item.shortLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </main>
   );
 }
@@ -936,4 +974,71 @@ function applyThemeToDocument(theme: "light" | "dark" | "cwm") {
   }
 
   root.dataset.theme = theme;
+}
+
+function SunIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2.5M12 19.5V22M4.93 4.93 6.7 6.7M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07 6.7 17.3M17.3 6.7l1.77-1.77" />
+    </svg>
+  );
+}
+
+function MoonIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z" />
+    </svg>
+  );
+}
+
+function SystemIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8M12 16v4" />
+    </svg>
+  );
+}
+
+function SectionIcon({
+  type,
+  className,
+}: {
+  type: "dashboard" | "goals" | "calendar" | "journal";
+  className?: string;
+}) {
+  if (type === "goals") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+        <path d="M4 6h16M4 12h10M4 18h8" />
+      </svg>
+    );
+  }
+
+  if (type === "calendar") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+        <rect x="3" y="5" width="18" height="16" rx="2" />
+        <path d="M8 3v4M16 3v4M3 10h18" />
+      </svg>
+    );
+  }
+
+  if (type === "journal") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+        <path d="M6 4h10a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2V4Z" />
+        <path d="M8 8h7M8 12h7M8 16h5" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5 10.5V20h14v-9.5" />
+    </svg>
+  );
 }
