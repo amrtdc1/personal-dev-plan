@@ -53,6 +53,7 @@
 - [x] Add repository-backed journal workspace with CRUD and mood/tag/goal filters
 - [x] Add client-side offline write queue for save flows (goals/subgoals/tasks/journal)
 - [x] Add offline sync status panel with pending queue count and manual/auto replay hooks
+- [x] Add signed-in header account menu with quick light/dark/system shortcuts and profile access
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).

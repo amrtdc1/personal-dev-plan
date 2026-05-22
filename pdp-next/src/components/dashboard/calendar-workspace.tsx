@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import listPlugin from "@fullcalendar/list";
 import type { EventResizeDoneArg } from "@fullcalendar/interaction";
 import type {
   DateSelectArg,
@@ -89,10 +90,19 @@ export function CalendarWorkspace() {
     };
 
     updateCompactToolbar();
-    mediaQuery.addEventListener("change", updateCompactToolbar);
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", updateCompactToolbar);
+    } else {
+      mediaQuery.addListener(updateCompactToolbar);
+    }
 
     return () => {
-      mediaQuery.removeEventListener("change", updateCompactToolbar);
+      if (typeof mediaQuery.removeEventListener === "function") {
+        mediaQuery.removeEventListener("change", updateCompactToolbar);
+      } else {
+        mediaQuery.removeListener(updateCompactToolbar);
+      }
     };
   }, []);
 
@@ -748,7 +758,7 @@ export function CalendarWorkspace() {
     ? {
         left: "prev,next",
         center: "title",
-        right: "today",
+        right: "today dayGridMonth,listWeek",
       }
     : {
         left: "prev,next today",
@@ -782,7 +792,7 @@ export function CalendarWorkspace() {
       {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)] xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
-        <div className="order-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:order-1">
+        <div className="order-1 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:order-1">
           <div className="mb-3 grid gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Type filters</p>
@@ -844,9 +854,9 @@ export function CalendarWorkspace() {
           </div>
 
           <div className="overflow-x-auto">
-            <div className="min-w-[760px] lg:min-w-0">
+            <div className="min-w-[320px] md:min-w-[680px] lg:min-w-0">
               <FullCalendar
-                plugins={[dayGridPlugin, interactionPlugin]}
+                plugins={[dayGridPlugin, interactionPlugin, listPlugin]}
                 initialView="dayGridMonth"
                 height="auto"
                 headerToolbar={calendarToolbar}
@@ -904,7 +914,7 @@ export function CalendarWorkspace() {
           </div>
         </div>
 
-        <aside className="order-1 space-y-4 lg:order-2">
+        <aside className="order-2 space-y-4 lg:order-2">
           <form className="rounded-xl border border-slate-200 bg-slate-50 p-4" onSubmit={handleCreateSubmit}>
             <h3 className="text-sm font-semibold text-slate-900">Create from selected dates</h3>
             <p className="mt-1 text-xs text-slate-600">

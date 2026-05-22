@@ -120,6 +120,10 @@ function SignedOutLanding() {
 function SignedInShell() {
   const { user } = db.useAuth();
   const [activeSection, setActiveSection] = useState<AppSection>("dashboard");
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isThemeSaving, setIsThemeSaving] = useState(false);
+  const [themeError, setThemeError] = useState<string | null>(null);
+  const [themeOverride, setThemeOverride] = useState<"light" | "dark" | "cwm" | null>(null);
   const { data, isLoading: isProfileLoading } = db.useQuery(
     user
       ? {
@@ -140,14 +144,51 @@ function SignedInShell() {
       { id: "goals" as const, label: "Goals" },
       { id: "calendar" as const, label: "Calendar" },
       { id: "journal" as const, label: "Journal" },
-      { id: "profile" as const, label: "Profile & Theme" },
     ],
     [],
   );
 
+  const profile = data?.userProfiles?.[0] ?? null;
+  const storedTheme = themeOverride ?? normalizeStoredTheme(profile?.theme);
+  const themeChoice = toThemeChoice(storedTheme);
+
+  useEffect(() => {
+    applyThemeToDocument(storedTheme);
+
+    if (storedTheme !== "cwm" || typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleSystemChange = () => {
+      applyThemeToDocument("cwm");
+    };
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleSystemChange);
+    } else {
+      mediaQuery.addListener(handleSystemChange);
+    }
+
+    return () => {
+      if (typeof mediaQuery.removeEventListener === "function") {
+        mediaQuery.removeEventListener("change", handleSystemChange);
+      } else {
+        mediaQuery.removeListener(handleSystemChange);
+      }
+    };
+  }, [storedTheme]);
+
   if (!user) {
     return null;
   }
+
+  const currentUser = user;
+  const initials = getUserInitials(
+    profile?.firstName ?? null,
+    profile?.lastName ?? null,
+    currentUser.email ?? null,
+  );
 
   if (isProfileLoading) {
     return (
@@ -159,12 +200,34 @@ function SignedInShell() {
     );
   }
 
-  const profile = data?.userProfiles?.[0] ?? null;
   const needsOnboarding =
     !profile || !profile.firstName?.trim() || !profile.lastName?.trim() || !profile.timezone?.trim();
 
   if (needsOnboarding) {
-    return <FirstLoginOnboarding user={user} profile={profile} />;
+    return <FirstLoginOnboarding user={currentUser} profile={profile} />;
+  }
+
+  async function handleQuickThemeChange(nextChoice: ThemeChoice) {
+    const mappedTheme = nextChoice === "system" ? "cwm" : nextChoice;
+    setThemeError(null);
+    setThemeOverride(mappedTheme);
+    applyThemeToDocument(mappedTheme);
+    setIsThemeSaving(true);
+
+    try {
+      await db.transact(
+        db.tx.userProfiles[currentUser.id].update({
+          theme: mappedTheme,
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+    } catch (updateError) {
+      setThemeOverride(null);
+      applyThemeToDocument(normalizeStoredTheme(profile?.theme));
+      setThemeError(getErrorMessage(updateError, "We could not update your display mode."));
+    } finally {
+      setIsThemeSaving(false);
+    }
   }
 
   return (
@@ -174,17 +237,82 @@ function SignedInShell() {
           <div>
             <p className="text-sm font-medium uppercase tracking-wide text-blue-700">PDP Workspace</p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">Welcome back</h1>
-            <p className="mt-2 text-sm text-slate-600">Signed in as {user.email}</p>
+            <p className="mt-2 text-sm text-slate-600">Signed in as {currentUser.email}</p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => db.auth.signOut()}
-            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
-          >
-            Sign out
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
+              <button
+                type="button"
+                onClick={() => void handleQuickThemeChange("light")}
+                disabled={isThemeSaving}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                  themeChoice === "light" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                Light
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleQuickThemeChange("dark")}
+                disabled={isThemeSaving}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                  themeChoice === "dark" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                Dark
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleQuickThemeChange("system")}
+                disabled={isThemeSaving}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                  themeChoice === "system" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                System
+              </button>
+            </div>
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsProfileMenuOpen((current) => !current)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                aria-haspopup="menu"
+                aria-expanded={isProfileMenuOpen}
+                aria-label="Open profile menu"
+              >
+                {initials}
+              </button>
+
+              {isProfileMenuOpen ? (
+                <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                  <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Account</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveSection("profile");
+                      setIsProfileMenuOpen(false);
+                    }}
+                    className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Profile & Theme Settings
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => db.auth.signOut()}
+                    className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
         </div>
+
+        {themeError ? <p className="mt-3 text-sm text-red-700">{themeError}</p> : null}
 
         <nav className="mt-4 flex flex-wrap gap-2" aria-label="Primary app sections">
           {navItems.map((item) => {
@@ -766,4 +894,46 @@ function getTimezoneOptions(initialTimezone?: string) {
   );
 
   return merged;
+}
+
+function normalizeStoredTheme(theme: string | null | undefined): "light" | "dark" | "cwm" {
+  if (theme === "light" || theme === "dark" || theme === "cwm") {
+    return theme;
+  }
+
+  return "cwm";
+}
+
+function toThemeChoice(theme: "light" | "dark" | "cwm"): ThemeChoice {
+  return theme === "cwm" ? "system" : theme;
+}
+
+function getUserInitials(firstName: string | null, lastName: string | null, email: string | null) {
+  const combined = `${firstName ?? ""} ${lastName ?? ""}`.trim();
+  if (combined) {
+    const parts = combined.split(/\s+/).slice(0, 2);
+    return parts.map((part) => part.charAt(0).toUpperCase()).join("");
+  }
+
+  if (email) {
+    return email.charAt(0).toUpperCase();
+  }
+
+  return "U";
+}
+
+function applyThemeToDocument(theme: "light" | "dark" | "cwm") {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const root = document.documentElement;
+  if (theme === "cwm") {
+    const prefersDark =
+      typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = prefersDark ? "dark" : "light";
+    return;
+  }
+
+  root.dataset.theme = theme;
 }

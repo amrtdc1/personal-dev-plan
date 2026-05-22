@@ -17,6 +17,7 @@
   "dependencies": {
     "@fullcalendar/daygrid": "^6.1.20",
     "@fullcalendar/interaction": "^6.1.20",
+    "@fullcalendar/list": "^6.1.20",
     "@fullcalendar/react": "^6.1.20",
     "@instantdb/admin": "^1.0.39",
     "@instantdb/react": "^1.0.38",
