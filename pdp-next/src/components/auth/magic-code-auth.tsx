@@ -85,6 +85,7 @@ function SignedInPanel() {
             displayName: profilePayload.displayName,
             theme: profilePayload.theme,
             palette: profilePayload.palette,
+            collegeLogoUrl: profilePayload.collegeLogoUrl ?? null,
             timezone: profilePayload.timezone,
             retentionDays: profilePayload.retentionDays,
             createdAt: profilePayload.createdAt,
