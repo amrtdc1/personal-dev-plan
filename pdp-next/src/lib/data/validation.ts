@@ -24,6 +24,7 @@ type UserProfileWriteInput = {
   uid: string;
   email: string;
   displayName: string | null;
+  themeMode?: "palette" | "cwm" | "college" | null;
   theme: "light" | "dark" | "cwm";
   palette: "ocean" | "sunset" | "forest" | "royal" | "candy" | "dusk" | "lava" | "mint";
   timezone: string;
@@ -102,6 +103,7 @@ export function validateJournalEntryWrite(input: SaveJournalEntryInput) {
 export function validateUserProfileWrite(input: UserProfileWriteInput) {
   const trimmedEmail = input.email.trim().toLowerCase();
   assertRequiredText(trimmedEmail, "Profile email");
+  const normalizedThemeMode = normalizeThemeMode(input.themeMode);
 
   const normalizedCollegeTeamId = nullableTrimmed(input.collegeTeamId);
   const normalizedCollegeTeamName = nullableTrimmed(input.collegeTeamName);
@@ -110,6 +112,7 @@ export function validateUserProfileWrite(input: UserProfileWriteInput) {
   return {
     ...input,
     email: trimmedEmail,
+    themeMode: normalizedThemeMode,
     collegeTeamId: normalizedCollegeTeamId,
     collegeTeamName: normalizedCollegeTeamName,
     collegeLogoUrl: sanitizedCollegeLogoUrl,
@@ -170,6 +173,14 @@ function assertRequiredText(value: string, label: string) {
 function nullableTrimmed(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeThemeMode(value: UserProfileWriteInput["themeMode"]) {
+  if (value === "palette" || value === "cwm" || value === "college") {
+    return value;
+  }
+
+  return "palette";
 }
 
 function sanitizeCollegeLogoUrlForPersist(url: string | null | undefined) {

@@ -17,6 +17,7 @@ import type { UserProfile } from "@/lib/domain/types";
 
 type AppSection = "dashboard" | "goals" | "calendar" | "journal" | "profile";
 type ThemeChoice = "light" | "dark" | "system";
+type ThemeSource = "palette" | "cwm" | "college";
 
 const PALETTE_OPTIONS: UserProfile["palette"][] = [
   "ocean",
@@ -28,6 +29,17 @@ const PALETTE_OPTIONS: UserProfile["palette"][] = [
   "lava",
   "mint",
 ];
+
+const PALETTE_THEME_TOKENS: Record<UserProfile["palette"], { primary: string; soft: string }> = {
+  ocean: { primary: "#0c4a6e", soft: "#e0f2fe" },
+  sunset: { primary: "#9a3412", soft: "#ffedd5" },
+  forest: { primary: "#14532d", soft: "#dcfce7" },
+  royal: { primary: "#312e81", soft: "#e0e7ff" },
+  candy: { primary: "#be185d", soft: "#fce7f3" },
+  dusk: { primary: "#1f2937", soft: "#e5e7eb" },
+  lava: { primary: "#7f1d1d", soft: "#fee2e2" },
+  mint: { primary: "#065f46", soft: "#d1fae5" },
+};
 
 type AllowlistTeam = {
   id: string;
@@ -166,9 +178,11 @@ function SignedInShell() {
   const profile = data?.userProfiles?.[0] ?? null;
   const storedTheme = themeOverride ?? normalizeStoredTheme(profile?.theme);
   const themeChoice = toThemeChoice(storedTheme);
+  const themeSource = normalizeThemeSource(profile?.themeMode, profile?.collegeTeamId ?? null);
 
   useEffect(() => {
     applyThemeToDocument(storedTheme);
+    applyProfileThemeTokens(themeSource, profile?.palette ?? "ocean");
 
     if (storedTheme !== "cwm" || typeof window === "undefined") {
       return;
@@ -192,7 +206,7 @@ function SignedInShell() {
         mediaQuery.removeListener(handleSystemChange);
       }
     };
-  }, [storedTheme]);
+  }, [storedTheme, themeSource, profile?.palette]);
 
   if (!user) {
     return null;
@@ -222,11 +236,14 @@ function SignedInShell() {
     return <FirstLoginOnboarding user={currentUser} profile={profile} />;
   }
 
-  const selectedCollegeTeam = getCollegeTeamSelection(
-    profile.collegeTeamId ?? null,
-    profile.collegeTeamName ?? null,
-    profile.collegeLogoUrl ?? null,
-  );
+  const selectedCollegeTeam =
+    themeSource === "college"
+      ? getCollegeTeamSelection(
+          profile.collegeTeamId ?? null,
+          profile.collegeTeamName ?? null,
+          profile.collegeLogoUrl ?? null,
+        )
+      : null;
 
   async function handleQuickThemeChange(nextChoice: ThemeChoice) {
     const mappedTheme = nextChoice === "system" ? "cwm" : nextChoice;
@@ -256,7 +273,9 @@ function SignedInShell() {
       <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
           <div>
-            <p className="text-sm font-medium uppercase tracking-wide text-blue-700">PDP Workspace</p>
+            <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "var(--pdp-theme-primary)" }}>
+              PDP Workspace
+            </p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">Welcome back</h1>
             <p className="mt-2 text-sm text-slate-600">Signed in as {currentUser.email}</p>
             {selectedCollegeTeam ? (
@@ -365,9 +384,10 @@ function SignedInShell() {
                 onClick={() => setActiveSection(item.id)}
                 className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                   isActive
-                    ? "bg-slate-900 text-white"
+                    ? "text-white"
                     : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                 }`}
+                style={isActive ? { backgroundColor: "var(--pdp-theme-primary)" } : undefined}
               >
                 {item.label}
               </button>
@@ -407,8 +427,9 @@ function SignedInShell() {
               >
                 <span
                   className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${
-                    isActive ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
+                    isActive ? "text-white" : "bg-slate-100 text-slate-600"
                   }`}
+                  style={isActive ? { backgroundColor: "var(--pdp-theme-primary)" } : undefined}
                   aria-hidden="true"
                 >
                   <SectionIcon type={item.icon} className="h-4 w-4" />
@@ -428,6 +449,7 @@ function ProfileSettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [themeSourceInput, setThemeSourceInput] = useState<ThemeSource | null>(null);
   const [teamSearchQuery, setTeamSearchQuery] = useState("");
   const [teamSubdivisionFilter, setTeamSubdivisionFilter] = useState<"all" | "FBS" | "FCS">("all");
   const [selectedCollegeTeamIdInput, setSelectedCollegeTeamIdInput] = useState<string | null>(null);
@@ -456,6 +478,8 @@ function ProfileSettings() {
   );
 
   const profile = data?.userProfiles?.[0] ?? null;
+  const timezoneOptions = useMemo(() => getTimezoneOptions(profile?.timezone), [profile?.timezone]);
+  const themeSource = themeSourceInput ?? normalizeThemeSource(profile?.themeMode, profile?.collegeTeamId ?? null);
   const selectedCollegeTeamId = selectedCollegeTeamIdInput ?? (profile?.collegeTeamId ?? "");
 
   const filteredCollegeTeams = useMemo(() => {
@@ -508,11 +532,19 @@ function ProfileSettings() {
 
     try {
       const formData = new FormData(event.currentTarget);
-      const themeChoice = String(formData.get("themeMode") ?? "system") as ThemeChoice;
-      const mappedTheme = themeChoice === "system" ? "cwm" : themeChoice;
-      const selectedCollegeLogoUrl = selectedCollegeTeam
-        ? getCollegeTeamLogoUrl(selectedCollegeTeam.id)
-        : nullableValue(formData.get("collegeLogoUrl"));
+      const displayMode = String(formData.get("displayMode") ?? "system") as ThemeChoice;
+      const mappedTheme = displayMode === "system" ? "cwm" : displayMode;
+      const selectedThemeSource = themeSource;
+      const selectedPalette =
+        selectedThemeSource === "palette"
+          ? ((formData.get("palette") as UserProfile["palette"]) ?? currentProfile.palette)
+          : currentProfile.palette;
+      const selectedCollegeLogoUrl =
+        selectedThemeSource === "college"
+          ? selectedCollegeTeam
+            ? getCollegeTeamLogoUrl(selectedCollegeTeam.id)
+            : nullableValue(formData.get("collegeLogoUrl"))
+          : null;
 
       const updatedProfile = validateUserProfileWrite({
         uid: currentUser.id,
@@ -520,10 +552,11 @@ function ProfileSettings() {
         displayName: nullableValue(formData.get("displayName")) ?? currentUser.email ?? null,
         firstName: nullableValue(formData.get("firstName")),
         lastName: nullableValue(formData.get("lastName")),
+        themeMode: selectedThemeSource,
         theme: mappedTheme,
-        palette: (formData.get("palette") as UserProfile["palette"]) ?? currentProfile.palette,
-        collegeTeamId: selectedCollegeTeam?.id ?? null,
-        collegeTeamName: selectedCollegeTeam?.displayName ?? null,
+        palette: selectedPalette,
+        collegeTeamId: selectedThemeSource === "college" ? selectedCollegeTeam?.id ?? null : null,
+        collegeTeamName: selectedThemeSource === "college" ? selectedCollegeTeam?.displayName ?? null : null,
         collegeLogoUrl: selectedCollegeLogoUrl,
         timezone: String(formData.get("timezone") ?? currentProfile.timezone).trim() || currentProfile.timezone,
         retentionDays: Number(formData.get("retentionDays") ?? currentProfile.retentionDays),
@@ -538,6 +571,7 @@ function ProfileSettings() {
           firstName: updatedProfile.firstName ?? null,
           lastName: updatedProfile.lastName ?? null,
           displayName: updatedProfile.displayName,
+          themeMode: updatedProfile.themeMode,
           theme: updatedProfile.theme,
           palette: updatedProfile.palette,
           collegeTeamId: updatedProfile.collegeTeamId ?? null,
@@ -580,45 +614,73 @@ function ProfileSettings() {
   return (
     <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Profile & Theme</h2>
-      <p className="mt-2 text-sm text-slate-600">
-        Update your profile info, theme palette, and display mode (light, dark, or system).
-      </p>
+      <p className="mt-2 text-sm text-slate-600">Manage identity details separately from visual theme configuration.</p>
 
       <form className="mt-4 grid gap-3" onSubmit={handleSave}>
-        <div className="grid gap-3 md:grid-cols-2">
+        <section className="grid gap-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Profile</h3>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="text-sm font-medium text-slate-700">
+              First name
+              <input
+                name="firstName"
+                defaultValue={currentProfile.firstName ?? ""}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              />
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Last name
+              <input
+                name="lastName"
+                defaultValue={currentProfile.lastName ?? ""}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              />
+            </label>
+          </div>
+
           <label className="text-sm font-medium text-slate-700">
-            First name
+            Display name
             <input
-              name="firstName"
-              defaultValue={currentProfile.firstName ?? ""}
+              name="displayName"
+              defaultValue={currentProfile.displayName ?? ""}
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
             />
           </label>
 
-          <label className="text-sm font-medium text-slate-700">
-            Last name
-            <input
-              name="lastName"
-              defaultValue={currentProfile.lastName ?? ""}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-            />
-          </label>
-        </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="text-sm font-medium text-slate-700">
+              Timezone
+              <select
+                name="timezone"
+                defaultValue={currentProfile.timezone}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              >
+                {timezoneOptions.map((timezoneValue) => (
+                  <option key={timezoneValue} value={timezoneValue}>
+                    {timezoneValue}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        <label className="text-sm font-medium text-slate-700">
-          Display name
-          <input
-            name="displayName"
-            defaultValue={currentProfile.displayName ?? ""}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-          />
-        </label>
+            <label className="text-sm font-medium text-slate-700">
+              Retention days
+              <input
+                name="retentionDays"
+                type="number"
+                min={1}
+                defaultValue={currentProfile.retentionDays}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              />
+            </label>
+          </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <label className="text-sm font-medium text-slate-700">
-            Mode
+          <label className="text-sm font-medium text-slate-700 md:max-w-sm">
+            Display mode
             <select
-              name="themeMode"
+              name="displayMode"
               defaultValue={defaultThemeChoice}
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
             >
@@ -627,153 +689,173 @@ function ProfileSettings() {
               <option value="system">System</option>
             </select>
           </label>
+        </section>
 
-          <label className="text-sm font-medium text-slate-700">
-            Palette
-            <select
-              name="palette"
-              defaultValue={currentProfile.palette}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-            >
-              {PALETTE_OPTIONS.map((palette) => (
-                <option key={palette} value={palette}>
-                  {capitalize(palette)}
-                </option>
-              ))}
-            </select>
-          </label>
+        <hr className="my-1 border-slate-200" />
 
-          <label className="text-sm font-medium text-slate-700">
-            Timezone
-            <input
-              name="timezone"
-              defaultValue={currentProfile.timezone}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-            />
-          </label>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <label className="text-sm font-medium text-slate-700">
-            Retention days
-            <input
-              name="retentionDays"
-              type="number"
-              min={1}
-              defaultValue={currentProfile.retentionDays}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-            />
-          </label>
+        <section className="grid gap-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Theme</h3>
 
           <div>
-            <p className="text-sm font-medium text-slate-700">Team filter</p>
+            <p className="text-sm font-medium text-slate-700">Theme base</p>
             <div className="mt-1 inline-flex rounded-lg border border-slate-300 p-1">
-              {(["all", "FBS", "FCS"] as const).map((value) => (
+              {([
+                { value: "palette" as const, label: "Palette" },
+                { value: "cwm" as const, label: "CWM" },
+                { value: "college" as const, label: "College Team" },
+              ] as const).map((option) => (
                 <button
-                  key={value}
+                  key={option.value}
                   type="button"
-                  onClick={() => setTeamSubdivisionFilter(value)}
+                  onClick={() => setThemeSourceInput(option.value)}
                   className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    teamSubdivisionFilter === value
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-600 hover:bg-slate-100"
+                    themeSource === option.value ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
                   }`}
                 >
-                  {value === "all" ? "All" : value}
+                  {option.label}
                 </button>
               ))}
             </div>
           </div>
 
-          <label className="text-sm font-medium text-slate-700">
-            College logo URL override
-            <input
-              name="collegeLogoUrl"
-              defaultValue={currentProfile.collegeLogoUrl ?? ""}
-              placeholder="https://a.espncdn.com/..."
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-            />
-          </label>
-
-          <label className="text-sm font-medium text-slate-700">
-            Search teams
-            <input
-              value={teamSearchQuery}
-              onChange={(event) => setTeamSearchQuery(event.target.value)}
-              placeholder="Search school or abbreviation"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-            />
-          </label>
-        </div>
-
-        <input type="hidden" name="collegeTeamId" value={selectedCollegeTeamId} />
-
-        <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-slate-800">College team picker</h3>
-            <p className="text-xs text-slate-500">Showing {filteredCollegeTeams.length} team(s)</p>
-          </div>
-
-          {selectedCollegeTeam ? (
-            <div className="mt-3 rounded-lg border border-slate-300 bg-white p-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected</p>
-              <div className="mt-2 flex items-center gap-2">
-                <Image
-                  src={getCollegeTeamLogoUrl(selectedCollegeTeam.id)}
-                  alt={`${selectedCollegeTeam.displayName} logo`}
-                  width={28}
-                  height={28}
-                  className="h-7 w-7 rounded-sm object-contain"
-                />
-                <p className="text-sm font-semibold text-slate-900">{selectedCollegeTeam.displayName}</p>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                  {selectedCollegeTeam.subdivision}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedCollegeTeamIdInput("")}
-                className="mt-2 text-xs font-medium text-slate-600 underline-offset-2 hover:underline"
+          {themeSource === "palette" ? (
+            <label className="text-sm font-medium text-slate-700 md:max-w-sm">
+              Palette
+              <select
+                name="palette"
+                defaultValue={currentProfile.palette}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               >
-                Clear team selection
-              </button>
+                {PALETTE_OPTIONS.map((palette) => (
+                  <option key={palette} value={palette}>
+                    {capitalize(palette)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {themeSource === "cwm" ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              CWM uses the default app visual settings and does not require additional theme options.
             </div>
           ) : null}
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredCollegeTeams.map((team) => {
-              const isSelected = selectedCollegeTeamId === team.id;
-              return (
-                <button
-                  key={team.id}
-                  type="button"
-                  onClick={() => setSelectedCollegeTeamIdInput(team.id)}
-                  className={`flex items-center gap-2 rounded-lg border p-2 text-left transition ${
-                    isSelected
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
-                  }`}
-                >
-                  <Image
-                    src={getCollegeTeamLogoUrl(team.id)}
-                    alt={`${team.displayName} logo`}
-                    width={24}
-                    height={24}
-                    className="h-6 w-6 rounded-sm object-contain"
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate text-xs font-semibold">{team.displayName}</span>
-                    <span className={`text-[11px] ${isSelected ? "text-slate-200" : "text-slate-500"}`}>
-                      {team.abbreviation} • {team.subdivision}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {themeSource === "college" ? (
+            <>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Team filter</p>
+                  <div className="mt-1 inline-flex rounded-lg border border-slate-300 p-1">
+                    {(["all", "FBS", "FCS"] as const).map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setTeamSubdivisionFilter(value)}
+                        className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                          teamSubdivisionFilter === value
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        {value === "all" ? "All" : value}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-          {filteredCollegeTeams.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No teams match your current search and subdivision filter.</p>
+                <label className="text-sm font-medium text-slate-700">
+                  Search teams
+                  <input
+                    value={teamSearchQuery}
+                    onChange={(event) => setTeamSearchQuery(event.target.value)}
+                    placeholder="Search school or abbreviation"
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+
+                <label className="text-sm font-medium text-slate-700">
+                  College logo URL override (optional)
+                  <input
+                    name="collegeLogoUrl"
+                    defaultValue={currentProfile.collegeLogoUrl ?? ""}
+                    placeholder="https://a.espncdn.com/..."
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+              </div>
+
+              <input type="hidden" name="collegeTeamId" value={selectedCollegeTeamId} />
+
+              <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-800">College team picker</h3>
+                  <p className="text-xs text-slate-500">Showing {filteredCollegeTeams.length} team(s)</p>
+                </div>
+
+                {selectedCollegeTeam ? (
+                  <div className="mt-3 rounded-lg border border-slate-300 bg-white p-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Image
+                        src={getCollegeTeamLogoUrl(selectedCollegeTeam.id)}
+                        alt={`${selectedCollegeTeam.displayName} logo`}
+                        width={28}
+                        height={28}
+                        className="h-7 w-7 rounded-sm object-contain"
+                      />
+                      <p className="text-sm font-semibold text-slate-900">{selectedCollegeTeam.displayName}</p>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                        {selectedCollegeTeam.subdivision}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCollegeTeamIdInput("")}
+                      className="mt-2 text-xs font-medium text-slate-600 underline-offset-2 hover:underline"
+                    >
+                      Clear team selection
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredCollegeTeams.map((team) => {
+                    const isSelected = selectedCollegeTeamId === team.id;
+                    return (
+                      <button
+                        key={team.id}
+                        type="button"
+                        onClick={() => setSelectedCollegeTeamIdInput(team.id)}
+                        className={`flex items-center gap-2 rounded-lg border p-2 text-left transition ${
+                          isSelected
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
+                        }`}
+                      >
+                        <Image
+                          src={getCollegeTeamLogoUrl(team.id)}
+                          alt={`${team.displayName} logo`}
+                          width={24}
+                          height={24}
+                          className="h-6 w-6 rounded-sm object-contain"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-semibold">{team.displayName}</span>
+                          <span className={`text-[11px] ${isSelected ? "text-slate-200" : "text-slate-500"}`}>
+                            {team.abbreviation} • {team.subdivision}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {filteredCollegeTeams.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-600">No teams match your current search and subdivision filter.</p>
+                ) : null}
+              </section>
+            </>
           ) : null}
         </section>
 
@@ -817,6 +899,7 @@ function FirstLoginOnboarding({
         firstName?: string | null;
         lastName?: string | null;
         displayName?: string | null;
+        themeMode?: ThemeSource;
         theme?: "light" | "dark" | "cwm";
         palette?: UserProfile["palette"];
         collegeTeamId?: string | null;
@@ -869,6 +952,7 @@ function FirstLoginOnboarding({
           (`${firstName.trim()} ${lastName.trim()}`.trim() || user.email || null),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
+        themeMode: profile?.themeMode ?? "palette",
         theme: mappedTheme,
         palette,
         collegeTeamId: profile?.collegeTeamId ?? null,
@@ -887,6 +971,7 @@ function FirstLoginOnboarding({
           firstName: validatedProfile.firstName ?? null,
           lastName: validatedProfile.lastName ?? null,
           displayName: validatedProfile.displayName,
+          themeMode: validatedProfile.themeMode,
           theme: validatedProfile.theme,
           palette: validatedProfile.palette,
           collegeTeamId: validatedProfile.collegeTeamId ?? null,
@@ -1128,6 +1213,18 @@ function getCollegeTeamLogoUrl(teamId: string) {
   return `https://a.espncdn.com/i/teamlogos/ncaa/500/${teamId}.png`;
 }
 
+function normalizeThemeSource(themeMode: string | null | undefined, collegeTeamId: string | null): ThemeSource {
+  if (themeMode === "palette" || themeMode === "cwm" || themeMode === "college") {
+    return themeMode;
+  }
+
+  if (collegeTeamId) {
+    return "college";
+  }
+
+  return "palette";
+}
+
 function normalizeStoredTheme(theme: string | null | undefined): "light" | "dark" | "cwm" {
   if (theme === "light" || theme === "dark" || theme === "cwm") {
     return theme;
@@ -1168,6 +1265,24 @@ function applyThemeToDocument(theme: "light" | "dark" | "cwm") {
   }
 
   root.dataset.theme = theme;
+}
+
+function applyProfileThemeTokens(themeSource: ThemeSource, palette: UserProfile["palette"]) {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const root = document.documentElement;
+
+  if (themeSource === "palette") {
+    const tokens = PALETTE_THEME_TOKENS[palette] ?? PALETTE_THEME_TOKENS.ocean;
+    root.style.setProperty("--pdp-theme-primary", tokens.primary);
+    root.style.setProperty("--pdp-theme-soft", tokens.soft);
+    return;
+  }
+
+  root.style.setProperty("--pdp-theme-primary", "#0f172a");
+  root.style.setProperty("--pdp-theme-soft", "#e2e8f0");
 }
 
 function SunIcon({ className }: { className?: string }) {

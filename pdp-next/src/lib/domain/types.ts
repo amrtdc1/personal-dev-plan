@@ -78,6 +78,7 @@ export type UserProfile = {
   firstName: string | null;
   lastName: string | null;
   displayName: string | null;
+  themeMode?: "palette" | "cwm" | "college";
   theme: "light" | "dark" | "cwm";
   palette: "ocean" | "sunset" | "forest" | "royal" | "candy" | "dusk" | "lava" | "mint";
   collegeTeamId?: string | null;

@@ -9,6 +9,7 @@ export const appSchema = i.schema({
       firstName: i.string().optional(),
       lastName: i.string().optional(),
       displayName: i.string().optional(),
+      themeMode: i.string<"palette" | "cwm" | "college">().optional(),
       theme: i.string<"light" | "dark" | "cwm">(),
       palette: i.string<"ocean" | "sunset" | "forest" | "royal" | "candy" | "dusk" | "lava" | "mint">(),
       collegeTeamId: i.string().optional(),

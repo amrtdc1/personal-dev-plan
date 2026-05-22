@@ -3,6 +3,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --pdp-theme-primary: #0f172a;
+  --pdp-theme-soft: #e2e8f0;
 }
 
 @theme inline {
