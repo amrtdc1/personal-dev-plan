@@ -1,5 +1,6 @@
 import { MigrationDataPreview } from "@/components/dashboard/migration-data-preview";
 import { MagicCodeAuth } from "@/components/auth/magic-code-auth";
+import { CalendarWorkspace } from "@/components/dashboard/calendar-workspace";
 
 export default function Home() {
   return (
@@ -53,6 +54,7 @@ export default function Home() {
       </section>
 
       <MagicCodeAuth />
+      <CalendarWorkspace />
       <MigrationDataPreview />
     </main>
   );

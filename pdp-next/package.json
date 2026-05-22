@@ -15,6 +15,9 @@
     "instant:push:perms": "npx instant-cli@latest push perms"
   },
   "dependencies": {
+    "@fullcalendar/daygrid": "^6.1.20",
+    "@fullcalendar/interaction": "^6.1.20",
+    "@fullcalendar/react": "^6.1.20",
     "@instantdb/admin": "^1.0.39",
     "@instantdb/react": "^1.0.38",
     "next": "16.2.6",
