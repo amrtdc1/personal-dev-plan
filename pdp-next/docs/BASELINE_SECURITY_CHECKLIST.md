@@ -11,7 +11,7 @@ Track minimum security controls required before parity cutover.
 ## Checklist
 | Control | Requirement | Status | Notes |
 | --- | --- | --- | --- |
-| Client-side XSS prevention | Do not render untrusted HTML directly from user input | In Progress | Strict markdown renderer utility + regression tests now enforce escaped HTML and protocol-safe links; journal UI integration is still pending |
+| Client-side XSS prevention | Do not render untrusted HTML directly from user input | In Progress | Strict markdown renderer utility + regression tests enforce escaped HTML and protocol-safe links; repository-backed journal preview now renders through strict markdown, with edit/display parity still pending |
 | Server-side ownership checks | Every read/write/delete validates current user owns target record | In Progress | Protected owner-scoped goals/subgoals/tasks routes are implemented; remaining work is broader endpoint expansion and automated route tests |
 | Destructive action safeguards | Confirm dialogs, scoped deletes, and audit-friendly metadata | In Progress | UI confirms exist in legacy; new stack still needs server-enforced guardrails |
 | Soft-delete lifecycle | 60-day retention with restore and purge windows | Done | Archive/restore flows, restore-window enforcement, and owner-scoped purge execution are implemented with regression coverage |
@@ -24,5 +24,5 @@ Track minimum security controls required before parity cutover.
 
 ## Immediate Actions (Next)
 1. Define and implement centralized payload validation for goals/subgoals/tasks/journal writes.
-2. Integrate strict markdown rendering into journal display/edit flows.
+2. Complete strict markdown integration for journal edit/display parity beyond migration preview.
 3. Finalize CSP policy and lock trusted script/image/connect origins.

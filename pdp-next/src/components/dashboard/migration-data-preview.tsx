@@ -1,9 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { Goal, ItemStatus, Subgoal, Task, UserProfile } from "@/lib/domain/types";
+import type { Goal, ItemStatus, JournalEntry, Subgoal, Task, UserProfile } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
+import { renderStrictMarkdownToHtml } from "@/lib/journal/markdown";
 
 type RepositorySnapshot = {
   profile: UserProfile | null;
@@ -12,6 +13,7 @@ type RepositorySnapshot = {
   sampleGoalId: string | null;
   sampleSubgoals: Subgoal[];
   sampleTasks: Task[];
+  journalEntries: JournalEntry[];
 };
 
 export function MigrationDataPreview() {
@@ -64,10 +66,11 @@ export function MigrationDataPreview() {
       setLoadError(null);
 
       try {
-        const [profile, professionalGoals, personalGoals] = await Promise.all([
+        const [profile, professionalGoals, personalGoals, journalEntries] = await Promise.all([
           dataRepository.getUserProfile(currentUser.id),
           dataRepository.listGoals(currentUser.id, "professional", { includeDeleted: true }),
           dataRepository.listGoals(currentUser.id, "personal", { includeDeleted: true }),
+          dataRepository.listJournalEntries(currentUser.id),
         ]);
 
         const sampleGoal =
@@ -89,6 +92,7 @@ export function MigrationDataPreview() {
             sampleGoalId: sampleGoal?.id ?? null,
             sampleSubgoals,
             sampleTasks,
+            journalEntries,
           });
         }
       } catch (repositoryError) {
@@ -422,6 +426,7 @@ export function MigrationDataPreview() {
         />
         <MetricCard label="Sample subgoals" value={String(snapshot?.sampleSubgoals.length ?? 0)} />
         <MetricCard label="Sample tasks" value={String(snapshot?.sampleTasks.length ?? 0)} />
+        <MetricCard label="Journal entries" value={String(snapshot?.journalEntries.length ?? 0)} />
       </div>
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -574,6 +579,28 @@ export function MigrationDataPreview() {
             onStatusChange={handleGoalStatusChange}
             onMove={handleGoalMove}
           />
+        </article>
+
+        <article className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+          <h3 className="text-sm font-semibold text-slate-900">Journal preview (strict markdown)</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Journal content is rendered through the strict markdown sanitizer before display.
+          </p>
+          {snapshot && snapshot.journalEntries.length > 0 ? (
+            <ul className="mt-3 space-y-3">
+              {snapshot.journalEntries.slice(0, 3).map((entry) => (
+                <li key={entry.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                  <p className="text-sm font-semibold text-slate-900">{entry.title}</p>
+                  <div
+                    className="prose prose-sm mt-2 max-w-none text-slate-700"
+                    dangerouslySetInnerHTML={{ __html: renderStrictMarkdownToHtml(entry.content) }}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-slate-600">No journal entries found yet.</p>
+          )}
         </article>
 
         <article className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
