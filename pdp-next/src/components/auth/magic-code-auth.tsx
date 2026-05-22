@@ -7,7 +7,11 @@ import { db, isInstantConfigured } from "@/lib/instantdb/client";
 
 type AuthStage = "enter-email" | "enter-code";
 
-export function MagicCodeAuth() {
+type MagicCodeAuthProps = {
+  showSignedInPanel?: boolean;
+};
+
+export function MagicCodeAuth({ showSignedInPanel = true }: MagicCodeAuthProps) {
   if (!isInstantConfigured) {
     return (
       <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
@@ -23,7 +27,7 @@ export function MagicCodeAuth() {
   return (
     <>
       <db.SignedIn>
-        <SignedInPanel />
+        {showSignedInPanel ? <SignedInPanel /> : null}
       </db.SignedIn>
       <db.SignedOut>
         <MagicCodeLogin />
@@ -207,18 +211,12 @@ function MagicCodeLogin() {
 
   return (
     <AuthCard title="Magic Code sign in">
-      <p className="text-sm leading-6 text-slate-700">
-        Start with Magic Code only. This keeps sign-in lightweight for coworkers while we
-        migrate the app to InstantDB.
-      </p>
-      <p className="mt-2 text-sm text-slate-500">
-        App URL: {env.appUrl}
-      </p>
+      <p className="text-sm leading-6 text-slate-700">Enter your email and we will send a one-time Magic Code.</p>
 
       {stage === "enter-email" ? (
         <form className="mt-5 space-y-4" onSubmit={handleSendCode}>
           <label className="block text-sm font-medium text-slate-800" htmlFor="email">
-            Work email
+            Email
           </label>
           <input
             id="email"

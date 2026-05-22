@@ -97,7 +97,7 @@ export function MigrationDataPreview() {
         }
       } catch (repositoryError) {
         if (!isCancelled) {
-          setLoadError(getErrorMessage(repositoryError, "We could not load the migration preview."));
+          setLoadError(getErrorMessage(repositoryError, "We could not load your goals workspace."));
         }
       } finally {
         if (!isCancelled) {
@@ -402,10 +402,9 @@ export function MigrationDataPreview() {
     <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Repository-backed preview</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Goals Workspace</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
-            This panel reads through the shared repository contract instead of hitting InstantDB
-            directly from the UI. It is the first parity slice for the migrated data layer.
+            Create and manage professional and personal goals, plus related subgoals and tasks, from one place.
           </p>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
@@ -433,9 +432,9 @@ export function MigrationDataPreview() {
         <article className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-slate-900">Goal write path</h3>
+              <h3 className="text-sm font-semibold text-slate-900">Goal editor</h3>
               <p className="mt-1 text-sm text-slate-600">
-                This form writes through the repository contract and then reloads the repository-backed preview.
+                Create new goals or update existing ones.
               </p>
             </div>
             {editingGoal ? (
@@ -533,7 +532,7 @@ export function MigrationDataPreview() {
                 {isSaving ? "Saving..." : editingGoal ? "Update goal" : "Create goal"}
               </button>
               <span className="text-sm text-slate-500">
-                {editingGoal ? "Editing an existing goal." : "Creates the first repository-backed write path."}
+                {editingGoal ? "Editing an existing goal." : "Create a new goal to get started."}
               </span>
             </div>
           </form>
@@ -582,7 +581,7 @@ export function MigrationDataPreview() {
         </article>
 
         <article className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
-          <h3 className="text-sm font-semibold text-slate-900">Journal preview (strict markdown)</h3>
+          <h3 className="text-sm font-semibold text-slate-900">Recent journal entries</h3>
           <p className="mt-1 text-sm text-slate-600">
             Journal content is rendered through the strict markdown sanitizer before display.
           </p>
@@ -604,11 +603,11 @@ export function MigrationDataPreview() {
         </article>
 
         <article className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
-          <h3 className="text-sm font-semibold text-slate-900">Subgoal and task read probe</h3>
+          <h3 className="text-sm font-semibold text-slate-900">Subgoals and tasks</h3>
           {snapshot?.sampleGoalId ? (
             <>
               <p className="mt-2 text-sm text-slate-700">
-                Loaded from goal <span className="font-mono text-xs text-slate-600">{snapshot.sampleGoalId}</span>
+                Showing data for goal <span className="font-mono text-xs text-slate-600">{snapshot.sampleGoalId}</span>
               </p>
               <p className="mt-2 text-xs font-medium uppercase tracking-wide text-slate-500">Subgoals</p>
               {snapshot.sampleSubgoals.length > 0 ? (
@@ -670,7 +669,7 @@ export function MigrationDataPreview() {
                   ))}
                 </ul>
               ) : (
-                <p className="mt-2 text-sm text-slate-600">No subgoals found for the sampled goal yet.</p>
+                <p className="mt-2 text-sm text-slate-600">No subgoals found for this goal yet.</p>
               )}
 
               <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">Tasks from first subgoal</p>
@@ -733,12 +732,12 @@ export function MigrationDataPreview() {
                   ))}
                 </ul>
               ) : (
-                <p className="mt-2 text-sm text-slate-600">No tasks found for the sampled subgoal yet.</p>
+                <p className="mt-2 text-sm text-slate-600">No tasks found for this subgoal yet.</p>
               )}
 
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <form className="rounded-lg border border-slate-200 bg-white p-3" onSubmit={handleSubgoalSubmit}>
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Create subgoal (sampled goal)</p>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Create subgoal</p>
                   <label className="mt-2 block text-sm text-slate-700">
                     Title
                     <input
@@ -816,7 +815,7 @@ export function MigrationDataPreview() {
             </>
           ) : (
             <p className="mt-2 text-sm text-slate-600">
-              Add at least one goal to activate the repository subgoal/task probe.
+              Add at least one goal to start managing subgoals and tasks.
             </p>
           )}
         </article>
