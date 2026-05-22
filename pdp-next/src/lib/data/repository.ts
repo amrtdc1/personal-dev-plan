@@ -5,6 +5,13 @@ import { statusToPercent } from "@/lib/domain/status";
 import type { Goal, GoalType, ItemStatus, JournalEntry, Subgoal, Task, UserProfile } from "@/lib/domain/types";
 import type { AppSchema } from "@/lib/instantdb/schema";
 import {
+  enqueueOfflineMutation,
+  flushOfflineMutationQueue,
+  getOfflineMutationCount as getOfflineMutationCountFromQueue,
+  subscribeOfflineMutationCount as subscribeOfflineMutationCountFromQueue,
+  type OfflineMutation,
+} from "@/lib/offline/write-queue";
+import {
   assertOwnedGoal,
   assertOwnedJournalEntry,
   assertOwnedSubgoal,
@@ -106,8 +113,13 @@ export type DataRepository = {
   saveJournalEntry: (input: SaveJournalEntryInput) => Promise<JournalEntry>;
   softDeleteJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<JournalEntry>;
   restoreJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<JournalEntry>;
+  getOfflineMutationCount: () => number;
+  subscribeOfflineMutationCount: (listener: (count: number) => void) => () => void;
+  flushOfflineMutations: () => Promise<{ processed: number; failed: number; remaining: number }>;
   getUserProfile: (ownerUid: string) => Promise<UserProfile | null>;
 };
+
+let isFlushingOfflineMutations = false;
 
 export class UnsupportedRepositoryError extends Error {
   constructor(message = "Data repository has not been wired yet.") {
@@ -173,29 +185,35 @@ export const dataRepository: DataRepository = {
       purgeAt: input.existingGoal?.purgeAt ?? null,
     };
 
-    await db.transact(
-      db.tx.goals[goalId].update({
-        ownerUid: goal.ownerUid,
-        type: goal.type,
-        title: goal.title,
-        description: goal.description,
-        timeframe: goal.timeframe,
-        projectedStartDate: goal.projectedStartDate,
-        projectedEndDate: goal.projectedEndDate,
-        actualStartDate: goal.actualStartDate,
-        actualEndDate: goal.actualEndDate,
-        status: goal.status,
-        percentComplete: goal.percentComplete,
-        isFocus: goal.isFocus,
-        themeColor: goal.themeColor,
-        orderIndex: goal.orderIndex,
-        createdAt: goal.createdAt,
-        updatedAt: goal.updatedAt,
-        deletedAt: goal.deletedAt,
-        deletedBy: goal.deletedBy,
-        restoreUntil: goal.restoreUntil,
-        purgeAt: goal.purgeAt,
-      }),
+    await commitOrQueueMutation(
+      "saveGoal",
+      input,
+      async () => {
+        await db.transact(
+          db.tx.goals[goalId].update({
+            ownerUid: goal.ownerUid,
+            type: goal.type,
+            title: goal.title,
+            description: goal.description,
+            timeframe: goal.timeframe,
+            projectedStartDate: goal.projectedStartDate,
+            projectedEndDate: goal.projectedEndDate,
+            actualStartDate: goal.actualStartDate,
+            actualEndDate: goal.actualEndDate,
+            status: goal.status,
+            percentComplete: goal.percentComplete,
+            isFocus: goal.isFocus,
+            themeColor: goal.themeColor,
+            orderIndex: goal.orderIndex,
+            createdAt: goal.createdAt,
+            updatedAt: goal.updatedAt,
+            deletedAt: goal.deletedAt,
+            deletedBy: goal.deletedBy,
+            restoreUntil: goal.restoreUntil,
+            purgeAt: goal.purgeAt,
+          }),
+        );
+      },
     );
 
     return goal;
@@ -423,27 +441,33 @@ export const dataRepository: DataRepository = {
       purgeAt: input.existingSubgoal?.purgeAt ?? null,
     };
 
-    await db.transact(
-      db.tx.subgoals[subgoalId].update({
-        ownerUid: subgoal.ownerUid,
-        goalId: subgoal.goalId,
-        title: subgoal.title,
-        description: subgoal.description,
-        timeframe: subgoal.timeframe,
-        projectedStartDate: subgoal.projectedStartDate,
-        projectedEndDate: subgoal.projectedEndDate,
-        actualStartDate: subgoal.actualStartDate,
-        actualEndDate: subgoal.actualEndDate,
-        status: subgoal.status,
-        percentComplete: subgoal.percentComplete,
-        orderIndex: subgoal.orderIndex,
-        createdAt: subgoal.createdAt,
-        updatedAt: subgoal.updatedAt,
-        deletedAt: subgoal.deletedAt,
-        deletedBy: subgoal.deletedBy,
-        restoreUntil: subgoal.restoreUntil,
-        purgeAt: subgoal.purgeAt,
-      }),
+    await commitOrQueueMutation(
+      "saveSubgoal",
+      input,
+      async () => {
+        await db.transact(
+          db.tx.subgoals[subgoalId].update({
+            ownerUid: subgoal.ownerUid,
+            goalId: subgoal.goalId,
+            title: subgoal.title,
+            description: subgoal.description,
+            timeframe: subgoal.timeframe,
+            projectedStartDate: subgoal.projectedStartDate,
+            projectedEndDate: subgoal.projectedEndDate,
+            actualStartDate: subgoal.actualStartDate,
+            actualEndDate: subgoal.actualEndDate,
+            status: subgoal.status,
+            percentComplete: subgoal.percentComplete,
+            orderIndex: subgoal.orderIndex,
+            createdAt: subgoal.createdAt,
+            updatedAt: subgoal.updatedAt,
+            deletedAt: subgoal.deletedAt,
+            deletedBy: subgoal.deletedBy,
+            restoreUntil: subgoal.restoreUntil,
+            purgeAt: subgoal.purgeAt,
+          }),
+        );
+      },
     );
 
     return subgoal;
@@ -626,23 +650,29 @@ export const dataRepository: DataRepository = {
       purgeAt: input.existingTask?.purgeAt ?? null,
     };
 
-    await db.transact(
-      db.tx.tasks[taskId].update({
-        ownerUid: task.ownerUid,
-        subgoalId: task.subgoalId,
-        title: task.title,
-        notes: task.notes,
-        dueDate: task.dueDate,
-        status: task.status,
-        percentComplete: task.percentComplete,
-        orderIndex: task.orderIndex,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
-        deletedAt: task.deletedAt,
-        deletedBy: task.deletedBy,
-        restoreUntil: task.restoreUntil,
-        purgeAt: task.purgeAt,
-      }),
+    await commitOrQueueMutation(
+      "saveTask",
+      input,
+      async () => {
+        await db.transact(
+          db.tx.tasks[taskId].update({
+            ownerUid: task.ownerUid,
+            subgoalId: task.subgoalId,
+            title: task.title,
+            notes: task.notes,
+            dueDate: task.dueDate,
+            status: task.status,
+            percentComplete: task.percentComplete,
+            orderIndex: task.orderIndex,
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt,
+            deletedAt: task.deletedAt,
+            deletedBy: task.deletedBy,
+            restoreUntil: task.restoreUntil,
+            purgeAt: task.purgeAt,
+          }),
+        );
+      },
     );
 
     return task;
@@ -847,21 +877,27 @@ export const dataRepository: DataRepository = {
       purgeAt: input.existingJournalEntry?.purgeAt ?? null,
     };
 
-    await db.transact(
-      db.tx.journalEntries[journalEntryId].update({
-        ownerUid: journalEntry.ownerUid,
-        title: journalEntry.title,
-        content: journalEntry.content,
-        mood: journalEntry.mood,
-        tags: journalEntry.tags,
-        relatedGoalId: journalEntry.relatedGoalId,
-        createdAt: journalEntry.createdAt,
-        updatedAt: journalEntry.updatedAt,
-        deletedAt: journalEntry.deletedAt,
-        deletedBy: journalEntry.deletedBy,
-        restoreUntil: journalEntry.restoreUntil,
-        purgeAt: journalEntry.purgeAt,
-      }),
+    await commitOrQueueMutation(
+      "saveJournalEntry",
+      input,
+      async () => {
+        await db.transact(
+          db.tx.journalEntries[journalEntryId].update({
+            ownerUid: journalEntry.ownerUid,
+            title: journalEntry.title,
+            content: journalEntry.content,
+            mood: journalEntry.mood,
+            tags: journalEntry.tags,
+            relatedGoalId: journalEntry.relatedGoalId,
+            createdAt: journalEntry.createdAt,
+            updatedAt: journalEntry.updatedAt,
+            deletedAt: journalEntry.deletedAt,
+            deletedBy: journalEntry.deletedBy,
+            restoreUntil: journalEntry.restoreUntil,
+            purgeAt: journalEntry.purgeAt,
+          }),
+        );
+      },
     );
 
     return journalEntry;
@@ -928,6 +964,31 @@ export const dataRepository: DataRepository = {
       purgeAt: null,
       updatedAt: now,
     };
+  },
+  getOfflineMutationCount() {
+    return getOfflineMutationCountFromQueue();
+  },
+  subscribeOfflineMutationCount(listener) {
+    return subscribeOfflineMutationCountFromQueue(listener);
+  },
+  async flushOfflineMutations() {
+    if (typeof window === "undefined" || !isNavigatorOnline()) {
+      return {
+        processed: 0,
+        failed: 0,
+        remaining: getOfflineMutationCountFromQueue(),
+      };
+    }
+
+    isFlushingOfflineMutations = true;
+
+    try {
+      return await flushOfflineMutationQueue(async (mutation) => {
+        await replayOfflineMutation(mutation);
+      });
+    } finally {
+      isFlushingOfflineMutations = false;
+    }
   },
   async getUserProfile(ownerUid) {
     const data = await runClientQuery<{ userProfiles?: UserProfile[] }>({
@@ -1205,4 +1266,66 @@ function compareTasks(left: Task, right: Task) {
 
 function compareJournalEntries(left: JournalEntry, right: JournalEntry) {
   return right.updatedAt.localeCompare(left.updatedAt) || right.createdAt.localeCompare(left.createdAt);
+}
+
+async function commitOrQueueMutation(
+  operation: string,
+  payload: unknown,
+  apply: () => Promise<void>,
+) {
+  if (typeof window !== "undefined" && !isNavigatorOnline() && !isFlushingOfflineMutations) {
+    enqueueOfflineMutation(operation, payload);
+    return;
+  }
+
+  try {
+    await apply();
+  } catch (error) {
+    if (shouldQueueMutation(error)) {
+      enqueueOfflineMutation(operation, payload);
+      return;
+    }
+
+    throw error;
+  }
+}
+
+function shouldQueueMutation(error: unknown) {
+  if (isFlushingOfflineMutations || typeof window === "undefined") {
+    return false;
+  }
+
+  if (!isNavigatorOnline()) {
+    return true;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes("network") || message.includes("fetch") || message.includes("offline");
+}
+
+function isNavigatorOnline() {
+  return typeof navigator === "undefined" || typeof navigator.onLine !== "boolean" || navigator.onLine;
+}
+
+async function replayOfflineMutation(mutation: OfflineMutation) {
+  switch (mutation.operation) {
+    case "saveGoal":
+      await dataRepository.saveGoal(mutation.payload as SaveGoalInput);
+      return;
+    case "saveSubgoal":
+      await dataRepository.saveSubgoal(mutation.payload as SaveSubgoalInput);
+      return;
+    case "saveTask":
+      await dataRepository.saveTask(mutation.payload as SaveTaskInput);
+      return;
+    case "saveJournalEntry":
+      await dataRepository.saveJournalEntry(mutation.payload as SaveJournalEntryInput);
+      return;
+    default:
+      throw new Error(`Unsupported offline mutation operation: ${mutation.operation}`);
+  }
 }

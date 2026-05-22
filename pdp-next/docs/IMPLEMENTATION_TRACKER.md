@@ -51,6 +51,8 @@
 - [x] Integrate strict markdown rendering into repository-backed journal preview flow
 - [x] Add repository-backed dashboard insight cards (focus, due soon, at-risk, recently updated)
 - [x] Add repository-backed journal workspace with CRUD and mood/tag/goal filters
+- [x] Add client-side offline write queue for save flows (goals/subgoals/tasks/journal)
+- [x] Add offline sync status panel with pending queue count and manual/auto replay hooks
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).

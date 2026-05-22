@@ -25,7 +25,7 @@ This checklist maps behavior in the legacy app (`main.js`) into concrete parity 
 | Theme + palette | Theme cycle (light/dark/cwm), palette picker, persisted settings (`setTheme`, `setupThemeToggle`, `applyPalette`) | Preserve existing theme/palette behavior before college themes | Not Started | College themes explicitly post-parity |
 | Navigation persistence | Persist active section and UI state (`setupNav`, localStorage keys) | Route/section persistence equivalent | Not Started | Minor but user-visible parity item |
 | Drag-and-drop ordering | DnD for goals/subgoals/tasks (`attach*DragHandlers`, `persist*Order`) | Ordered list interactions + orderIndex persistence | Not Started | Can follow status parity for each entity |
-| Offline support | Legacy is online-first | Installable PWA + queued offline writes + reconnect replay | Not Started | Explicit phase gate |
+| Offline support | Legacy is online-first | Installable PWA + queued offline writes + reconnect replay | In Progress | Client-side queue + sync status UX shipped for save flows; status/reorder/archive queueing remains |
 | ICS export/subscription | Not present in legacy implementation | New migration requirement: ICS export + tokenized feed | Not Started | Migration enhancement requirement |
 
 ## Recommended Build Order (post-current slice)

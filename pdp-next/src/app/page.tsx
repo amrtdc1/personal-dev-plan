@@ -3,6 +3,7 @@ import { MagicCodeAuth } from "@/components/auth/magic-code-auth";
 import { CalendarWorkspace } from "@/components/dashboard/calendar-workspace";
 import { DashboardInsights } from "@/components/dashboard/dashboard-insights";
 import { JournalWorkspace } from "@/components/dashboard/journal-workspace";
+import { OfflineSyncStatus } from "@/components/dashboard/offline-sync-status";
 
 export default function Home() {
   return (
@@ -56,6 +57,7 @@ export default function Home() {
       </section>
 
       <MagicCodeAuth />
+      <OfflineSyncStatus />
       <DashboardInsights />
       <CalendarWorkspace />
       <JournalWorkspace />
