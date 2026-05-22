@@ -787,8 +787,20 @@ export const dataRepository: DataRepository = {
       purgedAt: nowIso,
     };
   },
-  async listJournalEntries() {
-    throw new UnsupportedRepositoryError();
+  async listJournalEntries(ownerUid) {
+    const data = await runClientQuery<{ journalEntries?: JournalEntry[] }>({
+      journalEntries: {
+        $: {
+          where: {
+            ownerUid,
+          },
+        },
+      },
+    });
+
+    return (data.journalEntries ?? [])
+      .filter((entry) => entry.deletedAt === null)
+      .sort(compareJournalEntries);
   },
   async getUserProfile(ownerUid) {
     const data = await runClientQuery<{ userProfiles?: UserProfile[] }>({
@@ -1048,4 +1060,8 @@ function compareTasks(left: Task, right: Task) {
   }
 
   return right.updatedAt.localeCompare(left.updatedAt);
+}
+
+function compareJournalEntries(left: JournalEntry, right: JournalEntry) {
+  return right.updatedAt.localeCompare(left.updatedAt) || right.createdAt.localeCompare(left.createdAt);
 }

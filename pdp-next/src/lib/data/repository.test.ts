@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { Goal, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
 
 const { queryOnceMock, transactMock } = vi.hoisted(() => ({
   queryOnceMock: vi.fn(),
@@ -118,6 +118,25 @@ function buildTask(overrides: Partial<Task> = {}): Task {
     status: "not_started",
     percentComplete: 0,
     orderIndex: 0,
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+    deletedAt: null,
+    deletedBy: null,
+    restoreUntil: null,
+    purgeAt: null,
+    ...overrides,
+  };
+}
+
+function buildJournalEntry(overrides: Partial<JournalEntry> = {}): JournalEntry {
+  return {
+    id: "journal-1",
+    ownerUid: "user-1",
+    title: "Weekly reflection",
+    content: "# Heading\n\nBody",
+    mood: null,
+    tags: [],
+    relatedGoalId: null,
     createdAt: "2026-05-01T00:00:00.000Z",
     updatedAt: "2026-05-01T00:00:00.000Z",
     deletedAt: null,
@@ -594,5 +613,25 @@ describe("dataRepository soft-delete cascade", () => {
       ["task-b", 0],
       ["task-a", 1],
     ]);
+  });
+
+  it("lists active journal entries ordered by newest update", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        journalEntries: [
+          buildJournalEntry({ id: "journal-old", updatedAt: "2026-05-10T00:00:00.000Z" }),
+          buildJournalEntry({ id: "journal-new", updatedAt: "2026-05-20T00:00:00.000Z" }),
+          buildJournalEntry({
+            id: "journal-archived",
+            updatedAt: "2026-05-21T00:00:00.000Z",
+            deletedAt: "2026-05-21T00:00:00.000Z",
+          }),
+        ],
+      },
+    });
+
+    const entries = await dataRepository.listJournalEntries("user-1");
+
+    expect(entries.map((entry) => entry.id)).toEqual(["journal-new", "journal-old"]);
   });
 });

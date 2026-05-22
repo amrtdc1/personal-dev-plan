@@ -80,6 +80,7 @@ export type UserProfile = {
   displayName: string | null;
   theme: "light" | "dark" | "cwm";
   palette: "ocean" | "sunset" | "forest" | "royal" | "candy" | "dusk" | "lava" | "mint";
+  collegeLogoUrl?: string | null;
   timezone: string;
   retentionDays: number;
   createdAt: string;
