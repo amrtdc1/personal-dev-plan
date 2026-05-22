@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { MagicCodeAuth } from "@/components/auth/magic-code-auth";
 import { CalendarWorkspace } from "@/components/dashboard/calendar-workspace";
@@ -9,6 +10,7 @@ import { MigrationDataPreview } from "@/components/dashboard/migration-data-prev
 import { OfflineSyncStatus } from "@/components/dashboard/offline-sync-status";
 import { dataRepository } from "@/lib/data/repository";
 import { validateUserProfileWrite } from "@/lib/data/validation";
+import allowlistData from "@/lib/theming/data/espn-d1-allowlist.json";
 import { db } from "@/lib/instantdb/client";
 import { env } from "@/lib/config/env";
 import type { UserProfile } from "@/lib/domain/types";
@@ -26,6 +28,19 @@ const PALETTE_OPTIONS: UserProfile["palette"][] = [
   "lava",
   "mint",
 ];
+
+type AllowlistTeam = {
+  id: string;
+  displayName: string;
+  abbreviation: string;
+  subdivision: "FBS" | "FCS";
+};
+
+const COLLEGE_TEAMS = ((allowlistData as { teams?: AllowlistTeam[] }).teams ?? [])
+  .slice()
+  .sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+const COLLEGE_TEAMS_BY_ID = new Map(COLLEGE_TEAMS.map((team) => [team.id, team]));
 
 export function HomeExperience() {
   return (
@@ -207,6 +222,12 @@ function SignedInShell() {
     return <FirstLoginOnboarding user={currentUser} profile={profile} />;
   }
 
+  const selectedCollegeTeam = getCollegeTeamSelection(
+    profile.collegeTeamId ?? null,
+    profile.collegeTeamName ?? null,
+    profile.collegeLogoUrl ?? null,
+  );
+
   async function handleQuickThemeChange(nextChoice: ThemeChoice) {
     const mappedTheme = nextChoice === "system" ? "cwm" : nextChoice;
     setThemeError(null);
@@ -238,6 +259,20 @@ function SignedInShell() {
             <p className="text-sm font-medium uppercase tracking-wide text-blue-700">PDP Workspace</p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">Welcome back</h1>
             <p className="mt-2 text-sm text-slate-600">Signed in as {currentUser.email}</p>
+            {selectedCollegeTeam ? (
+              <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                {selectedCollegeTeam.logoUrl ? (
+                  <Image
+                    src={selectedCollegeTeam.logoUrl}
+                    alt={`${selectedCollegeTeam.displayName} logo`}
+                    width={18}
+                    height={18}
+                    className="h-[18px] w-[18px] rounded-sm object-contain"
+                  />
+                ) : null}
+                <span className="text-xs font-semibold text-slate-700">{selectedCollegeTeam.displayName}</span>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex items-center justify-end gap-2 self-start">
@@ -393,6 +428,9 @@ function ProfileSettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [teamSearchQuery, setTeamSearchQuery] = useState("");
+  const [teamSubdivisionFilter, setTeamSubdivisionFilter] = useState<"all" | "FBS" | "FCS">("all");
+  const [selectedCollegeTeamIdInput, setSelectedCollegeTeamIdInput] = useState<string | null>(null);
   const [pendingSyncCount, setPendingSyncCount] = useState(() => dataRepository.getOfflineMutationCount());
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -418,6 +456,24 @@ function ProfileSettings() {
   );
 
   const profile = data?.userProfiles?.[0] ?? null;
+  const selectedCollegeTeamId = selectedCollegeTeamIdInput ?? (profile?.collegeTeamId ?? "");
+
+  const filteredCollegeTeams = useMemo(() => {
+    const query = teamSearchQuery.trim().toLowerCase();
+
+    return COLLEGE_TEAMS.filter((team) => {
+      if (teamSubdivisionFilter !== "all" && team.subdivision !== teamSubdivisionFilter) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      const searchable = `${team.displayName} ${team.abbreviation} ${team.subdivision}`.toLowerCase();
+      return searchable.includes(query);
+    }).slice(0, 18);
+  }, [teamSearchQuery, teamSubdivisionFilter]);
 
   if (isLoading || isProfileLoading) {
     return (
@@ -442,6 +498,7 @@ function ProfileSettings() {
   const currentUser = user;
   const currentProfile = profile;
   const defaultThemeChoice: ThemeChoice = currentProfile.theme === "cwm" ? "system" : currentProfile.theme;
+  const selectedCollegeTeam = selectedCollegeTeamId ? COLLEGE_TEAMS_BY_ID.get(selectedCollegeTeamId) : null;
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -453,6 +510,9 @@ function ProfileSettings() {
       const formData = new FormData(event.currentTarget);
       const themeChoice = String(formData.get("themeMode") ?? "system") as ThemeChoice;
       const mappedTheme = themeChoice === "system" ? "cwm" : themeChoice;
+      const selectedCollegeLogoUrl = selectedCollegeTeam
+        ? getCollegeTeamLogoUrl(selectedCollegeTeam.id)
+        : nullableValue(formData.get("collegeLogoUrl"));
 
       const updatedProfile = validateUserProfileWrite({
         uid: currentUser.id,
@@ -462,7 +522,9 @@ function ProfileSettings() {
         lastName: nullableValue(formData.get("lastName")),
         theme: mappedTheme,
         palette: (formData.get("palette") as UserProfile["palette"]) ?? currentProfile.palette,
-        collegeLogoUrl: nullableValue(formData.get("collegeLogoUrl")),
+        collegeTeamId: selectedCollegeTeam?.id ?? null,
+        collegeTeamName: selectedCollegeTeam?.displayName ?? null,
+        collegeLogoUrl: selectedCollegeLogoUrl,
         timezone: String(formData.get("timezone") ?? currentProfile.timezone).trim() || currentProfile.timezone,
         retentionDays: Number(formData.get("retentionDays") ?? currentProfile.retentionDays),
         createdAt: currentProfile.createdAt,
@@ -478,6 +540,8 @@ function ProfileSettings() {
           displayName: updatedProfile.displayName,
           theme: updatedProfile.theme,
           palette: updatedProfile.palette,
+          collegeTeamId: updatedProfile.collegeTeamId ?? null,
+          collegeTeamName: updatedProfile.collegeTeamName ?? null,
           collegeLogoUrl: updatedProfile.collegeLogoUrl ?? null,
           timezone: updatedProfile.timezone,
           retentionDays: updatedProfile.retentionDays,
@@ -589,7 +653,7 @@ function ProfileSettings() {
           </label>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-3">
           <label className="text-sm font-medium text-slate-700">
             Retention days
             <input
@@ -601,8 +665,28 @@ function ProfileSettings() {
             />
           </label>
 
+          <div>
+            <p className="text-sm font-medium text-slate-700">Team filter</p>
+            <div className="mt-1 inline-flex rounded-lg border border-slate-300 p-1">
+              {(["all", "FBS", "FCS"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setTeamSubdivisionFilter(value)}
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                    teamSubdivisionFilter === value
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {value === "all" ? "All" : value}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <label className="text-sm font-medium text-slate-700">
-            College logo URL
+            College logo URL override
             <input
               name="collegeLogoUrl"
               defaultValue={currentProfile.collegeLogoUrl ?? ""}
@@ -610,7 +694,88 @@ function ProfileSettings() {
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
             />
           </label>
+
+          <label className="text-sm font-medium text-slate-700">
+            Search teams
+            <input
+              value={teamSearchQuery}
+              onChange={(event) => setTeamSearchQuery(event.target.value)}
+              placeholder="Search school or abbreviation"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            />
+          </label>
         </div>
+
+        <input type="hidden" name="collegeTeamId" value={selectedCollegeTeamId} />
+
+        <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-slate-800">College team picker</h3>
+            <p className="text-xs text-slate-500">Showing {filteredCollegeTeams.length} team(s)</p>
+          </div>
+
+          {selectedCollegeTeam ? (
+            <div className="mt-3 rounded-lg border border-slate-300 bg-white p-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected</p>
+              <div className="mt-2 flex items-center gap-2">
+                <Image
+                  src={getCollegeTeamLogoUrl(selectedCollegeTeam.id)}
+                  alt={`${selectedCollegeTeam.displayName} logo`}
+                  width={28}
+                  height={28}
+                  className="h-7 w-7 rounded-sm object-contain"
+                />
+                <p className="text-sm font-semibold text-slate-900">{selectedCollegeTeam.displayName}</p>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                  {selectedCollegeTeam.subdivision}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCollegeTeamIdInput("")}
+                className="mt-2 text-xs font-medium text-slate-600 underline-offset-2 hover:underline"
+              >
+                Clear team selection
+              </button>
+            </div>
+          ) : null}
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredCollegeTeams.map((team) => {
+              const isSelected = selectedCollegeTeamId === team.id;
+              return (
+                <button
+                  key={team.id}
+                  type="button"
+                  onClick={() => setSelectedCollegeTeamIdInput(team.id)}
+                  className={`flex items-center gap-2 rounded-lg border p-2 text-left transition ${
+                    isSelected
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
+                  }`}
+                >
+                  <Image
+                    src={getCollegeTeamLogoUrl(team.id)}
+                    alt={`${team.displayName} logo`}
+                    width={24}
+                    height={24}
+                    className="h-6 w-6 rounded-sm object-contain"
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-semibold">{team.displayName}</span>
+                    <span className={`text-[11px] ${isSelected ? "text-slate-200" : "text-slate-500"}`}>
+                      {team.abbreviation} • {team.subdivision}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {filteredCollegeTeams.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">No teams match your current search and subdivision filter.</p>
+          ) : null}
+        </section>
 
         {saveError ? <p className="text-sm text-red-700">{saveError}</p> : null}
         {saveMessage ? <p className="text-sm text-emerald-700">{saveMessage}</p> : null}
@@ -654,6 +819,8 @@ function FirstLoginOnboarding({
         displayName?: string | null;
         theme?: "light" | "dark" | "cwm";
         palette?: UserProfile["palette"];
+        collegeTeamId?: string | null;
+        collegeTeamName?: string | null;
         collegeLogoUrl?: string | null;
         timezone?: string;
         retentionDays?: number;
@@ -704,6 +871,8 @@ function FirstLoginOnboarding({
         lastName: lastName.trim(),
         theme: mappedTheme,
         palette,
+        collegeTeamId: profile?.collegeTeamId ?? null,
+        collegeTeamName: profile?.collegeTeamName ?? null,
         collegeLogoUrl: profile?.collegeLogoUrl ?? null,
         timezone: timezone.trim(),
         retentionDays: profile?.retentionDays ?? env.softDeleteRetentionDays,
@@ -720,6 +889,8 @@ function FirstLoginOnboarding({
           displayName: validatedProfile.displayName,
           theme: validatedProfile.theme,
           palette: validatedProfile.palette,
+          collegeTeamId: validatedProfile.collegeTeamId ?? null,
+          collegeTeamName: validatedProfile.collegeTeamName ?? null,
           collegeLogoUrl: validatedProfile.collegeLogoUrl ?? null,
           timezone: validatedProfile.timezone,
           retentionDays: validatedProfile.retentionDays,
@@ -932,6 +1103,29 @@ function getTimezoneOptions(initialTimezone?: string) {
   );
 
   return merged;
+}
+
+function getCollegeTeamSelection(
+  collegeTeamId: string | null,
+  collegeTeamName: string | null,
+  collegeLogoUrl: string | null,
+) {
+  if (!collegeTeamId && !collegeTeamName && !collegeLogoUrl) {
+    return null;
+  }
+
+  const allowlistTeam = collegeTeamId ? COLLEGE_TEAMS_BY_ID.get(collegeTeamId) : null;
+  const fallbackLogoUrl = allowlistTeam ? getCollegeTeamLogoUrl(allowlistTeam.id) : null;
+
+  return {
+    id: allowlistTeam?.id ?? collegeTeamId ?? "",
+    displayName: allowlistTeam?.displayName ?? collegeTeamName ?? "College Team",
+    logoUrl: collegeLogoUrl ?? fallbackLogoUrl,
+  };
+}
+
+function getCollegeTeamLogoUrl(teamId: string) {
+  return `https://a.espncdn.com/i/teamlogos/ncaa/500/${teamId}.png`;
 }
 
 function normalizeStoredTheme(theme: string | null | undefined): "light" | "dark" | "cwm" {

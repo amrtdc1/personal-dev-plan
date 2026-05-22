@@ -54,6 +54,8 @@
 - [x] Add client-side offline write queue for save flows (goals/subgoals/tasks/journal)
 - [x] Add offline sync status panel with pending queue count and manual/auto replay hooks
 - [x] Add signed-in header account menu with quick light/dark/system shortcuts and profile access
+- [x] Add seeded college team picker + persisted team identity + header team badge
+- [x] Add searchable college team picker with FBS/FCS filter and preview cards
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).

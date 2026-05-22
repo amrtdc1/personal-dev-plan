@@ -11,6 +11,8 @@ export const appSchema = i.schema({
       displayName: i.string().optional(),
       theme: i.string<"light" | "dark" | "cwm">(),
       palette: i.string<"ocean" | "sunset" | "forest" | "royal" | "candy" | "dusk" | "lava" | "mint">(),
+      collegeTeamId: i.string().optional(),
+      collegeTeamName: i.string().optional(),
       collegeLogoUrl: i.string().optional(),
       timezone: i.string(),
       retentionDays: i.number(),

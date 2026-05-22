@@ -80,6 +80,8 @@ export type UserProfile = {
   displayName: string | null;
   theme: "light" | "dark" | "cwm";
   palette: "ocean" | "sunset" | "forest" | "royal" | "candy" | "dusk" | "lava" | "mint";
+  collegeTeamId?: string | null;
+  collegeTeamName?: string | null;
   collegeLogoUrl?: string | null;
   timezone: string;
   retentionDays: number;

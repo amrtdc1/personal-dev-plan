@@ -32,6 +32,8 @@ type UserProfileWriteInput = {
   updatedAt: string;
   firstName?: string | null;
   lastName?: string | null;
+  collegeTeamId?: string | null;
+  collegeTeamName?: string | null;
   collegeLogoUrl?: string | null;
 };
 
@@ -101,11 +103,15 @@ export function validateUserProfileWrite(input: UserProfileWriteInput) {
   const trimmedEmail = input.email.trim().toLowerCase();
   assertRequiredText(trimmedEmail, "Profile email");
 
+  const normalizedCollegeTeamId = nullableTrimmed(input.collegeTeamId);
+  const normalizedCollegeTeamName = nullableTrimmed(input.collegeTeamName);
   const sanitizedCollegeLogoUrl = sanitizeCollegeLogoUrlForPersist(input.collegeLogoUrl);
 
   return {
     ...input,
     email: trimmedEmail,
+    collegeTeamId: normalizedCollegeTeamId,
+    collegeTeamName: normalizedCollegeTeamName,
     collegeLogoUrl: sanitizedCollegeLogoUrl,
   };
 }
@@ -159,6 +165,11 @@ function assertRequiredText(value: string, label: string) {
   if (!value) {
     throw new Error(`${label} is required.`);
   }
+}
+
+function nullableTrimmed(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 function sanitizeCollegeLogoUrlForPersist(url: string | null | undefined) {
