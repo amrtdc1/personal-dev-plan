@@ -56,6 +56,7 @@
 - [x] Add signed-in header account menu with quick light/dark/system shortcuts and profile access
 - [x] Add seeded college team picker + persisted team identity + header team badge
 - [x] Add searchable college team picker with FBS/FCS filter and preview cards
+- [x] Add live ESPN-backed team catalog route with local fallback for picker resiliency
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).

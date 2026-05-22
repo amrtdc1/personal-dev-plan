@@ -1,8 +1,5 @@
 import allowlistData from "@/lib/theming/data/espn-d1-allowlist.json";
 
-const COLLEGE_FOOTBALL_TEAMS_ENDPOINT =
-  "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams";
-
 const ALLOWED_LOGO_HOSTS = new Set([
   "a.espncdn.com",
   "a1.espncdn.com",
@@ -58,6 +55,9 @@ export type CollegeThemeTeam = {
 
 const ALLOWLIST_ENTRIES: D1AllowlistEntry[] = (allowlistData.teams ?? []) as D1AllowlistEntry[];
 const ALLOWLIST_BY_ID = new Map(ALLOWLIST_ENTRIES.map((entry) => [entry.id, entry]));
+const STATIC_COLLEGE_THEME_TEAMS: CollegeThemeTeam[] = [...((allowlistData.teams ?? []) as CollegeThemeTeam[])].sort(
+  (a, b) => a.displayName.localeCompare(b.displayName)
+);
 
 function normalizeHex(value: string | undefined): string | null {
   if (!value) {
@@ -147,13 +147,8 @@ export function normalizeEspnCollegeTeams(payload: EspnTeamsPayload): CollegeThe
 }
 
 export async function fetchEspnCollegeTeams(fetchImpl: typeof fetch = fetch): Promise<CollegeThemeTeam[]> {
-  const response = await fetchImpl(COLLEGE_FOOTBALL_TEAMS_ENDPOINT);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ESPN teams: ${response.status}`);
-  }
-
-  const payload = (await response.json()) as EspnTeamsPayload;
-  return normalizeEspnCollegeTeams(payload);
+  void fetchImpl;
+  return STATIC_COLLEGE_THEME_TEAMS;
 }
 
 export function getD1AllowlistIds(): string[] {

@@ -11,6 +11,7 @@ import { OfflineSyncStatus } from "@/components/dashboard/offline-sync-status";
 import { dataRepository } from "@/lib/data/repository";
 import { validateUserProfileWrite } from "@/lib/data/validation";
 import allowlistData from "@/lib/theming/data/espn-d1-allowlist.json";
+import type { CollegeThemeTeam } from "@/lib/theming/providers/espn-college";
 import { db } from "@/lib/instantdb/client";
 import { env } from "@/lib/config/env";
 import type { UserProfile } from "@/lib/domain/types";
@@ -53,6 +54,19 @@ const COLLEGE_TEAMS = ((allowlistData as { teams?: AllowlistTeam[] }).teams ?? [
   .sort((a, b) => a.displayName.localeCompare(b.displayName));
 
 const COLLEGE_TEAMS_BY_ID = new Map(COLLEGE_TEAMS.map((team) => [team.id, team]));
+const FALLBACK_COLLEGE_THEME_TEAMS: CollegeThemeTeam[] = COLLEGE_TEAMS.map((team) => ({
+  id: team.id,
+  displayName: team.displayName,
+  abbreviation: team.abbreviation,
+  slug: "",
+  subdivision: team.subdivision,
+  logoUrl: getCollegeTeamLogoUrl(team.id),
+  darkLogoUrl: null,
+  colors: {
+    primary: null,
+    secondary: null,
+  },
+}));
 
 export function HomeExperience() {
   return (
@@ -450,6 +464,9 @@ function ProfileSettings() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [themeSourceInput, setThemeSourceInput] = useState<ThemeSource | null>(null);
+  const [liveCollegeTeams, setLiveCollegeTeams] = useState<CollegeThemeTeam[] | null>(null);
+  const [isLiveCollegeTeamsLoading, setIsLiveCollegeTeamsLoading] = useState(false);
+  const [liveCollegeTeamsError, setLiveCollegeTeamsError] = useState<string | null>(null);
   const [teamSearchQuery, setTeamSearchQuery] = useState("");
   const [teamSubdivisionFilter, setTeamSubdivisionFilter] = useState<"all" | "FBS" | "FCS">("all");
   const [selectedCollegeTeamIdInput, setSelectedCollegeTeamIdInput] = useState<string | null>(null);
@@ -461,6 +478,50 @@ function ProfileSettings() {
     return dataRepository.subscribeOfflineMutationCount((count) => {
       setPendingSyncCount(count);
     });
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadCollegeTeams() {
+      setIsLiveCollegeTeamsLoading(true);
+      setLiveCollegeTeamsError(null);
+
+      try {
+        const response = await fetch("/api/themes/college-teams", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Unable to load live team catalog (${response.status}).`);
+        }
+
+        const payload = (await response.json()) as {
+          teams?: CollegeThemeTeam[];
+        };
+
+        if (!isCancelled) {
+          const teams = Array.isArray(payload.teams) ? payload.teams : [];
+          setLiveCollegeTeams(teams);
+        }
+      } catch {
+        if (!isCancelled) {
+          setLiveCollegeTeams(null);
+          setLiveCollegeTeamsError("Live team catalog unavailable. Using local team list.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLiveCollegeTeamsLoading(false);
+        }
+      }
+    }
+
+    void loadCollegeTeams();
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   const { data, isLoading: isProfileLoading, error } = db.useQuery(
@@ -480,12 +541,17 @@ function ProfileSettings() {
   const profile = data?.userProfiles?.[0] ?? null;
   const timezoneOptions = useMemo(() => getTimezoneOptions(profile?.timezone), [profile?.timezone]);
   const themeSource = themeSourceInput ?? normalizeThemeSource(profile?.themeMode, profile?.collegeTeamId ?? null);
+  const availableCollegeTeams = liveCollegeTeams?.length ? liveCollegeTeams : FALLBACK_COLLEGE_THEME_TEAMS;
+  const availableCollegeTeamsById = useMemo(
+    () => new Map(availableCollegeTeams.map((team) => [team.id, team])),
+    [availableCollegeTeams],
+  );
   const selectedCollegeTeamId = selectedCollegeTeamIdInput ?? (profile?.collegeTeamId ?? "");
 
   const filteredCollegeTeams = useMemo(() => {
     const query = teamSearchQuery.trim().toLowerCase();
 
-    return COLLEGE_TEAMS.filter((team) => {
+    return availableCollegeTeams.filter((team) => {
       if (teamSubdivisionFilter !== "all" && team.subdivision !== teamSubdivisionFilter) {
         return false;
       }
@@ -496,8 +562,8 @@ function ProfileSettings() {
 
       const searchable = `${team.displayName} ${team.abbreviation} ${team.subdivision}`.toLowerCase();
       return searchable.includes(query);
-    }).slice(0, 18);
-  }, [teamSearchQuery, teamSubdivisionFilter]);
+    });
+  }, [availableCollegeTeams, teamSearchQuery, teamSubdivisionFilter]);
 
   if (isLoading || isProfileLoading) {
     return (
@@ -522,7 +588,7 @@ function ProfileSettings() {
   const currentUser = user;
   const currentProfile = profile;
   const defaultThemeChoice: ThemeChoice = currentProfile.theme === "cwm" ? "system" : currentProfile.theme;
-  const selectedCollegeTeam = selectedCollegeTeamId ? COLLEGE_TEAMS_BY_ID.get(selectedCollegeTeamId) : null;
+  const selectedCollegeTeam = selectedCollegeTeamId ? availableCollegeTeamsById.get(selectedCollegeTeamId) : null;
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -793,6 +859,11 @@ function ProfileSettings() {
                   <p className="text-xs text-slate-500">Showing {filteredCollegeTeams.length} team(s)</p>
                 </div>
 
+                {isLiveCollegeTeamsLoading ? (
+                  <p className="mt-2 text-xs text-slate-500">Loading latest team catalog...</p>
+                ) : null}
+                {liveCollegeTeamsError ? <p className="mt-2 text-xs text-amber-700">{liveCollegeTeamsError}</p> : null}
+
                 {selectedCollegeTeam ? (
                   <div className="mt-3 rounded-lg border border-slate-300 bg-white p-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected</p>
@@ -819,41 +890,43 @@ function ProfileSettings() {
                   </div>
                 ) : null}
 
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {filteredCollegeTeams.map((team) => {
-                    const isSelected = selectedCollegeTeamId === team.id;
-                    return (
-                      <button
-                        key={team.id}
-                        type="button"
-                        onClick={() => setSelectedCollegeTeamIdInput(team.id)}
-                        className={`flex items-center gap-2 rounded-lg border p-2 text-left transition ${
-                          isSelected
-                            ? "border-slate-900 bg-slate-900 text-white"
-                            : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
-                        }`}
-                      >
-                        <Image
-                          src={getCollegeTeamLogoUrl(team.id)}
-                          alt={`${team.displayName} logo`}
-                          width={24}
-                          height={24}
-                          className="h-6 w-6 rounded-sm object-contain"
-                        />
-                        <span className="min-w-0">
-                          <span className="block truncate text-xs font-semibold">{team.displayName}</span>
-                          <span className={`text-[11px] ${isSelected ? "text-slate-200" : "text-slate-500"}`}>
-                            {team.abbreviation} • {team.subdivision}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
+                <div className="mt-3 h-[22rem] overflow-y-auto pr-1">
+                  {filteredCollegeTeams.length === 0 ? (
+                    <p className="text-sm text-slate-600">No teams match your current search and subdivision filter.</p>
+                  ) : (
+                    <div className="grid content-start gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {filteredCollegeTeams.map((team) => {
+                        const isSelected = selectedCollegeTeamId === team.id;
+                        return (
+                          <button
+                            key={team.id}
+                            type="button"
+                            onClick={() => setSelectedCollegeTeamIdInput(team.id)}
+                            className={`flex items-center gap-2 rounded-lg border p-2 text-left transition ${
+                              isSelected
+                                ? "border-slate-900 bg-slate-900 text-white"
+                                : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
+                            }`}
+                          >
+                            <Image
+                              src={getCollegeTeamLogoUrl(team.id)}
+                              alt={`${team.displayName} logo`}
+                              width={24}
+                              height={24}
+                              className="h-6 w-6 rounded-sm object-contain"
+                            />
+                            <span className="min-w-0">
+                              <span className="block truncate text-xs font-semibold">{team.displayName}</span>
+                              <span className={`text-[11px] ${isSelected ? "text-slate-200" : "text-slate-500"}`}>
+                                {team.abbreviation} • {team.subdivision}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-
-                {filteredCollegeTeams.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-600">No teams match your current search and subdivision filter.</p>
-                ) : null}
               </section>
             </>
           ) : null}
