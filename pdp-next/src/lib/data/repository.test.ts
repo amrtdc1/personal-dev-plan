@@ -45,6 +45,7 @@ vi.mock("@/lib/instantdb/client", () => ({
       goals: createTxTable("goals"),
       subgoals: createTxTable("subgoals"),
       tasks: createTxTable("tasks"),
+      journalEntries: createTxTable("journalEntries"),
     },
   },
   isInstantConfigured: true,
@@ -633,5 +634,83 @@ describe("dataRepository soft-delete cascade", () => {
     const entries = await dataRepository.listJournalEntries("user-1");
 
     expect(entries.map((entry) => entry.id)).toEqual(["journal-new", "journal-old"]);
+  });
+
+  it("saves a journal entry", async () => {
+    const result = await dataRepository.saveJournalEntry({
+      ownerUid: "user-1",
+      title: "  Weekly reflection  ",
+      content: "  Progress this week  ",
+      mood: "  good  ",
+      tags: ["Focus", "focus", "Work"],
+      relatedGoalId: "goal-1",
+    });
+
+    expect(typeof result.id).toBe("string");
+    expect(result.title).toBe("Weekly reflection");
+    expect(result.content).toBe("Progress this week");
+    expect(result.mood).toBe("good");
+    expect(result.tags).toEqual(["focus", "work"]);
+    expect(result.updatedAt).toBe(NOW_ISO);
+
+    expect(transactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: "journalEntries",
+        entityId: result.id,
+        payload: expect.objectContaining({
+          title: "Weekly reflection",
+          content: "Progress this week",
+          mood: "good",
+          tags: ["focus", "work"],
+          relatedGoalId: "goal-1",
+        }),
+      }),
+    );
+  });
+
+  it("soft deletes and restores a journal entry", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        journalEntries: [buildJournalEntry({ id: "journal-1" })],
+      },
+    });
+
+    const deleted = await dataRepository.softDeleteJournalEntry("user-1", "journal-1");
+    expect(deleted.deletedAt).toBe(NOW_ISO);
+    expect(deleted.restoreUntil).toBe(RESTORE_ISO);
+    expect(transactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: "journalEntries",
+        entityId: "journal-1",
+        payload: expect.objectContaining({
+          deletedAt: NOW_ISO,
+          deletedBy: "user-1",
+        }),
+      }),
+    );
+
+    transactMock.mockClear();
+
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        journalEntries: [buildJournalEntry({ id: "journal-1", deletedAt: NOW_ISO, restoreUntil: RESTORE_ISO })],
+      },
+    });
+
+    const restored = await dataRepository.restoreJournalEntry("user-1", "journal-1");
+    expect(restored.deletedAt).toBeNull();
+    expect(restored.restoreUntil).toBeNull();
+    expect(transactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: "journalEntries",
+        entityId: "journal-1",
+        payload: expect.objectContaining({
+          deletedAt: null,
+          deletedBy: null,
+          restoreUntil: null,
+          purgeAt: null,
+        }),
+      }),
+    );
   });
 });

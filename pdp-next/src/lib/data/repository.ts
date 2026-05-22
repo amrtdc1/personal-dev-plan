@@ -6,9 +6,11 @@ import type { Goal, GoalType, ItemStatus, JournalEntry, Subgoal, Task, UserProfi
 import type { AppSchema } from "@/lib/instantdb/schema";
 import {
   assertOwnedGoal,
+  assertOwnedJournalEntry,
   assertOwnedSubgoal,
   assertOwnedTask,
   validateGoalWrite,
+  validateJournalEntryWrite,
   validateReorderIds,
   validateStatusUpdate,
   validateSubgoalWrite,
@@ -25,7 +27,9 @@ type TransactionMutation =
   | ReturnType<(typeof db.tx.subgoals)[string]["update"]>
   | ReturnType<(typeof db.tx.subgoals)[string]["delete"]>
   | ReturnType<(typeof db.tx.tasks)[string]["update"]>
-  | ReturnType<(typeof db.tx.tasks)[string]["delete"]>;
+  | ReturnType<(typeof db.tx.tasks)[string]["delete"]>
+  | ReturnType<(typeof db.tx.journalEntries)[string]["update"]>
+  | ReturnType<(typeof db.tx.journalEntries)[string]["delete"]>;
 
 export type SaveGoalInput = {
   goalId?: string;
@@ -62,6 +66,17 @@ export type SaveTaskInput = {
   existingTask?: Task;
 };
 
+export type SaveJournalEntryInput = {
+  journalEntryId?: string;
+  ownerUid: string;
+  title: string;
+  content: string;
+  mood: string | null;
+  tags: string[];
+  relatedGoalId: string | null;
+  existingJournalEntry?: JournalEntry;
+};
+
 export type DataRepository = {
   listGoals: (ownerUid: string, type: GoalType, options?: ListOptions) => Promise<Goal[]>;
   saveGoal: (input: SaveGoalInput) => Promise<Goal>;
@@ -87,7 +102,10 @@ export type DataRepository = {
     tasks: number;
     purgedAt: string;
   }>;
-  listJournalEntries: (ownerUid: string) => Promise<JournalEntry[]>;
+  listJournalEntries: (ownerUid: string, options?: ListOptions) => Promise<JournalEntry[]>;
+  saveJournalEntry: (input: SaveJournalEntryInput) => Promise<JournalEntry>;
+  softDeleteJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<JournalEntry>;
+  restoreJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<JournalEntry>;
   getUserProfile: (ownerUid: string) => Promise<UserProfile | null>;
 };
 
@@ -787,7 +805,7 @@ export const dataRepository: DataRepository = {
       purgedAt: nowIso,
     };
   },
-  async listJournalEntries(ownerUid) {
+  async listJournalEntries(ownerUid, options) {
     const data = await runClientQuery<{ journalEntries?: JournalEntry[] }>({
       journalEntries: {
         $: {
@@ -798,9 +816,118 @@ export const dataRepository: DataRepository = {
       },
     });
 
-    return (data.journalEntries ?? [])
-      .filter((entry) => entry.deletedAt === null)
-      .sort(compareJournalEntries);
+    return filterDeleted(data.journalEntries ?? [], options).sort(compareJournalEntries);
+  },
+  async saveJournalEntry(input) {
+    ensureClientMutationSupport();
+
+    const now = new Date().toISOString();
+    const {
+      trimmedTitle,
+      trimmedContent,
+      normalizedMood,
+      normalizedTags,
+      normalizedRelatedGoalId,
+    } = validateJournalEntryWrite(input);
+
+    const journalEntryId = input.existingJournalEntry?.id ?? input.journalEntryId ?? id();
+    const journalEntry: JournalEntry = {
+      id: journalEntryId,
+      ownerUid: input.ownerUid,
+      title: trimmedTitle,
+      content: trimmedContent,
+      mood: normalizedMood,
+      tags: normalizedTags,
+      relatedGoalId: normalizedRelatedGoalId,
+      createdAt: input.existingJournalEntry?.createdAt ?? now,
+      updatedAt: now,
+      deletedAt: input.existingJournalEntry?.deletedAt ?? null,
+      deletedBy: input.existingJournalEntry?.deletedBy ?? null,
+      restoreUntil: input.existingJournalEntry?.restoreUntil ?? null,
+      purgeAt: input.existingJournalEntry?.purgeAt ?? null,
+    };
+
+    await db.transact(
+      db.tx.journalEntries[journalEntryId].update({
+        ownerUid: journalEntry.ownerUid,
+        title: journalEntry.title,
+        content: journalEntry.content,
+        mood: journalEntry.mood,
+        tags: journalEntry.tags,
+        relatedGoalId: journalEntry.relatedGoalId,
+        createdAt: journalEntry.createdAt,
+        updatedAt: journalEntry.updatedAt,
+        deletedAt: journalEntry.deletedAt,
+        deletedBy: journalEntry.deletedBy,
+        restoreUntil: journalEntry.restoreUntil,
+        purgeAt: journalEntry.purgeAt,
+      }),
+    );
+
+    return journalEntry;
+  },
+  async softDeleteJournalEntry(ownerUid, journalEntryId) {
+    ensureClientMutationSupport();
+
+    const entry = assertOwnedJournalEntry(await findJournalEntryById(ownerUid, journalEntryId), ownerUid);
+
+    if (entry.deletedAt) {
+      return entry;
+    }
+
+    const now = new Date().toISOString();
+    const lifecycle = buildSoftDeleteLifecycle(now);
+
+    await db.transact(
+      db.tx.journalEntries[journalEntryId].update({
+        deletedAt: now,
+        deletedBy: ownerUid,
+        restoreUntil: lifecycle.restoreUntil,
+        purgeAt: lifecycle.purgeAt,
+        updatedAt: now,
+      }),
+    );
+
+    return {
+      ...entry,
+      deletedAt: now,
+      deletedBy: ownerUid,
+      restoreUntil: lifecycle.restoreUntil,
+      purgeAt: lifecycle.purgeAt,
+      updatedAt: now,
+    };
+  },
+  async restoreJournalEntry(ownerUid, journalEntryId) {
+    ensureClientMutationSupport();
+
+    const entry = assertOwnedJournalEntry(await findJournalEntryById(ownerUid, journalEntryId), ownerUid);
+
+    if (!entry.deletedAt) {
+      return entry;
+    }
+
+    assertRestoreWindowOpen(entry.restoreUntil, "Journal entry");
+
+    const now = new Date().toISOString();
+
+    await db.transact(
+      db.tx.journalEntries[journalEntryId].update({
+        deletedAt: null,
+        deletedBy: null,
+        restoreUntil: null,
+        purgeAt: null,
+        updatedAt: now,
+      }),
+    );
+
+    return {
+      ...entry,
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+      updatedAt: now,
+    };
   },
   async getUserProfile(ownerUid) {
     const data = await runClientQuery<{ userProfiles?: UserProfile[] }>({
@@ -884,6 +1011,20 @@ async function findTaskById(ownerUid: string, taskId: string) {
   });
 
   return (data.tasks ?? []).find((task) => task.id === taskId) ?? null;
+}
+
+async function findJournalEntryById(ownerUid: string, journalEntryId: string) {
+  const data = await runClientQuery<{ journalEntries?: JournalEntry[] }>({
+    journalEntries: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  return (data.journalEntries ?? []).find((entry) => entry.id === journalEntryId) ?? null;
 }
 
 function filterDeleted<

@@ -1,9 +1,11 @@
-import type { Goal, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
 import {
   assertOwnedGoal,
+  assertOwnedJournalEntry,
   assertOwnedSubgoal,
   assertOwnedTask,
   validateGoalWrite,
+  validateJournalEntryWrite,
   validateReorderIds,
   validateStatusUpdate,
   validateSubgoalWrite,
@@ -67,6 +69,38 @@ describe("data validation helpers", () => {
     });
   });
 
+  it("normalizes journal writes", () => {
+    const result = validateJournalEntryWrite({
+      ownerUid: "user-1",
+      title: "  Week 20 reflection  ",
+      content: "  I made solid progress.  ",
+      mood: "  Good  ",
+      tags: [" Focus ", "Focus", "Work", " "],
+      relatedGoalId: "  goal-1  ",
+    });
+
+    expect(result).toEqual({
+      trimmedTitle: "Week 20 reflection",
+      trimmedContent: "I made solid progress.",
+      normalizedMood: "Good",
+      normalizedTags: ["focus", "work"],
+      normalizedRelatedGoalId: "goal-1",
+    });
+  });
+
+  it("requires a journal title", () => {
+    expect(() =>
+      validateJournalEntryWrite({
+        ownerUid: "user-1",
+        title: "   ",
+        content: "Body",
+        mood: null,
+        tags: [],
+        relatedGoalId: null,
+      }),
+    ).toThrow("Journal title is required.");
+  });
+
   it("rejects unsupported status values", () => {
     expect(() => validateStatusUpdate("blocked" as never)).toThrow("Status value is not supported.");
   });
@@ -85,14 +119,17 @@ describe("data validation helpers", () => {
     const goal = { ownerUid: "user-1" } as Goal;
     const subgoal = { ownerUid: "user-1" } as Subgoal;
     const task = { ownerUid: "user-1" } as Task;
+    const entry = { ownerUid: "user-1" } as JournalEntry;
 
     expect(assertOwnedGoal(goal, "user-1")).toBe(goal);
     expect(assertOwnedSubgoal(subgoal, "user-1")).toBe(subgoal);
     expect(assertOwnedTask(task, "user-1")).toBe(task);
+    expect(assertOwnedJournalEntry(entry, "user-1")).toBe(entry);
 
     expect(() => assertOwnedGoal(goal, "user-2")).toThrow("Goal does not belong to this user.");
     expect(() => assertOwnedSubgoal(null, "user-1")).toThrow("Subgoal was not found for this user.");
     expect(() => assertOwnedTask(task, "user-2")).toThrow("Task does not belong to this user.");
+    expect(() => assertOwnedJournalEntry(null, "user-1")).toThrow("Journal entry was not found for this user.");
   });
 
   it("normalizes and validates user profile writes", () => {

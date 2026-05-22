@@ -1,10 +1,16 @@
 import type {
   Goal,
+  JournalEntry,
   ItemStatus,
   Subgoal,
   Task,
 } from "@/lib/domain/types";
-import type { SaveGoalInput, SaveSubgoalInput, SaveTaskInput } from "@/lib/data/repository";
+import type {
+  SaveGoalInput,
+  SaveJournalEntryInput,
+  SaveSubgoalInput,
+  SaveTaskInput,
+} from "@/lib/data/repository";
 
 const ITEM_STATUSES: ItemStatus[] = ["not_started", "in_progress", "done"];
 const ALLOWED_COLLEGE_LOGO_HOSTS = new Set([
@@ -67,6 +73,30 @@ export function validateTaskWrite(input: SaveTaskInput) {
   };
 }
 
+export function validateJournalEntryWrite(input: SaveJournalEntryInput) {
+  const trimmedTitle = input.title.trim();
+  const trimmedContent = input.content.trim();
+  const normalizedMood = input.mood?.trim() ? input.mood.trim() : null;
+  const normalizedTags = Array.from(
+    new Set(
+      input.tags
+        .map((tag) => tag.trim().toLowerCase())
+        .filter((tag) => tag.length > 0),
+    ),
+  );
+  const normalizedRelatedGoalId = input.relatedGoalId?.trim() ? input.relatedGoalId.trim() : null;
+
+  assertRequiredText(trimmedTitle, "Journal title");
+
+  return {
+    trimmedTitle,
+    trimmedContent,
+    normalizedMood,
+    normalizedTags,
+    normalizedRelatedGoalId,
+  };
+}
+
 export function validateUserProfileWrite(input: UserProfileWriteInput) {
   const trimmedEmail = input.email.trim().toLowerCase();
   assertRequiredText(trimmedEmail, "Profile email");
@@ -119,6 +149,10 @@ export function assertOwnedSubgoal(subgoal: Subgoal | null, ownerUid: string) {
 
 export function assertOwnedTask(task: Task | null, ownerUid: string) {
   return assertOwnedEntity(task, ownerUid, "Task");
+}
+
+export function assertOwnedJournalEntry(entry: JournalEntry | null, ownerUid: string) {
+  return assertOwnedEntity(entry, ownerUid, "Journal entry");
 }
 
 function assertRequiredText(value: string, label: string) {

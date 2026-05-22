@@ -50,6 +50,7 @@
 - [x] Enforce persist-path validation for college logo URLs on profile writes
 - [x] Integrate strict markdown rendering into repository-backed journal preview flow
 - [x] Add repository-backed dashboard insight cards (focus, due soon, at-risk, recently updated)
+- [x] Add repository-backed journal workspace with CRUD and mood/tag/goal filters
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).
