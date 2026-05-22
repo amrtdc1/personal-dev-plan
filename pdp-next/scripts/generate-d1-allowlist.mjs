@@ -13,6 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const THIS_FILE = fileURLToPath(import.meta.url);
 
 const TEAM_DETAILS_FILE = path.join(__dirname, "core-team-details.json");
 const OUTPUT_PATH = path.join(
@@ -60,7 +61,7 @@ function selectLogos(logos) {
   };
 }
 
-function isEligibleCollegeTeam(team) {
+export function isEligibleCollegeTeam(team) {
   const displayName = String(team.displayName ?? "").trim();
   const abbreviation = String(team.abbreviation ?? "").trim();
   const slug = String(team.slug ?? "").trim().toLowerCase();
@@ -148,7 +149,12 @@ async function main() {
   console.log(`\nWrote allowlist to: ${OUTPUT_PATH}`);
 }
 
-main().catch((err) => {
-  console.error("Fatal:", err.message);
-  process.exit(1);
-});
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
+const isDirectRun = invokedPath === path.resolve(THIS_FILE);
+
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error("Fatal:", err.message);
+    process.exit(1);
+  });
+}
