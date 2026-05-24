@@ -58,7 +58,16 @@ type EventPreview = {
   };
 };
 
+type CalendarFilterPreferences = {
+  showGoals: boolean;
+  showSubgoals: boolean;
+  showTasks: boolean;
+  statusFilter: StatusFilter;
+  scopeGoalType: "all" | GoalType;
+};
+
 const DEFAULT_SELECTION = getTodaySelection();
+const CALENDAR_FILTER_PREFERENCES_STORAGE_KEY = "pdp.calendarFilterPreferences";
 
 export function CalendarWorkspace() {
   const { isLoading, user, error } = db.useAuth();
@@ -88,11 +97,12 @@ export function CalendarWorkspace() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  const [showGoals, setShowGoals] = useState(true);
-  const [showSubgoals, setShowSubgoals] = useState(true);
-  const [showTasks, setShowTasks] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [scopeGoalType, setScopeGoalType] = useState<"all" | GoalType>("all");
+  const persistedFilters = useMemo(() => readCalendarFilterPreferences(), []);
+  const [showGoals, setShowGoals] = useState(persistedFilters.showGoals);
+  const [showSubgoals, setShowSubgoals] = useState(persistedFilters.showSubgoals);
+  const [showTasks, setShowTasks] = useState(persistedFilters.showTasks);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(persistedFilters.statusFilter);
+  const [scopeGoalType, setScopeGoalType] = useState<"all" | GoalType>(persistedFilters.scopeGoalType);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
   const [eventPreview, setEventPreview] = useState<EventPreview | null>(null);
 
@@ -134,6 +144,22 @@ export function CalendarWorkspace() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const preferences: CalendarFilterPreferences = {
+      showGoals,
+      showSubgoals,
+      showTasks,
+      statusFilter,
+      scopeGoalType,
+    };
+
+    window.localStorage.setItem(CALENDAR_FILTER_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
+  }, [scopeGoalType, showGoals, showSubgoals, showTasks, statusFilter]);
 
   useEffect(() => {
     if (!eventPreview || !previewCardRef.current) {
@@ -1740,6 +1766,45 @@ function agendaLabel(kind: CalendarItemKind) {
   }
 
   return "T";
+}
+
+function readCalendarFilterPreferences(): CalendarFilterPreferences {
+  const defaults: CalendarFilterPreferences = {
+    showGoals: true,
+    showSubgoals: true,
+    showTasks: true,
+    statusFilter: "all",
+    scopeGoalType: "all",
+  };
+
+  if (typeof window === "undefined") {
+    return defaults;
+  }
+
+  const stored = window.localStorage.getItem(CALENDAR_FILTER_PREFERENCES_STORAGE_KEY);
+  if (!stored) {
+    return defaults;
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as Partial<CalendarFilterPreferences>;
+
+    return {
+      showGoals: typeof parsed.showGoals === "boolean" ? parsed.showGoals : defaults.showGoals,
+      showSubgoals: typeof parsed.showSubgoals === "boolean" ? parsed.showSubgoals : defaults.showSubgoals,
+      showTasks: typeof parsed.showTasks === "boolean" ? parsed.showTasks : defaults.showTasks,
+      statusFilter:
+        parsed.statusFilter === "all" || parsed.statusFilter === "not_started" || parsed.statusFilter === "in_progress" || parsed.statusFilter === "done"
+          ? parsed.statusFilter
+          : defaults.statusFilter,
+      scopeGoalType:
+        parsed.scopeGoalType === "all" || parsed.scopeGoalType === "professional" || parsed.scopeGoalType === "personal"
+          ? parsed.scopeGoalType
+          : defaults.scopeGoalType,
+    };
+  } catch {
+    return defaults;
+  }
 }
 
 function getCalendarEventColors() {
