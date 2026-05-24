@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { escapeHtml, renderStrictMarkdownToHtml } from "@/lib/journal/markdown";
 
 describe("journal strict markdown renderer", () => {
