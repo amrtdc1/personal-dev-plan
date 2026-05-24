@@ -34,11 +34,12 @@ This board is the source of truth for final readiness work before new initiative
 ## Later
 | ID | Task | Status | Owner | Notes |
 | --- | --- | --- | --- | --- |
-| R11 | Final staging smoke, release candidate checkpoint, and rollback plan | Todo | TBD | Required before launch declaration |
+
 
 ## Done
 | ID | Task | Completed On | Notes |
 | --- | --- | --- | --- |
+| R11 | Final staging smoke, release candidate checkpoint, and rollback plan | 2026-05-24 | Lint/test/build passed on `main`; checkpoint + rollback documented in `docs/RELEASE_CANDIDATE_CHECKPOINT_AND_ROLLBACK_PLAN.md` |
 | R10 | Verify soft-delete retention, restore-window, and purge behavior end-to-end | 2026-05-24 | User confirmed staging lifecycle validation complete; see `docs/SOFT_DELETE_LIFECYCLE_VERIFICATION.md` |
 | D1 | Extend offline queue operation coverage and replay metadata plumbing | 2026-05-23 | Added queued status/reorder/archive/restore replay support and failure metadata |
 | D2 | Surface sync failures in UI with retry action | 2026-05-23 | Added shared sync failure state and offline status diagnostics |

@@ -50,13 +50,39 @@ export function InstallAndNotifyBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">(
-    "unsupported",
+    () => {
+      if (typeof window === "undefined") {
+        return "unsupported";
+      }
+
+      if (!("Notification" in window)) {
+        return "unsupported";
+      }
+
+      return window.Notification.permission;
+    },
   );
   const [hasPushSubscription, setHasPushSubscription] = useState(false);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [isDismissed, setIsDismissed] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    const dismissedAtRaw = window.localStorage.getItem(DISMISS_KEY);
+    if (!dismissedAtRaw) {
+      return false;
+    }
+
+    const dismissedAt = Number(dismissedAtRaw);
+    if (Number.isNaN(dismissedAt)) {
+      return false;
+    }
+
+    return Date.now() - dismissedAt < DISMISS_WINDOW_MS;
+  });
   const [selectedReminderType, setSelectedReminderType] = useState<ReminderType>("daily_agenda");
   const [preferences, setPreferences] = useState<NotificationPreferences>({
     dailyAgendaEnabled: true,
@@ -78,20 +104,6 @@ export function InstallAndNotifyBanner() {
   const [isExportingHistory, setIsExportingHistory] = useState(false);
 
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const dismissedAtRaw = window.localStorage.getItem(DISMISS_KEY);
-    if (dismissedAtRaw) {
-      const dismissedAt = Number(dismissedAtRaw);
-      if (!Number.isNaN(dismissedAt) && Date.now() - dismissedAt < DISMISS_WINDOW_MS) {
-        setIsDismissed(true);
-      }
-    }
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -126,19 +138,6 @@ export function InstallAndNotifyBanner() {
       window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
       window.removeEventListener("appinstalled", onInstalled);
     };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    if (!("Notification" in window)) {
-      setNotificationPermission("unsupported");
-      return;
-    }
-
-    setNotificationPermission(window.Notification.permission);
   }, []);
 
   useEffect(() => {

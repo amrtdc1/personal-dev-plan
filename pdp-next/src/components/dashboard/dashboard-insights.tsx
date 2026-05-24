@@ -469,19 +469,6 @@ function formatStatus(status: ItemStatus) {
   }
 }
 
-function formatKind(kind: RecentlyUpdatedItem["kind"]) {
-  switch (kind) {
-    case "goal":
-      return "Goal";
-    case "subgoal":
-      return "Subgoal";
-    case "task":
-      return "Task";
-    default:
-      return kind;
-  }
-}
-
 function formatDateLabel(isoDate: string | null) {
   if (!isoDate) {
     return "unscheduled";

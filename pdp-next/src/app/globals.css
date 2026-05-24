@@ -178,6 +178,16 @@ h1, h2, h3, h4, h5, h6,
   color: color-mix(in srgb, var(--pdp-text-muted) 72%, var(--pdp-text) 28%) !important;
 }
 
+.pdp-shell .pdp-solid-surface {
+  background-color: var(--pdp-surface) !important;
+  backdrop-filter: none !important;
+}
+
+.pdp-shell .pdp-solid-muted-surface {
+  background-color: var(--pdp-muted-surface) !important;
+  backdrop-filter: none !important;
+}
+
 .pdp-panel {
   border-radius: 1rem;
   border: 1px solid var(--pdp-border);

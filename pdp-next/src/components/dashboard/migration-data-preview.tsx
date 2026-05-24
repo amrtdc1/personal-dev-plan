@@ -270,52 +270,58 @@ export function MigrationDataPreview({
     if (pendingOpenItem.kind === "goal") {
       const goal = allGoals.find((candidate) => candidate.id === pendingOpenItem.id);
       if (goal) {
-        setSelectedGoalId(goal.id);
-        setSelectedSubgoalId(null);
-        setSelectedTaskId(null);
-        setMobileView("goals");
-        setGoalType(goal.type);
-        setGoalTitle(goal.title);
-        setGoalDescription(goal.description);
-        setGoalStartDate(goal.projectedStartDate ?? "");
-        setGoalEndDate(goal.projectedEndDate ?? "");
-        setGoalTimeframeLabel(goal.timeframe === "Ongoing" ? "" : goal.timeframe);
-        setGoalIsFocus(goal.isFocus);
-        setSaveError(null);
-        setEditingGoalId(goal.id);
-        setIsGoalModalOpen(true);
+        queueMicrotask(() => {
+          setSelectedGoalId(goal.id);
+          setSelectedSubgoalId(null);
+          setSelectedTaskId(null);
+          setMobileView("goals");
+          setGoalType(goal.type);
+          setGoalTitle(goal.title);
+          setGoalDescription(goal.description);
+          setGoalStartDate(goal.projectedStartDate ?? "");
+          setGoalEndDate(goal.projectedEndDate ?? "");
+          setGoalTimeframeLabel(goal.timeframe === "Ongoing" ? "" : goal.timeframe);
+          setGoalIsFocus(goal.isFocus);
+          setSaveError(null);
+          setEditingGoalId(goal.id);
+          setIsGoalModalOpen(true);
+        });
       }
     } else if (pendingOpenItem.kind === "subgoal") {
       const subgoal = allSubgoals.find((candidate) => candidate.id === pendingOpenItem.id);
       if (subgoal) {
-        setSelectedGoalId(subgoal.goalId);
-        setSelectedSubgoalId(subgoal.id);
-        setSelectedTaskId(null);
-        setMobileView("subgoals");
-        setSubgoalTitle(subgoal.title);
-        setSubgoalDescription(subgoal.description);
-        setSubgoalDueDate(subgoal.projectedEndDate ?? "");
-        setSubgoalTimeframeLabel(subgoal.timeframe === "Ongoing" ? "" : subgoal.timeframe);
-        setSubgoalSaveError(null);
-        setEditingSubgoalId(subgoal.id);
-        setIsSubgoalModalOpen(true);
+        queueMicrotask(() => {
+          setSelectedGoalId(subgoal.goalId);
+          setSelectedSubgoalId(subgoal.id);
+          setSelectedTaskId(null);
+          setMobileView("subgoals");
+          setSubgoalTitle(subgoal.title);
+          setSubgoalDescription(subgoal.description);
+          setSubgoalDueDate(subgoal.projectedEndDate ?? "");
+          setSubgoalTimeframeLabel(subgoal.timeframe === "Ongoing" ? "" : subgoal.timeframe);
+          setSubgoalSaveError(null);
+          setEditingSubgoalId(subgoal.id);
+          setIsSubgoalModalOpen(true);
+        });
       }
     } else if (pendingOpenItem.kind === "task") {
       const task = allTasks.find((candidate) => candidate.id === pendingOpenItem.id);
       if (task) {
         const parentSubgoal = allSubgoals.find((candidate) => candidate.id === task.subgoalId);
-        if (parentSubgoal) {
-          setSelectedGoalId(parentSubgoal.goalId);
-          setSelectedSubgoalId(parentSubgoal.id);
-        }
-        setSelectedTaskId(task.id);
-        setMobileView("tasks");
-        setTaskTitle(task.title);
-        setTaskNotes(task.notes);
-        setTaskDueDate(task.dueDate ?? "");
-        setTaskSaveError(null);
-        setEditingTaskId(task.id);
-        setIsTaskModalOpen(true);
+        queueMicrotask(() => {
+          if (parentSubgoal) {
+            setSelectedGoalId(parentSubgoal.goalId);
+            setSelectedSubgoalId(parentSubgoal.id);
+          }
+          setSelectedTaskId(task.id);
+          setMobileView("tasks");
+          setTaskTitle(task.title);
+          setTaskNotes(task.notes);
+          setTaskDueDate(task.dueDate ?? "");
+          setTaskSaveError(null);
+          setEditingTaskId(task.id);
+          setIsTaskModalOpen(true);
+        });
       }
     }
 
@@ -324,35 +330,47 @@ export function MigrationDataPreview({
 
   useEffect(() => {
     if (activeGoals.length === 0) {
-      setSelectedGoalId(null);
-      setSelectedSubgoalId(null);
-      setSelectedTaskId(null);
+      queueMicrotask(() => {
+        setSelectedGoalId(null);
+        setSelectedSubgoalId(null);
+        setSelectedTaskId(null);
+      });
       return;
     }
 
     if (!selectedGoalId || !activeGoals.some((goal) => goal.id === selectedGoalId)) {
-      setSelectedGoalId(activeGoals[0].id);
+      queueMicrotask(() => {
+        setSelectedGoalId(activeGoals[0].id);
+      });
       return;
     }
 
     if (subgoalsForSelectedGoal.length === 0) {
-      setSelectedSubgoalId(null);
-      setSelectedTaskId(null);
+      queueMicrotask(() => {
+        setSelectedSubgoalId(null);
+        setSelectedTaskId(null);
+      });
       return;
     }
 
     if (!selectedSubgoalId || !subgoalsForSelectedGoal.some((subgoal) => subgoal.id === selectedSubgoalId)) {
-      setSelectedSubgoalId(subgoalsForSelectedGoal[0].id);
+      queueMicrotask(() => {
+        setSelectedSubgoalId(subgoalsForSelectedGoal[0].id);
+      });
       return;
     }
 
     if (tasksForSelectedSubgoal.length === 0) {
-      setSelectedTaskId(null);
+      queueMicrotask(() => {
+        setSelectedTaskId(null);
+      });
       return;
     }
 
     if (!selectedTaskId || !tasksForSelectedSubgoal.some((task) => task.id === selectedTaskId)) {
-      setSelectedTaskId(tasksForSelectedSubgoal[0].id);
+      queueMicrotask(() => {
+        setSelectedTaskId(tasksForSelectedSubgoal[0].id);
+      });
     }
   }, [
     activeGoals,

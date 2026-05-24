@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { requireInstantUser } from "@/lib/server/instant-auth";
 import {
