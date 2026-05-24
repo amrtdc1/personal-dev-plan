@@ -98,6 +98,7 @@
 - [x] Add permanent delete action for archived journal entries with explicit confirmation
 - [x] Align journal CRUD/archive/restore/delete flows to protected server API routes
 - [x] Add route-level regression tests for journal list/detail/archive/restore/delete APIs
+- [x] Add derived progress rollup parity for task -> subgoal -> goal completion in Goals workspace
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).

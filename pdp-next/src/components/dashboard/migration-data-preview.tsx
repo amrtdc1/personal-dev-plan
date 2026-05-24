@@ -235,12 +235,20 @@ export function MigrationDataPreview({
           tasksBySubgoalId[subgoalId] = tasks;
         }
 
+        const rolledSubgoalsByGoalId = buildSubgoalRollups(subgoalsByGoalId, tasksBySubgoalId);
+        const rolledProfessionalGoals = professionalGoals.map((goal) =>
+          applyGoalRollup(goal, rolledSubgoalsByGoalId[goal.id] ?? []),
+        );
+        const rolledPersonalGoals = personalGoals.map((goal) =>
+          applyGoalRollup(goal, rolledSubgoalsByGoalId[goal.id] ?? []),
+        );
+
         if (!isCancelled) {
           setSnapshot({
             profile,
-            professionalGoals,
-            personalGoals,
-            subgoalsByGoalId,
+            professionalGoals: rolledProfessionalGoals,
+            personalGoals: rolledPersonalGoals,
+            subgoalsByGoalId: rolledSubgoalsByGoalId,
             tasksBySubgoalId,
           });
         }
@@ -1776,5 +1784,72 @@ function getErrorMessage(error: unknown, fallback: string): string {
     return error;
   }
   return fallback;
+}
+
+function buildSubgoalRollups(
+  subgoalsByGoalId: Record<string, Subgoal[]>,
+  tasksBySubgoalId: Record<string, Task[]>,
+) {
+  const next: Record<string, Subgoal[]> = {};
+
+  for (const [goalId, subgoals] of Object.entries(subgoalsByGoalId)) {
+    next[goalId] = subgoals.map((subgoal) => applySubgoalRollup(subgoal, tasksBySubgoalId[subgoal.id] ?? []));
+  }
+
+  return next;
+}
+
+function applySubgoalRollup(subgoal: Subgoal, tasks: Task[]) {
+  if (subgoal.deletedAt !== null) {
+    return subgoal;
+  }
+
+  const activeTasks = tasks.filter((task) => task.deletedAt === null);
+  if (activeTasks.length === 0) {
+    return subgoal;
+  }
+
+  const percentComplete = Math.round(
+    activeTasks.reduce((total, task) => total + task.percentComplete, 0) / activeTasks.length,
+  );
+
+  return {
+    ...subgoal,
+    status: deriveRollupStatus(activeTasks.map((task) => task.status)),
+    percentComplete,
+  };
+}
+
+function applyGoalRollup(goal: Goal, subgoals: Subgoal[]) {
+  if (goal.deletedAt !== null) {
+    return goal;
+  }
+
+  const activeSubgoals = subgoals.filter((subgoal) => subgoal.deletedAt === null);
+  if (activeSubgoals.length === 0) {
+    return goal;
+  }
+
+  const percentComplete = Math.round(
+    activeSubgoals.reduce((total, subgoal) => total + subgoal.percentComplete, 0) / activeSubgoals.length,
+  );
+
+  return {
+    ...goal,
+    status: deriveRollupStatus(activeSubgoals.map((subgoal) => subgoal.status)),
+    percentComplete,
+  };
+}
+
+function deriveRollupStatus(statuses: ItemStatus[]): ItemStatus {
+  if (statuses.every((status) => status === "done")) {
+    return "done";
+  }
+
+  if (statuses.every((status) => status === "not_started")) {
+    return "not_started";
+  }
+
+  return "in_progress";
 }
 
