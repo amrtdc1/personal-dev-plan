@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -52,6 +53,8 @@ type EventPreview = {
     left: number;
     top: number;
     width: number;
+    anchorX: number;
+    anchorY: number;
   };
 };
 
@@ -97,6 +100,8 @@ export function CalendarWorkspace() {
   const [isTouchFriendly, setIsTouchFriendly] = useState(false);
   const [isMobileCalendar, setIsMobileCalendar] = useState(false);
   const suppressNextEventClickRef = useRef<{ id: string; until: number } | null>(null);
+  const previewCardRef = useRef<HTMLDivElement | null>(null);
+  const previewCloseTimerRef = useRef<number | null>(null);
 
   const goalMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
   const subgoalMap = useMemo(() => new Map(subgoals.map((subgoal) => [subgoal.id, subgoal])), [subgoals]);
@@ -126,6 +131,80 @@ export function CalendarWorkspace() {
         mediaQuery.removeEventListener("change", updateCompactToolbar);
       } else {
         mediaQuery.removeListener(updateCompactToolbar);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!eventPreview || !previewCardRef.current) {
+      return;
+    }
+
+    const rect = previewCardRef.current.getBoundingClientRect();
+    const viewportPadding = 12;
+    const isMobileViewport = window.innerWidth <= 640;
+    const previewGap = 10;
+
+    let nextLeft = eventPreview.position.left;
+    let nextTop = eventPreview.position.top;
+
+    if (isMobileViewport) {
+      nextLeft = Math.max(viewportPadding, (window.innerWidth - rect.width) / 2);
+      const prefersAbove = eventPreview.position.anchorY > window.innerHeight / 2;
+      const preferredTop = prefersAbove
+        ? eventPreview.position.anchorY - rect.height - previewGap
+        : eventPreview.position.anchorY + previewGap;
+      nextTop = preferredTop;
+    } else {
+      const rightCandidate = eventPreview.position.anchorX + previewGap;
+      const leftCandidate = eventPreview.position.anchorX - rect.width - previewGap;
+
+      if (rightCandidate + rect.width <= window.innerWidth - viewportPadding) {
+        nextLeft = rightCandidate;
+      } else if (leftCandidate >= viewportPadding) {
+        nextLeft = leftCandidate;
+      } else {
+        nextLeft = eventPreview.position.anchorX - rect.width / 2;
+      }
+
+      nextTop = eventPreview.position.anchorY - rect.height / 2;
+    }
+
+    nextLeft = Math.min(
+      Math.max(nextLeft, viewportPadding),
+      Math.max(viewportPadding, window.innerWidth - viewportPadding - rect.width),
+    );
+    nextTop = Math.min(
+      Math.max(nextTop, viewportPadding),
+      Math.max(viewportPadding, window.innerHeight - viewportPadding - rect.height),
+    );
+
+    if (
+      Math.abs(nextLeft - eventPreview.position.left) > 0.5 ||
+      Math.abs(nextTop - eventPreview.position.top) > 0.5
+    ) {
+      setEventPreview((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          position: {
+            ...current.position,
+            left: nextLeft,
+            top: nextTop,
+          },
+        };
+      });
+    }
+  }, [eventPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (previewCloseTimerRef.current !== null) {
+        window.clearTimeout(previewCloseTimerRef.current);
+        previewCloseTimerRef.current = null;
       }
     };
   }, []);
@@ -585,47 +664,64 @@ export function CalendarWorkspace() {
     setIsEditModalOpen(true);
   }
 
-  function getPreviewPosition(anchorEl: HTMLElement) {
+  function getPreviewPosition(anchorEl: HTMLElement, anchorPoint?: { x: number; y: number }) {
     const rect = anchorEl.getBoundingClientRect();
     const viewportPadding = 12;
-    const preferredWidth = 320;
-    const maxHeight = 320;
-    const previewGap = 8;
+    const preferredWidth = 280;
+    const estimatedHeight = 240;
+    const previewGap = 10;
     const isMobileViewport = window.innerWidth <= 640;
+    const anchorX = anchorPoint?.x ?? rect.left + rect.width / 2;
+    const anchorY = anchorPoint?.y ?? rect.top + rect.height / 2;
 
     if (isMobileViewport) {
-      const width = Math.min(360, Math.max(240, window.innerWidth - viewportPadding * 2));
+      const width = Math.min(320, Math.max(220, window.innerWidth - viewportPadding * 2));
       const left = Math.max(viewportPadding, (window.innerWidth - width) / 2);
-      const prefersAbove = rect.top > window.innerHeight / 2;
-      const topCandidate = prefersAbove ? rect.top - previewGap - maxHeight : rect.bottom + previewGap;
+      const prefersAbove = anchorY > window.innerHeight / 2;
+      const topCandidate = prefersAbove ? anchorY - previewGap - estimatedHeight : anchorY + previewGap;
       const top = Math.min(
         Math.max(topCandidate, viewportPadding),
-        Math.max(viewportPadding, window.innerHeight - viewportPadding - maxHeight),
+        Math.max(viewportPadding, window.innerHeight - viewportPadding - estimatedHeight),
       );
 
-      return { left, top, width };
+      return { left, top, width, anchorX, anchorY };
     }
 
     const width = Math.min(preferredWidth, Math.max(220, window.innerWidth - viewportPadding * 2));
-    const centerX = rect.left + rect.width / 2;
-    const left = Math.min(
-      Math.max(centerX - width / 2, viewportPadding),
+    const enoughRoomRight = anchorX + previewGap + width <= window.innerWidth - viewportPadding;
+    const enoughRoomLeft = anchorX - previewGap - width >= viewportPadding;
+
+    let left = anchorX + previewGap;
+    if (enoughRoomRight) {
+      left = anchorX + previewGap;
+    } else if (enoughRoomLeft) {
+      left = anchorX - previewGap - width;
+    } else {
+      left = anchorX - width / 2;
+    }
+
+    left = Math.min(
+      Math.max(left, viewportPadding),
       Math.max(viewportPadding, window.innerWidth - viewportPadding - width),
     );
 
-    const prefersAbove = rect.top > window.innerHeight / 2;
-    const topCandidate = prefersAbove ? rect.top - previewGap - maxHeight : rect.bottom + previewGap;
-    const top = Math.min(
-      Math.max(topCandidate, viewportPadding),
-      Math.max(viewportPadding, window.innerHeight - viewportPadding - maxHeight),
+    let top = anchorY - estimatedHeight / 2;
+    top = Math.min(
+      Math.max(top, viewportPadding),
+      Math.max(viewportPadding, window.innerHeight - viewportPadding - estimatedHeight),
     );
 
-    return { left, top, width };
+    return { left, top, width, anchorX, anchorY };
   }
 
-  function buildPreview(eventId: string, pinned: boolean, anchorEl: HTMLElement): EventPreview | null {
+  function buildPreview(
+    eventId: string,
+    pinned: boolean,
+    anchorEl: HTMLElement,
+    anchorPoint?: { x: number; y: number },
+  ): EventPreview | null {
     const [kind, id] = eventId.split(":") as [CalendarItemKind, string];
-    const position = getPreviewPosition(anchorEl);
+    const position = getPreviewPosition(anchorEl, anchorPoint);
 
     if (kind === "goal") {
       const goal = goals.find((item) => item.id === id);
@@ -689,8 +785,21 @@ export function CalendarWorkspace() {
     };
   }
 
-  function openEventPreview(eventId: string, anchorEl: HTMLElement, pinned: boolean) {
-    const preview = buildPreview(eventId, pinned, anchorEl);
+  function cancelPreviewClose() {
+    if (previewCloseTimerRef.current !== null) {
+      window.clearTimeout(previewCloseTimerRef.current);
+      previewCloseTimerRef.current = null;
+    }
+  }
+
+  function openEventPreview(
+    eventId: string,
+    anchorEl: HTMLElement,
+    pinned: boolean,
+    anchorPoint?: { x: number; y: number },
+  ) {
+    cancelPreviewClose();
+    const preview = buildPreview(eventId, pinned, anchorEl, anchorPoint);
     if (!preview) {
       return;
     }
@@ -698,8 +807,18 @@ export function CalendarWorkspace() {
     setEventPreview(preview);
   }
 
-  function closeEventPreview() {
-    setEventPreview((current) => (current?.pinned ? current : null));
+  function closeEventPreview(immediate = false) {
+    if (immediate) {
+      cancelPreviewClose();
+      setEventPreview((current) => (current?.pinned ? current : null));
+      return;
+    }
+
+    cancelPreviewClose();
+    previewCloseTimerRef.current = window.setTimeout(() => {
+      setEventPreview((current) => (current?.pinned ? current : null));
+      previewCloseTimerRef.current = null;
+    }, 120);
   }
 
   async function handleEventDrop(dropArg: EventDropArg) {
@@ -996,6 +1115,61 @@ export function CalendarWorkspace() {
     ? "mt-4 w-full rounded-full bg-slate-900 px-4 py-3 text-base font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
     : "mt-4 w-full rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400";
 
+  const previewCardNode = eventPreview ? (
+    <div
+      ref={previewCardRef}
+      className="pdp-card fixed z-40 max-h-[min(56vh,18rem)] overflow-auto p-3 text-xs shadow-xl"
+      onMouseEnter={cancelPreviewClose}
+      onMouseLeave={() => closeEventPreview()}
+      style={{
+        left: `${eventPreview.position.left}px`,
+        top: `${eventPreview.position.top}px`,
+        width: `${eventPreview.position.width}px`,
+        maxWidth: "calc(100vw - 24px)",
+        overflowWrap: "anywhere",
+        wordBreak: "break-word",
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p
+            className="text-[11px] font-semibold uppercase tracking-wide"
+            style={{ color: "var(--pdp-text-muted)" }}
+          >
+            {eventPreview.kind === "goal" ? "Goal" : eventPreview.kind === "subgoal" ? "Sub-goal" : "Task"}
+          </p>
+          <p className="mt-1 text-sm font-semibold" style={{ color: "var(--pdp-text-strong)" }}>
+            {eventPreview.title}
+          </p>
+        </div>
+        {eventPreview.pinned ? (
+          <button
+            type="button"
+            onClick={() => {
+              cancelPreviewClose();
+              setEventPreview(null);
+            }}
+            className="rounded-full border px-2 py-1 text-[11px] font-semibold transition hover:opacity-90"
+            style={{
+              borderColor: "var(--pdp-border)",
+              color: "var(--pdp-text-muted)",
+              backgroundColor: "color-mix(in srgb, var(--pdp-surface) 92%, var(--pdp-muted-surface))",
+            }}
+          >
+            Close
+          </button>
+        ) : null}
+      </div>
+
+      <p className="mt-2" style={{ color: "var(--pdp-text-muted)" }}>{eventPreview.hierarchy}</p>
+      <p className="mt-1" style={{ color: "var(--pdp-text-muted)" }}>{eventPreview.dateSummary}</p>
+      <span className={`mt-2 inline-flex pdp-status-chip ${statusChipClass(eventPreview.status)}`}>
+        {eventPreview.status.replaceAll("_", " ")}
+      </span>
+      <p className="mt-2 leading-5" style={{ color: "var(--pdp-text)" }}>{eventPreview.details}</p>
+    </div>
+  ) : null;
+
   return (
     <section className={`pdp-panel ${isTouchFriendly ? "pdp-touch-mode" : ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1024,33 +1198,6 @@ export function CalendarWorkspace() {
       {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
 
       <div className="mt-5">
-        <div className="pdp-panel-muted mb-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-slate-900">Quick actions</h3>
-              <InfoPopover className="self-center sm:hidden" label="Quick actions help">
-                Selection: {selection.startDate} to {selection.endDate}. Drag to select dates or click an event to edit it.
-              </InfoPopover>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setActionError(null);
-                setIsCreateModalOpen(true);
-              }}
-              className="rounded-full bg-blue-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-blue-600"
-            >
-              + New item
-            </button>
-          </div>
-          <p className="mt-2 hidden text-xs text-slate-600 sm:block">
-            Selection: {selection.startDate} to {selection.endDate}
-          </p>
-          <p className="mt-1 hidden text-xs text-slate-500 sm:block">
-            Drag to select dates or click an event to edit it.
-          </p>
-        </div>
-
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1149,7 +1296,10 @@ export function CalendarWorkspace() {
                     return;
                   }
 
-                  openEventPreview(hoverArg.event.id, hoverArg.el, false);
+                  openEventPreview(hoverArg.event.id, hoverArg.el, false, {
+                    x: hoverArg.jsEvent.clientX,
+                    y: hoverArg.jsEvent.clientY,
+                  });
                 }}
                 eventMouseLeave={() => {
                   closeEventPreview();
@@ -1233,51 +1383,7 @@ export function CalendarWorkspace() {
               />
           </div>
 
-          {eventPreview ? (
-            <div
-              className="pdp-card fixed z-40 max-h-[min(60vh,20rem)] overflow-auto p-3 text-xs shadow-xl"
-              style={{
-                left: `${eventPreview.position.left}px`,
-                top: `${eventPreview.position.top}px`,
-                width: `${eventPreview.position.width}px`,
-              }}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p
-                    className="text-[11px] font-semibold uppercase tracking-wide"
-                    style={{ color: "var(--pdp-text-muted)" }}
-                  >
-                    {eventPreview.kind === "goal" ? "Goal" : eventPreview.kind === "subgoal" ? "Sub-goal" : "Task"}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold" style={{ color: "var(--pdp-text-strong)" }}>
-                    {eventPreview.title}
-                  </p>
-                </div>
-                {eventPreview.pinned ? (
-                  <button
-                    type="button"
-                    onClick={() => setEventPreview(null)}
-                    className="rounded-full border px-2 py-1 text-[11px] font-semibold transition hover:opacity-90"
-                    style={{
-                      borderColor: "var(--pdp-border)",
-                      color: "var(--pdp-text-muted)",
-                      backgroundColor: "color-mix(in srgb, var(--pdp-surface) 92%, var(--pdp-muted-surface))",
-                    }}
-                  >
-                    Close
-                  </button>
-                ) : null}
-              </div>
-
-              <p className="mt-2" style={{ color: "var(--pdp-text-muted)" }}>{eventPreview.hierarchy}</p>
-              <p className="mt-1" style={{ color: "var(--pdp-text-muted)" }}>{eventPreview.dateSummary}</p>
-              <span className={`mt-2 inline-flex pdp-status-chip ${statusChipClass(eventPreview.status)}`}>
-                {eventPreview.status.replaceAll("_", " ")}
-              </span>
-              <p className="mt-2 leading-5" style={{ color: "var(--pdp-text)" }}>{eventPreview.details}</p>
-            </div>
-          ) : null}
+          {previewCardNode && typeof document !== "undefined" ? createPortal(previewCardNode, document.body) : null}
 
           {isMobileCalendar ? (
             <div className="pdp-card sticky top-2 z-20 mt-3 p-3 text-xs text-slate-700 backdrop-blur">
