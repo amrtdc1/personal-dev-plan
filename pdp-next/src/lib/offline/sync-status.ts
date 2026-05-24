@@ -62,6 +62,48 @@ export function formatOfflineOperationLabel(operation: string | null) {
   return normalized.length > 0 ? normalized : "an offline change";
 }
 
+export function getOfflineSyncDiagnosticCode(error: string | null) {
+  const category = classifyOfflineSyncFailure(error);
+
+  switch (category) {
+    case "network":
+      return "SYNC-NET";
+    case "access":
+      return "SYNC-AUTH";
+    case "schema":
+      return "SYNC-SCHEMA";
+    case "conflict":
+      return "SYNC-CONFLICT";
+    case "restore-window":
+      return "SYNC-RESTORE";
+    case "stale":
+      return "SYNC-STALE";
+    default:
+      return "SYNC-UNKNOWN";
+  }
+}
+
+export function getFriendlySyncFailureReason(error: string | null) {
+  const category = classifyOfflineSyncFailure(error);
+
+  switch (category) {
+    case "network":
+      return "Connection issue. Reconnect and retry.";
+    case "access":
+      return "Access issue. Sign in again, then retry.";
+    case "schema":
+      return "Data schema mismatch. Refresh the app and retry.";
+    case "conflict":
+      return "Conflict detected. Refresh to review latest server changes, then retry.";
+    case "restore-window":
+      return "Restore window expired for this item.";
+    case "stale":
+      return "The item changed on another device. Refresh and retry.";
+    default:
+      return "Unexpected sync issue. Try syncing again.";
+  }
+}
+
 function notifyFailureStateListeners(state: OfflineSyncFailureState) {
   listeners.forEach((listener) => {
     listener(state);
@@ -127,4 +169,60 @@ function isBrowser() {
 
 function hasStorage() {
   return isBrowser() && typeof window.localStorage !== "undefined";
+}
+
+type OfflineSyncFailureCategory =
+  | "network"
+  | "access"
+  | "schema"
+  | "conflict"
+  | "restore-window"
+  | "stale"
+  | "unknown";
+
+function classifyOfflineSyncFailure(error: string | null): OfflineSyncFailureCategory {
+  if (!error) {
+    return "unknown";
+  }
+
+  const normalized = error.toLowerCase();
+
+  if (normalized.includes("offline conflict") || normalized.includes("conflict")) {
+    return "conflict";
+  }
+
+  if (
+    normalized.includes("network") ||
+    normalized.includes("fetch") ||
+    normalized.includes("offline") ||
+    normalized.includes("timeout")
+  ) {
+    return "network";
+  }
+
+  if (
+    normalized.includes("permission") ||
+    normalized.includes("forbidden") ||
+    normalized.includes("unauthorized")
+  ) {
+    return "access";
+  }
+
+  if (
+    normalized.includes("schema") ||
+    normalized.includes("attribute") ||
+    normalized.includes("missing in your schema")
+  ) {
+    return "schema";
+  }
+
+  if (normalized.includes("restore window") && normalized.includes("expired")) {
+    return "restore-window";
+  }
+
+  if (normalized.includes("not loaded") || normalized.includes("not found")) {
+    return "stale";
+  }
+
+  return "unknown";
 }

@@ -13,6 +13,7 @@ import {
   type OfflineFlushResult,
 } from "@/lib/offline/write-queue";
 import { setOfflineSyncFailureState } from "@/lib/offline/sync-status";
+import { logSyncReplayFailure } from "@/lib/observability/telemetry";
 import {
   assertOwnedGoal,
   assertOwnedJournalEntry,
@@ -188,6 +189,15 @@ export class UnsupportedRepositoryError extends Error {
 
 export const dataRepository: DataRepository = {
   async listGoals(ownerUid, type, options) {
+    if (canUseProtectedApiRoutes()) {
+      const searchParams = new URLSearchParams({
+        includeDeleted: String(Boolean(options?.includeDeleted)),
+        type,
+      });
+      const response = await invokeProtectedRead<{ goals?: Goal[] }>(`/api/goals?${searchParams.toString()}`);
+      return filterDeleted(response.goals ?? [], options).sort(compareGoals);
+    }
+
     const data = await runClientQuery<{ goals?: Goal[] }>({
       goals: {
         $: {
@@ -247,29 +257,41 @@ export const dataRepository: DataRepository = {
       "saveGoal",
       input,
       async () => {
-        await db.transact(
-          db.tx.goals[goalId].update({
-            ownerUid: goal.ownerUid,
-            type: goal.type,
-            title: goal.title,
-            description: goal.description,
-            timeframe: goal.timeframe,
-            projectedStartDate: goal.projectedStartDate,
-            projectedEndDate: goal.projectedEndDate,
-            actualStartDate: goal.actualStartDate,
-            actualEndDate: goal.actualEndDate,
-            status: goal.status,
-            percentComplete: goal.percentComplete,
-            isFocus: goal.isFocus,
-            themeColor: goal.themeColor,
-            orderIndex: goal.orderIndex,
-            createdAt: goal.createdAt,
-            updatedAt: goal.updatedAt,
-            deletedAt: goal.deletedAt,
-            deletedBy: goal.deletedBy,
-            restoreUntil: goal.restoreUntil,
-            purgeAt: goal.purgeAt,
-          }),
+        if (canUseProtectedApiRoutes()) {
+          await saveGoalViaApi(goal, Boolean(input.existingGoal));
+          return;
+        }
+
+        await runClientMutationWithServerFallback(
+          async () => {
+            await db.transact(
+              db.tx.goals[goalId].update({
+                ownerUid: goal.ownerUid,
+                type: goal.type,
+                title: goal.title,
+                description: goal.description,
+                timeframe: goal.timeframe,
+                projectedStartDate: goal.projectedStartDate,
+                projectedEndDate: goal.projectedEndDate,
+                actualStartDate: goal.actualStartDate,
+                actualEndDate: goal.actualEndDate,
+                status: goal.status,
+                percentComplete: goal.percentComplete,
+                isFocus: goal.isFocus,
+                themeColor: goal.themeColor,
+                orderIndex: goal.orderIndex,
+                createdAt: goal.createdAt,
+                updatedAt: goal.updatedAt,
+                deletedAt: goal.deletedAt,
+                deletedBy: goal.deletedBy,
+                restoreUntil: goal.restoreUntil,
+                purgeAt: goal.purgeAt,
+              }),
+            );
+          },
+          async () => {
+            await saveGoalViaApi(goal, Boolean(input.existingGoal));
+          },
         );
       },
     );
@@ -387,6 +409,11 @@ export const dataRepository: DataRepository = {
       "softDeleteGoal",
       { ownerUid, goalId } as GoalArchiveInput,
       async () => {
+        if (canUseProtectedApiRoutes()) {
+          await archiveGoalViaApi(goalId);
+          return;
+        }
+
         await db.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
       },
     );
@@ -459,6 +486,11 @@ export const dataRepository: DataRepository = {
       "restoreGoal",
       { ownerUid, goalId } as GoalArchiveInput,
       async () => {
+        if (canUseProtectedApiRoutes()) {
+          await restoreGoalViaApi(goalId);
+          return;
+        }
+
         await db.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
       },
     );
@@ -473,6 +505,15 @@ export const dataRepository: DataRepository = {
     };
   },
   async listSubgoals(ownerUid, goalId, options) {
+    if (canUseProtectedApiRoutes()) {
+      const searchParams = new URLSearchParams({
+        includeDeleted: String(Boolean(options?.includeDeleted)),
+        goalId,
+      });
+      const response = await invokeProtectedRead<{ subgoals?: Subgoal[] }>(`/api/subgoals?${searchParams.toString()}`);
+      return filterDeleted(response.subgoals ?? [], options).sort(compareSubgoals);
+    }
+
     const data = await runClientQuery<{ subgoals?: Subgoal[] }>({
       subgoals: {
         $: {
@@ -531,27 +572,39 @@ export const dataRepository: DataRepository = {
       "saveSubgoal",
       input,
       async () => {
-        await db.transact(
-          db.tx.subgoals[subgoalId].update({
-            ownerUid: subgoal.ownerUid,
-            goalId: subgoal.goalId,
-            title: subgoal.title,
-            description: subgoal.description,
-            timeframe: subgoal.timeframe,
-            projectedStartDate: subgoal.projectedStartDate,
-            projectedEndDate: subgoal.projectedEndDate,
-            actualStartDate: subgoal.actualStartDate,
-            actualEndDate: subgoal.actualEndDate,
-            status: subgoal.status,
-            percentComplete: subgoal.percentComplete,
-            orderIndex: subgoal.orderIndex,
-            createdAt: subgoal.createdAt,
-            updatedAt: subgoal.updatedAt,
-            deletedAt: subgoal.deletedAt,
-            deletedBy: subgoal.deletedBy,
-            restoreUntil: subgoal.restoreUntil,
-            purgeAt: subgoal.purgeAt,
-          }),
+        if (canUseProtectedApiRoutes()) {
+          await saveSubgoalViaApi(subgoal, Boolean(input.existingSubgoal));
+          return;
+        }
+
+        await runClientMutationWithServerFallback(
+          async () => {
+            await db.transact(
+              db.tx.subgoals[subgoalId].update({
+                ownerUid: subgoal.ownerUid,
+                goalId: subgoal.goalId,
+                title: subgoal.title,
+                description: subgoal.description,
+                timeframe: subgoal.timeframe,
+                projectedStartDate: subgoal.projectedStartDate,
+                projectedEndDate: subgoal.projectedEndDate,
+                actualStartDate: subgoal.actualStartDate,
+                actualEndDate: subgoal.actualEndDate,
+                status: subgoal.status,
+                percentComplete: subgoal.percentComplete,
+                orderIndex: subgoal.orderIndex,
+                createdAt: subgoal.createdAt,
+                updatedAt: subgoal.updatedAt,
+                deletedAt: subgoal.deletedAt,
+                deletedBy: subgoal.deletedBy,
+                restoreUntil: subgoal.restoreUntil,
+                purgeAt: subgoal.purgeAt,
+              }),
+            );
+          },
+          async () => {
+            await saveSubgoalViaApi(subgoal, Boolean(input.existingSubgoal));
+          },
         );
       },
     );
@@ -652,6 +705,11 @@ export const dataRepository: DataRepository = {
       "softDeleteSubgoal",
       { ownerUid, subgoalId } as SubgoalArchiveInput,
       async () => {
+        if (canUseProtectedApiRoutes()) {
+          await archiveSubgoalViaApi(subgoalId);
+          return;
+        }
+
         await db.transact([subgoalMutation, ...taskMutations]);
       },
     );
@@ -704,6 +762,11 @@ export const dataRepository: DataRepository = {
       "restoreSubgoal",
       { ownerUid, subgoalId } as SubgoalArchiveInput,
       async () => {
+        if (canUseProtectedApiRoutes()) {
+          await restoreSubgoalViaApi(subgoalId);
+          return;
+        }
+
         await db.transact([subgoalMutation, ...taskMutations]);
       },
     );
@@ -718,6 +781,15 @@ export const dataRepository: DataRepository = {
     };
   },
   async listTasks(ownerUid, subgoalId, options) {
+    if (canUseProtectedApiRoutes()) {
+      const searchParams = new URLSearchParams({
+        includeDeleted: String(Boolean(options?.includeDeleted)),
+        subgoalId,
+      });
+      const response = await invokeProtectedRead<{ tasks?: Task[] }>(`/api/tasks?${searchParams.toString()}`);
+      return filterDeleted(response.tasks ?? [], options).sort(compareTasks);
+    }
+
     const data = await runClientQuery<{ tasks?: Task[] }>({
       tasks: {
         $: {
@@ -768,23 +840,35 @@ export const dataRepository: DataRepository = {
       "saveTask",
       input,
       async () => {
-        await db.transact(
-          db.tx.tasks[taskId].update({
-            ownerUid: task.ownerUid,
-            subgoalId: task.subgoalId,
-            title: task.title,
-            notes: task.notes,
-            dueDate: task.dueDate,
-            status: task.status,
-            percentComplete: task.percentComplete,
-            orderIndex: task.orderIndex,
-            createdAt: task.createdAt,
-            updatedAt: task.updatedAt,
-            deletedAt: task.deletedAt,
-            deletedBy: task.deletedBy,
-            restoreUntil: task.restoreUntil,
-            purgeAt: task.purgeAt,
-          }),
+        if (canUseProtectedApiRoutes()) {
+          await saveTaskViaApi(task, Boolean(input.existingTask));
+          return;
+        }
+
+        await runClientMutationWithServerFallback(
+          async () => {
+            await db.transact(
+              db.tx.tasks[taskId].update({
+                ownerUid: task.ownerUid,
+                subgoalId: task.subgoalId,
+                title: task.title,
+                notes: task.notes,
+                dueDate: task.dueDate,
+                status: task.status,
+                percentComplete: task.percentComplete,
+                orderIndex: task.orderIndex,
+                createdAt: task.createdAt,
+                updatedAt: task.updatedAt,
+                deletedAt: task.deletedAt,
+                deletedBy: task.deletedBy,
+                restoreUntil: task.restoreUntil,
+                purgeAt: task.purgeAt,
+              }),
+            );
+          },
+          async () => {
+            await saveTaskViaApi(task, Boolean(input.existingTask));
+          },
         );
       },
     );
@@ -864,6 +948,11 @@ export const dataRepository: DataRepository = {
       "softDeleteTask",
       { ownerUid, taskId } as TaskArchiveInput,
       async () => {
+        if (canUseProtectedApiRoutes()) {
+          await archiveTaskViaApi(taskId);
+          return;
+        }
+
         await db.transact(
           db.tx.tasks[taskId].update({
             deletedAt: now,
@@ -902,6 +991,11 @@ export const dataRepository: DataRepository = {
       "restoreTask",
       { ownerUid, taskId } as TaskArchiveInput,
       async () => {
+        if (canUseProtectedApiRoutes()) {
+          await restoreTaskViaApi(taskId);
+          return;
+        }
+
         await db.transact(
           db.tx.tasks[taskId].update({
             deletedAt: null,
@@ -1148,6 +1242,14 @@ export const dataRepository: DataRepository = {
           failedOperation: result.failedOperation,
           failedError: result.failedError,
         });
+
+        logSyncReplayFailure({
+          operation: result.failedOperation,
+          error: result.failedError,
+          remaining: result.remaining,
+          processed: result.processed,
+          failed: result.failed,
+        });
       } else if (result.remaining === 0) {
         setOfflineSyncFailureState(null);
       }
@@ -1200,6 +1302,19 @@ function ensureClientMutationSupport() {
 }
 
 async function findGoalById(ownerUid: string, goalId: string) {
+  if (canUseProtectedApiRoutes()) {
+    try {
+      const response = await invokeProtectedRead<{ goal?: Goal }>(`/api/goals/${goalId}`);
+      return response.goal ?? null;
+    } catch (error) {
+      if (isProtectedNotFoundError(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
   const data = await runClientQuery<{ goals?: Goal[] }>({
     goals: {
       $: {
@@ -1214,6 +1329,19 @@ async function findGoalById(ownerUid: string, goalId: string) {
 }
 
 async function findSubgoalById(ownerUid: string, subgoalId: string) {
+  if (canUseProtectedApiRoutes()) {
+    try {
+      const response = await invokeProtectedRead<{ subgoal?: Subgoal }>(`/api/subgoals/${subgoalId}`);
+      return response.subgoal ?? null;
+    } catch (error) {
+      if (isProtectedNotFoundError(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
   const data = await runClientQuery<{ subgoals?: Subgoal[] }>({
     subgoals: {
       $: {
@@ -1228,6 +1356,19 @@ async function findSubgoalById(ownerUid: string, subgoalId: string) {
 }
 
 async function findTaskById(ownerUid: string, taskId: string) {
+  if (canUseProtectedApiRoutes()) {
+    try {
+      const response = await invokeProtectedRead<{ task?: Task }>(`/api/tasks/${taskId}`);
+      return response.task ?? null;
+    } catch (error) {
+      if (isProtectedNotFoundError(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
   const data = await runClientQuery<{ tasks?: Task[] }>({
     tasks: {
       $: {
@@ -1458,6 +1599,148 @@ async function commitOrQueueMutation(
   }
 }
 
+async function runClientMutationWithServerFallback(
+  runClientMutation: () => Promise<void>,
+  runServerFallback: () => Promise<void>,
+) {
+  try {
+    await runClientMutation();
+  } catch (error) {
+    if (!isPermissionDeniedError(error)) {
+      throw error;
+    }
+
+    await runServerFallback();
+  }
+}
+
+function isPermissionDeniedError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes("not perms-pass") || message.includes("permission denied");
+}
+
+async function saveGoalViaApi(goal: Goal, isUpdate: boolean) {
+  const path = isUpdate ? `/api/goals/${goal.id}` : "/api/goals";
+  const method = isUpdate ? "PATCH" : "POST";
+
+  await invokeProtectedWrite(path, method, {
+    type: goal.type,
+    title: goal.title,
+    description: goal.description,
+    projectedStartDate: goal.projectedStartDate,
+    projectedEndDate: goal.projectedEndDate,
+    timeframeLabel: goal.timeframe,
+    isFocus: goal.isFocus,
+  });
+}
+
+async function saveSubgoalViaApi(subgoal: Subgoal, isUpdate: boolean) {
+  const path = isUpdate ? `/api/subgoals/${subgoal.id}` : "/api/subgoals";
+  const method = isUpdate ? "PATCH" : "POST";
+
+  await invokeProtectedWrite(path, method, {
+    goalId: subgoal.goalId,
+    title: subgoal.title,
+    description: subgoal.description,
+    projectedStartDate: subgoal.projectedStartDate,
+    projectedEndDate: subgoal.projectedEndDate,
+    timeframeLabel: subgoal.timeframe,
+  });
+}
+
+async function saveTaskViaApi(task: Task, isUpdate: boolean) {
+  const path = isUpdate ? `/api/tasks/${task.id}` : "/api/tasks";
+  const method = isUpdate ? "PATCH" : "POST";
+
+  await invokeProtectedWrite(path, method, {
+    subgoalId: task.subgoalId,
+    title: task.title,
+    notes: task.notes,
+    dueDate: task.dueDate,
+  });
+}
+
+async function archiveGoalViaApi(goalId: string) {
+  await invokeProtectedWrite(`/api/goals/${goalId}/archive`, "PATCH", {});
+}
+
+async function restoreGoalViaApi(goalId: string) {
+  await invokeProtectedWrite(`/api/goals/${goalId}/restore`, "PATCH", {});
+}
+
+async function archiveSubgoalViaApi(subgoalId: string) {
+  await invokeProtectedWrite(`/api/subgoals/${subgoalId}/archive`, "PATCH", {});
+}
+
+async function restoreSubgoalViaApi(subgoalId: string) {
+  await invokeProtectedWrite(`/api/subgoals/${subgoalId}/restore`, "PATCH", {});
+}
+
+async function archiveTaskViaApi(taskId: string) {
+  await invokeProtectedWrite(`/api/tasks/${taskId}/archive`, "PATCH", {});
+}
+
+async function restoreTaskViaApi(taskId: string) {
+  await invokeProtectedWrite(`/api/tasks/${taskId}/restore`, "PATCH", {});
+}
+
+async function invokeProtectedWrite(path: string, method: "POST" | "PATCH", payload: unknown) {
+  const response = await fetch(path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+
+  if (response.ok) {
+    return;
+  }
+
+  const fallbackMessage = `Protected write failed (${response.status}).`;
+  let messageFromBody: string | null = null;
+
+  try {
+    const body = (await response.json()) as { error?: unknown };
+    if (typeof body.error === "string" && body.error.trim().length > 0) {
+      messageFromBody = body.error;
+    }
+  } catch {
+    // Ignore JSON parse errors and fall back to status-only message.
+  }
+
+  throw new Error(messageFromBody ?? fallbackMessage);
+}
+
+async function invokeProtectedRead<TResponse>(path: string) {
+  const response = await fetch(path, {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Protected read failed (${response.status}).`);
+  }
+
+  return (await response.json()) as TResponse;
+}
+
+function canUseProtectedApiRoutes() {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.location?.origin === "string"
+  );
+}
+
+function isProtectedNotFoundError(error: unknown) {
+  return error instanceof Error && error.message.includes("Protected read failed (404)");
+}
+
 function shouldQueueMutation(error: unknown) {
   if (isFlushingOfflineMutations || typeof window === "undefined") {
     return false;
@@ -1480,90 +1763,116 @@ function isNavigatorOnline() {
 }
 
 async function replayOfflineMutation(mutation: OfflineMutation) {
-  switch (mutation.operation) {
-    case "saveGoal":
-      await dataRepository.saveGoal(mutation.payload as SaveGoalInput);
-      return;
-    case "updateGoalStatus": {
-      const payload = mutation.payload as GoalStatusUpdateInput;
-      await dataRepository.updateGoalStatus(payload.ownerUid, payload.goalId, payload.status);
-      return;
+  try {
+    switch (mutation.operation) {
+      case "saveGoal":
+        await dataRepository.saveGoal(mutation.payload as SaveGoalInput);
+        return;
+      case "updateGoalStatus": {
+        const payload = mutation.payload as GoalStatusUpdateInput;
+        await dataRepository.updateGoalStatus(payload.ownerUid, payload.goalId, payload.status);
+        return;
+      }
+      case "reorderGoals": {
+        const payload = mutation.payload as GoalReorderInput;
+        await dataRepository.reorderGoals(payload.ownerUid, payload.type, payload.orderedGoalIds);
+        return;
+      }
+      case "softDeleteGoal": {
+        const payload = mutation.payload as GoalArchiveInput;
+        await dataRepository.softDeleteGoal(payload.ownerUid, payload.goalId);
+        return;
+      }
+      case "restoreGoal": {
+        const payload = mutation.payload as GoalArchiveInput;
+        await dataRepository.restoreGoal(payload.ownerUid, payload.goalId);
+        return;
+      }
+      case "saveSubgoal":
+        await dataRepository.saveSubgoal(mutation.payload as SaveSubgoalInput);
+        return;
+      case "updateSubgoalStatus": {
+        const payload = mutation.payload as SubgoalStatusUpdateInput;
+        await dataRepository.updateSubgoalStatus(payload.ownerUid, payload.subgoalId, payload.status);
+        return;
+      }
+      case "reorderSubgoals": {
+        const payload = mutation.payload as SubgoalReorderInput;
+        await dataRepository.reorderSubgoals(payload.ownerUid, payload.goalId, payload.orderedSubgoalIds);
+        return;
+      }
+      case "softDeleteSubgoal": {
+        const payload = mutation.payload as SubgoalArchiveInput;
+        await dataRepository.softDeleteSubgoal(payload.ownerUid, payload.subgoalId);
+        return;
+      }
+      case "restoreSubgoal": {
+        const payload = mutation.payload as SubgoalArchiveInput;
+        await dataRepository.restoreSubgoal(payload.ownerUid, payload.subgoalId);
+        return;
+      }
+      case "saveTask":
+        await dataRepository.saveTask(mutation.payload as SaveTaskInput);
+        return;
+      case "updateTaskStatus": {
+        const payload = mutation.payload as TaskStatusUpdateInput;
+        await dataRepository.updateTaskStatus(payload.ownerUid, payload.taskId, payload.status);
+        return;
+      }
+      case "reorderTasks": {
+        const payload = mutation.payload as TaskReorderInput;
+        await dataRepository.reorderTasks(payload.ownerUid, payload.subgoalId, payload.orderedTaskIds);
+        return;
+      }
+      case "softDeleteTask": {
+        const payload = mutation.payload as TaskArchiveInput;
+        await dataRepository.softDeleteTask(payload.ownerUid, payload.taskId);
+        return;
+      }
+      case "restoreTask": {
+        const payload = mutation.payload as TaskArchiveInput;
+        await dataRepository.restoreTask(payload.ownerUid, payload.taskId);
+        return;
+      }
+      case "saveJournalEntry":
+        await dataRepository.saveJournalEntry(mutation.payload as SaveJournalEntryInput);
+        return;
+      case "softDeleteJournalEntry": {
+        const payload = mutation.payload as JournalArchiveInput;
+        await dataRepository.softDeleteJournalEntry(payload.ownerUid, payload.journalEntryId);
+        return;
+      }
+      case "restoreJournalEntry": {
+        const payload = mutation.payload as JournalArchiveInput;
+        await dataRepository.restoreJournalEntry(payload.ownerUid, payload.journalEntryId);
+        return;
+      }
+      default:
+        throw new Error(`Unsupported offline mutation operation: ${mutation.operation}`);
     }
-    case "reorderGoals": {
-      const payload = mutation.payload as GoalReorderInput;
-      await dataRepository.reorderGoals(payload.ownerUid, payload.type, payload.orderedGoalIds);
-      return;
+  } catch (error) {
+    if (isOfflineReplayConflict(error)) {
+      const message = error instanceof Error ? error.message : "Offline replay conflict detected.";
+      throw new Error(`Offline conflict: ${message}`);
     }
-    case "softDeleteGoal": {
-      const payload = mutation.payload as GoalArchiveInput;
-      await dataRepository.softDeleteGoal(payload.ownerUid, payload.goalId);
-      return;
-    }
-    case "restoreGoal": {
-      const payload = mutation.payload as GoalArchiveInput;
-      await dataRepository.restoreGoal(payload.ownerUid, payload.goalId);
-      return;
-    }
-    case "saveSubgoal":
-      await dataRepository.saveSubgoal(mutation.payload as SaveSubgoalInput);
-      return;
-    case "updateSubgoalStatus": {
-      const payload = mutation.payload as SubgoalStatusUpdateInput;
-      await dataRepository.updateSubgoalStatus(payload.ownerUid, payload.subgoalId, payload.status);
-      return;
-    }
-    case "reorderSubgoals": {
-      const payload = mutation.payload as SubgoalReorderInput;
-      await dataRepository.reorderSubgoals(payload.ownerUid, payload.goalId, payload.orderedSubgoalIds);
-      return;
-    }
-    case "softDeleteSubgoal": {
-      const payload = mutation.payload as SubgoalArchiveInput;
-      await dataRepository.softDeleteSubgoal(payload.ownerUid, payload.subgoalId);
-      return;
-    }
-    case "restoreSubgoal": {
-      const payload = mutation.payload as SubgoalArchiveInput;
-      await dataRepository.restoreSubgoal(payload.ownerUid, payload.subgoalId);
-      return;
-    }
-    case "saveTask":
-      await dataRepository.saveTask(mutation.payload as SaveTaskInput);
-      return;
-    case "updateTaskStatus": {
-      const payload = mutation.payload as TaskStatusUpdateInput;
-      await dataRepository.updateTaskStatus(payload.ownerUid, payload.taskId, payload.status);
-      return;
-    }
-    case "reorderTasks": {
-      const payload = mutation.payload as TaskReorderInput;
-      await dataRepository.reorderTasks(payload.ownerUid, payload.subgoalId, payload.orderedTaskIds);
-      return;
-    }
-    case "softDeleteTask": {
-      const payload = mutation.payload as TaskArchiveInput;
-      await dataRepository.softDeleteTask(payload.ownerUid, payload.taskId);
-      return;
-    }
-    case "restoreTask": {
-      const payload = mutation.payload as TaskArchiveInput;
-      await dataRepository.restoreTask(payload.ownerUid, payload.taskId);
-      return;
-    }
-    case "saveJournalEntry":
-      await dataRepository.saveJournalEntry(mutation.payload as SaveJournalEntryInput);
-      return;
-    case "softDeleteJournalEntry": {
-      const payload = mutation.payload as JournalArchiveInput;
-      await dataRepository.softDeleteJournalEntry(payload.ownerUid, payload.journalEntryId);
-      return;
-    }
-    case "restoreJournalEntry": {
-      const payload = mutation.payload as JournalArchiveInput;
-      await dataRepository.restoreJournalEntry(payload.ownerUid, payload.journalEntryId);
-      return;
-    }
-    default:
-      throw new Error(`Unsupported offline mutation operation: ${mutation.operation}`);
+
+    throw error;
   }
+}
+
+function isOfflineReplayConflict(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+
+  return (
+    message.includes("was not found") ||
+    message.includes("does not belong") ||
+    message.includes("unknown") ||
+    message.includes("not loaded") ||
+    message.includes("restore window has expired") ||
+    message.includes("reorder request")
+  );
 }

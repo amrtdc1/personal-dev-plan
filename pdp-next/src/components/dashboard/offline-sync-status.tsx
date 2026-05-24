@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { dataRepository } from "@/lib/data/repository";
 import {
   formatOfflineOperationLabel,
+  getFriendlySyncFailureReason,
   getOfflineSyncFailureState,
   subscribeOfflineSyncFailureState,
 } from "@/lib/offline/sync-status";
@@ -100,47 +101,4 @@ export function OfflineSyncStatus() {
       </div>
     </div>
   );
-}
-
-function getFriendlySyncFailureReason(error: string | null) {
-  if (!error) {
-    return "Try syncing again.";
-  }
-
-  const normalized = error.toLowerCase();
-
-  if (
-    normalized.includes("network") ||
-    normalized.includes("fetch") ||
-    normalized.includes("offline") ||
-    normalized.includes("timeout")
-  ) {
-    return "Connection issue. Reconnect and retry.";
-  }
-
-  if (
-    normalized.includes("permission") ||
-    normalized.includes("forbidden") ||
-    normalized.includes("unauthorized")
-  ) {
-    return "Access issue. Sign in again, then retry.";
-  }
-
-  if (
-    normalized.includes("schema") ||
-    normalized.includes("attribute") ||
-    normalized.includes("missing in your schema")
-  ) {
-    return "Data schema mismatch. Refresh the app and retry.";
-  }
-
-  if (normalized.includes("restore window") && normalized.includes("expired")) {
-    return "Restore window expired for this item.";
-  }
-
-  if (normalized.includes("not loaded") || normalized.includes("not found")) {
-    return "The item changed on another device. Refresh and retry.";
-  }
-
-  return "Unexpected sync issue. Try syncing again.";
 }

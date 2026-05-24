@@ -140,7 +140,7 @@ function SignedInPanel() {
       ? profileError.message
       : isProfileLoading || !profile
         ? "Setting up your profile defaults…"
-        : "Profile defaults are provisioned and ready for data migration.";
+        : "Profile defaults are provisioned and ready.";
 
   return (
     <AuthCard title="Signed in">

@@ -1,5 +1,14 @@
 import type { InstantRules } from "@instantdb/react";
 
+const ownerScopedRules = {
+  allow: {
+    view: "auth.id != null && data.ownerUid == auth.id",
+    create: "auth.id != null && newData.ownerUid == auth.id",
+    update: "auth.id != null && data.ownerUid == auth.id && (newData.ownerUid == null || newData.ownerUid == auth.id)",
+    delete: "auth.id != null && data.ownerUid == auth.id",
+  },
+};
+
 const rules = {
   userProfiles: {
     allow: {
@@ -9,6 +18,10 @@ const rules = {
       delete: "false",
     },
   },
+  goals: ownerScopedRules,
+  subgoals: ownerScopedRules,
+  tasks: ownerScopedRules,
+  journalEntries: ownerScopedRules,
   $default: {
     allow: {
       $default: "false",

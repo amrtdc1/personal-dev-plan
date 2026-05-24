@@ -15,6 +15,8 @@ export type OfflineFlushResult = {
 
 const STORAGE_KEY = "pdp.offline.writeQueue";
 const QUEUE_EVENT = "pdp-offline-queue-changed";
+const MAX_REPLAY_RETRIES = 2;
+const RETRY_BACKOFF_MS = [150, 500] as const;
 
 export function getOfflineMutationQueue(): OfflineMutation[] {
   if (!hasStorage()) {
@@ -107,16 +109,33 @@ export async function flushOfflineMutationQueue(
 
   while (queue.length > 0) {
     const next = queue[0];
+    let attempts = 0;
 
-    try {
-      await processor(next);
-      queue.shift();
-      processed += 1;
-      persistQueue(queue);
-    } catch (error) {
-      failed += 1;
-      failedOperation = next.operation;
-      failedError = error instanceof Error ? error.message : "Unknown offline replay error.";
+    while (true) {
+      try {
+        await processor(next);
+        queue.shift();
+        processed += 1;
+        persistQueue(queue);
+        break;
+      } catch (error) {
+        const retryable = isRetryableReplayError(error);
+
+        if (retryable && attempts < MAX_REPLAY_RETRIES) {
+          const backoffMs = RETRY_BACKOFF_MS[attempts] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1];
+          attempts += 1;
+          await waitForReplayRetry(backoffMs);
+          continue;
+        }
+
+        failed += 1;
+        failedOperation = next.operation;
+        failedError = error instanceof Error ? error.message : "Unknown offline replay error.";
+        break;
+      }
+    }
+
+    if (failed > 0) {
       break;
     }
   }
@@ -174,5 +193,33 @@ function isOfflineMutation(value: unknown): value is OfflineMutation {
     typeof candidate.operation === "string" &&
     "payload" in candidate &&
     typeof candidate.createdAt === "string"
+  );
+}
+
+function waitForReplayRetry(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function isRetryableReplayError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+
+  if (message.includes("offline conflict")) {
+    return false;
+  }
+
+  return (
+    message.includes("network") ||
+    message.includes("fetch") ||
+    message.includes("offline") ||
+    message.includes("timeout") ||
+    message.includes("temporar") ||
+    message.includes("429") ||
+    message.includes("503")
   );
 }

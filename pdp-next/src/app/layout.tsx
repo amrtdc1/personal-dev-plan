@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Archivo, Geist, Geist_Mono, Teko } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 
@@ -14,10 +14,22 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const teko = Teko({
+  variable: "--font-teko",
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+});
+
+const archivo = Archivo({
+  variable: "--font-archivo",
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   title: "Personal Development Plan",
   description:
-    "Next.js migration workspace for the Personal Development Plan application.",
+    "Personal Development Plan web application for goals, calendar, journal, and profile management.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/favicon.ico"
@@ -36,7 +48,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${teko.variable} ${archivo.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground transition-colors duration-200">
         {children}

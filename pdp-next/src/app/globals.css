@@ -79,7 +79,13 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+  font-family: var(--font-archivo), var(--font-geist-sans), "Segoe UI", sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6,
+.pdp-heading {
+  font-family: var(--font-teko), var(--font-archivo), var(--font-geist-sans), "Segoe UI", sans-serif;
+  letter-spacing: 0.01em;
 }
 
 .pdp-shell {
@@ -173,6 +179,31 @@ body {
   border-radius: 0.75rem;
   border: 1px solid var(--pdp-border);
   background-color: var(--pdp-surface);
+}
+
+.pdp-shell .pdp-selectable-row {
+  transition: background-color 160ms ease;
+  box-shadow: none;
+}
+
+.pdp-shell .pdp-selectable-row-interactive:hover {
+  background-color: color-mix(in srgb, var(--pdp-surface) 80%, var(--pdp-theme-primary) 20%) !important;
+}
+
+.pdp-shell .pdp-selectable-row:not(.pdp-selectable-row-selected).pdp-selectable-row-interactive:hover {
+  box-shadow: none;
+}
+
+.pdp-shell .pdp-selectable-row-selected {
+  background-color: color-mix(in srgb, var(--pdp-surface) 68%, var(--pdp-theme-primary) 32%) !important;
+  border-color: color-mix(in srgb, var(--pdp-theme-primary) 48%, var(--pdp-border)) !important;
+  box-shadow: none;
+}
+
+.pdp-shell .pdp-selectable-row-selected.pdp-selectable-row-interactive:hover {
+  background-color: color-mix(in srgb, var(--pdp-surface) 62%, var(--pdp-theme-primary) 38%) !important;
+  border-color: color-mix(in srgb, var(--pdp-theme-primary) 56%, var(--pdp-border)) !important;
+  box-shadow: none;
 }
 
 .pdp-control {

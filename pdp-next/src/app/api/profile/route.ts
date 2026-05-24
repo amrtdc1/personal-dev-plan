@@ -10,6 +10,7 @@ import {
   InstantRouteBadRequestError,
   InstantRouteNotFoundError,
 } from "@/lib/server/instant-errors";
+import { logApiFailure } from "@/lib/observability/telemetry";
 
 type ProfilePatchPayload = Partial<{
   displayName: string | null;
@@ -258,22 +259,25 @@ export async function PUT(request: Request) {
 
     return NextResponse.json({ profile: { ...mergedProfile, id: targetProfileId } });
   } catch (error) {
-    if (error instanceof Error && process.env.NODE_ENV !== "production") {
-      console.error("[api/profile] PUT failed", error);
-    }
-
     if (
       error instanceof InstantAuthError ||
       error instanceof InstantRouteBadRequestError ||
       error instanceof InstantRouteNotFoundError
     ) {
-      return instantRouteErrorResponse(error);
+      return instantRouteErrorResponse(error, { route: "/api/profile", method: "PUT", phase: "validation" });
     }
 
     if (error instanceof Error) {
+      logApiFailure({
+        route: "/api/profile",
+        method: "PUT",
+        phase: "unexpected",
+        status: 500,
+        error,
+      });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return instantRouteErrorResponse(error);
+    return instantRouteErrorResponse(error, { route: "/api/profile", method: "PUT", phase: "unexpected" });
   }
 }

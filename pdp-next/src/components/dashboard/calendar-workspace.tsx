@@ -15,6 +15,7 @@ import type {
 import type { Goal, GoalType, ItemStatus, Subgoal, Task } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
+import { CrudModal } from "@/components/ui/crud-modal";
 
 type CalendarItemKind = "goal" | "subgoal" | "task";
 type CreateType = "goal" | "subgoal" | "task";
@@ -65,6 +66,8 @@ export function CalendarWorkspace() {
   const [editGoalType, setEditGoalType] = useState<GoalType>("professional");
   const [editParentGoalId, setEditParentGoalId] = useState("");
   const [editParentSubgoalId, setEditParentSubgoalId] = useState("");
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const [showGoals, setShowGoals] = useState(true);
   const [showSubgoals, setShowSubgoals] = useState(true);
@@ -436,6 +439,8 @@ export function CalendarWorkspace() {
       startDate: normalizedStart,
       endDate: normalizedEnd,
     });
+    setActionError(null);
+    setIsCreateModalOpen(true);
   }
 
   function handleEventClick(clickArg: EventClickArg) {
@@ -484,6 +489,7 @@ export function CalendarWorkspace() {
 
     setSelectedEventRef({ kind, id });
     setActionError(null);
+    setIsEditModalOpen(true);
   }
 
   async function handleEventDrop(dropArg: EventDropArg) {
@@ -636,6 +642,7 @@ export function CalendarWorkspace() {
 
       setDraftTitle("");
       setDraftDetails("");
+      setIsCreateModalOpen(false);
       await reloadData();
     } catch (saveError) {
       setActionError(getErrorMessage(saveError, "We could not create this calendar item."));
@@ -732,6 +739,7 @@ export function CalendarWorkspace() {
         }
       }
 
+      setIsEditModalOpen(false);
       await reloadData();
     } catch (saveError) {
       setActionError(getErrorMessage(saveError, "We could not save this event."));
@@ -747,6 +755,7 @@ export function CalendarWorkspace() {
     setEditStatus("not_started");
     setEditParentGoalId("");
     setEditParentSubgoalId("");
+    setIsEditModalOpen(false);
   }
 
   const selectedEventLabel = selectedEventRef
@@ -781,14 +790,16 @@ export function CalendarWorkspace() {
     <section className={`pdp-panel ${isTouchFriendly ? "pdp-touch-mode" : ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Calendar workspace</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Calendar</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
             Select dates to create goals/subgoals/tasks, drag events to reschedule, and inspect hierarchy links directly in the calendar.
           </p>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
-          {isRefreshing ? "Refreshing" : isSaving ? "Saving" : "Ready"}
-        </span>
+        {isRefreshing || isSaving ? (
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
+            {isRefreshing ? "Refreshing" : "Saving"}
+          </span>
+        ) : null}
       </div>
 
       {loadError ? <p className="mt-4 text-sm text-red-700">{loadError}</p> : null}
@@ -918,216 +929,245 @@ export function CalendarWorkspace() {
         </div>
 
         <aside className="order-2 space-y-4 lg:order-2">
-          <form className="pdp-panel-muted" onSubmit={handleCreateSubmit}>
-            <h3 className="text-sm font-semibold text-slate-900">Create from selected dates</h3>
-            <p className="mt-1 text-xs text-slate-600">
+          <div className="pdp-panel-muted">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-900">Quick actions</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setActionError(null);
+                  setIsCreateModalOpen(true);
+                }}
+                className="rounded-full bg-blue-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-blue-600"
+              >
+                + New item
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-600">
               Selection: {selection.startDate} to {selection.endDate}
             </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Drag to select dates or click an event to edit it.
+            </p>
+          </div>
 
-            <label className="mt-3 block text-sm text-slate-700">
-              Item type
-              <select
-                value={createType}
-                onChange={(event) => setCreateType(event.target.value as CreateType)}
-                className="pdp-control mt-1"
-              >
-                <option value="goal">Goal</option>
-                <option value="subgoal">Subgoal</option>
-                <option value="task">Task</option>
-              </select>
-            </label>
+          <CrudModal
+            isOpen={isCreateModalOpen}
+            title="Create from selected dates"
+            onClose={() => setIsCreateModalOpen(false)}
+          >
+            <form onSubmit={handleCreateSubmit} className="grid gap-3">
+              <p className="text-xs text-slate-600">
+                Selection: {selection.startDate} to {selection.endDate}
+              </p>
 
-            {createType === "goal" ? (
-              <label className="mt-3 block text-sm text-slate-700">
-                Goal type
+              <label className="block text-sm text-slate-700">
+                Item type
                 <select
-                  value={goalType}
-                  onChange={(event) => setGoalType(event.target.value as GoalType)}
+                  value={createType}
+                  onChange={(event) => setCreateType(event.target.value as CreateType)}
                   className="pdp-control mt-1"
                 >
-                  <option value="professional">Professional</option>
-                  <option value="personal">Personal</option>
+                  <option value="goal">Goal</option>
+                  <option value="subgoal">Subgoal</option>
+                  <option value="task">Task</option>
                 </select>
               </label>
-            ) : null}
 
-            {createType === "subgoal" ? (
-              <label className="mt-3 block text-sm text-slate-700">
-                Parent goal
-                <select
-                  value={draftGoalId}
-                  onChange={(event) => setDraftGoalId(event.target.value)}
-                  className="pdp-control mt-1"
-                >
-                  <option value="">Select goal</option>
-                  {goals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>
-                      {goal.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-
-            {createType === "task" ? (
-              <label className="mt-3 block text-sm text-slate-700">
-                Parent subgoal
-                <select
-                  value={draftSubgoalId}
-                  onChange={(event) => setDraftSubgoalId(event.target.value)}
-                  className="pdp-control mt-1"
-                >
-                  <option value="">Select subgoal</option>
-                  {subgoals.map((subgoal) => (
-                    <option key={subgoal.id} value={subgoal.id}>
-                      {subgoal.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-
-            <label className="mt-3 block text-sm text-slate-700">
-              Title
-              <input
-                value={draftTitle}
-                onChange={(event) => setDraftTitle(event.target.value)}
-                className="pdp-control mt-1"
-                placeholder="Add item title"
-              />
-            </label>
-
-            <label className="mt-3 block text-sm text-slate-700">
-              {createType === "task" ? "Notes" : "Description"}
-              <textarea
-                value={draftDetails}
-                onChange={(event) => setDraftDetails(event.target.value)}
-                className="pdp-control mt-1 min-h-20"
-              />
-            </label>
-
-            <button
-              type="submit"
-              disabled={isSaving}
-              className={primaryActionClass}
-            >
-              {isSaving ? "Saving..." : "Create on calendar"}
-            </button>
-          </form>
-
-          <form className="pdp-panel-muted" onSubmit={handleEditSubmit}>
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-slate-900">Edit selected event</h3>
-              {selectedEventRef ? (
-                <button
-                  type="button"
-                  onClick={clearSelectedEvent}
-                  className="rounded-full border border-slate-300 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-slate-700"
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-
-            {selectedEventRef ? (
-              <>
-                <p className="mt-1 text-xs text-slate-600">{selectedEventLabel}</p>
-
-                <label className="mt-3 block text-sm text-slate-700">
-                  Title
-                  <input
-                    value={editTitle}
-                    onChange={(event) => setEditTitle(event.target.value)}
-                    className="pdp-control mt-1"
-                  />
-                </label>
-
-                <label className="mt-3 block text-sm text-slate-700">
-                  {selectedEventRef.kind === "task" ? "Notes" : "Description"}
-                  <textarea
-                    value={editDetails}
-                    onChange={(event) => setEditDetails(event.target.value)}
-                    className="pdp-control mt-1 min-h-20"
-                  />
-                </label>
-
-                <label className="mt-3 block text-sm text-slate-700">
-                  Status
+              {createType === "goal" ? (
+                <label className="block text-sm text-slate-700">
+                  Goal type
                   <select
-                    value={editStatus}
-                    onChange={(event) => setEditStatus(event.target.value as ItemStatus)}
+                    value={goalType}
+                    onChange={(event) => setGoalType(event.target.value as GoalType)}
                     className="pdp-control mt-1"
                   >
-                    <option value="not_started">Not started</option>
-                    <option value="in_progress">In progress</option>
-                    <option value="done">Done</option>
+                    <option value="professional">Professional</option>
+                    <option value="personal">Personal</option>
                   </select>
                 </label>
+              ) : null}
 
-                {selectedEventRef.kind === "goal" ? (
-                  <label className="mt-3 block text-sm text-slate-700">
-                    Goal type
-                    <select
-                      value={editGoalType}
-                      onChange={(event) => setEditGoalType(event.target.value as GoalType)}
-                      className="pdp-control mt-1"
-                    >
-                      <option value="professional">Professional</option>
-                      <option value="personal">Personal</option>
-                    </select>
-                  </label>
-                ) : null}
+              {createType === "subgoal" ? (
+                <label className="block text-sm text-slate-700">
+                  Parent goal
+                  <select
+                    value={draftGoalId}
+                    onChange={(event) => setDraftGoalId(event.target.value)}
+                    className="pdp-control mt-1"
+                  >
+                    <option value="">Select goal</option>
+                    {goals.map((goal) => (
+                      <option key={goal.id} value={goal.id}>
+                        {goal.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
 
-                {selectedEventRef.kind === "subgoal" ? (
-                  <label className="mt-3 block text-sm text-slate-700">
-                    Parent goal
-                    <select
-                      value={editParentGoalId}
-                      onChange={(event) => setEditParentGoalId(event.target.value)}
-                      className="pdp-control mt-1"
-                    >
-                      <option value="">Select goal</option>
-                      {goals.map((goal) => (
-                        <option key={goal.id} value={goal.id}>
-                          {goal.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
+              {createType === "task" ? (
+                <label className="block text-sm text-slate-700">
+                  Parent subgoal
+                  <select
+                    value={draftSubgoalId}
+                    onChange={(event) => setDraftSubgoalId(event.target.value)}
+                    className="pdp-control mt-1"
+                  >
+                    <option value="">Select subgoal</option>
+                    {subgoals.map((subgoal) => (
+                      <option key={subgoal.id} value={subgoal.id}>
+                        {subgoal.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
 
-                {selectedEventRef.kind === "task" ? (
-                  <label className="mt-3 block text-sm text-slate-700">
-                    Parent subgoal
-                    <select
-                      value={editParentSubgoalId}
-                      onChange={(event) => setEditParentSubgoalId(event.target.value)}
-                      className="pdp-control mt-1"
-                    >
-                      <option value="">Select subgoal</option>
-                      {subgoals.map((subgoal) => (
-                        <option key={subgoal.id} value={subgoal.id}>
-                          {subgoal.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
+              <label className="block text-sm text-slate-700">
+                Title
+                <input
+                  value={draftTitle}
+                  onChange={(event) => setDraftTitle(event.target.value)}
+                  className="pdp-control mt-1"
+                  placeholder="Add item title"
+                />
+              </label>
 
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className={secondaryActionClass}
-                >
-                  {isSaving ? "Saving..." : "Save event updates"}
+              <label className="block text-sm text-slate-700">
+                {createType === "task" ? "Notes" : "Description"}
+                <textarea
+                  value={draftDetails}
+                  onChange={(event) => setDraftDetails(event.target.value)}
+                  className="pdp-control mt-1 min-h-20"
+                />
+              </label>
+
+              <div className="flex flex-wrap gap-2">
+                <button type="submit" disabled={isSaving} className={primaryActionClass}>
+                  {isSaving ? "Saving..." : "Create on calendar"}
                 </button>
-              </>
-            ) : (
-              <p className="mt-2 text-sm text-slate-700">
-                Click any calendar event to edit title/details, status, and parent linkage.
-              </p>
-            )}
-          </form>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </CrudModal>
+
+          <CrudModal
+            isOpen={isEditModalOpen && selectedEventRef !== null}
+            title={selectedEventLabel ? `Edit ${selectedEventLabel.toLowerCase()}` : "Edit event"}
+            onClose={clearSelectedEvent}
+          >
+            <form onSubmit={handleEditSubmit} className="grid gap-3">
+              {selectedEventRef ? (
+                <>
+                  <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <span className="font-semibold uppercase tracking-wide text-slate-500">Editing</span>{" "}
+                    {selectedEventLabel}
+                  </p>
+
+                  <label className="block text-sm text-slate-700">
+                    Title
+                    <input
+                      value={editTitle}
+                      onChange={(event) => setEditTitle(event.target.value)}
+                      className="pdp-control mt-1"
+                    />
+                  </label>
+
+                  <label className="block text-sm text-slate-700">
+                    {selectedEventRef.kind === "task" ? "Notes" : "Description"}
+                    <textarea
+                      value={editDetails}
+                      onChange={(event) => setEditDetails(event.target.value)}
+                      className="pdp-control mt-1 min-h-20"
+                    />
+                  </label>
+
+                  <label className="block text-sm text-slate-700">
+                    Status
+                    <select
+                      value={editStatus}
+                      onChange={(event) => setEditStatus(event.target.value as ItemStatus)}
+                      className="pdp-control mt-1"
+                    >
+                      <option value="not_started">Not started</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </label>
+
+                  {selectedEventRef.kind === "goal" ? (
+                    <label className="block text-sm text-slate-700">
+                      Goal type
+                      <select
+                        value={editGoalType}
+                        onChange={(event) => setEditGoalType(event.target.value as GoalType)}
+                        className="pdp-control mt-1"
+                      >
+                        <option value="professional">Professional</option>
+                        <option value="personal">Personal</option>
+                      </select>
+                    </label>
+                  ) : null}
+
+                  {selectedEventRef.kind === "subgoal" ? (
+                    <label className="block text-sm text-slate-700">
+                      Parent goal
+                      <select
+                        value={editParentGoalId}
+                        onChange={(event) => setEditParentGoalId(event.target.value)}
+                        className="pdp-control mt-1"
+                      >
+                        <option value="">Select goal</option>
+                        {goals.map((goal) => (
+                          <option key={goal.id} value={goal.id}>
+                            {goal.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
+                  {selectedEventRef.kind === "task" ? (
+                    <label className="block text-sm text-slate-700">
+                      Parent subgoal
+                      <select
+                        value={editParentSubgoalId}
+                        onChange={(event) => setEditParentSubgoalId(event.target.value)}
+                        className="pdp-control mt-1"
+                      >
+                        <option value="">Select subgoal</option>
+                        {subgoals.map((subgoal) => (
+                          <option key={subgoal.id} value={subgoal.id}>
+                            {subgoal.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
+                  <div className="flex flex-wrap gap-2">
+                    <button type="submit" disabled={isSaving} className={secondaryActionClass}>
+                      {isSaving ? "Saving..." : "Save event updates"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearSelectedEvent}
+                      className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </form>
+          </CrudModal>
         </aside>
       </div>
     </section>

@@ -498,6 +498,75 @@ describe("dataRepository soft-delete cascade", () => {
     );
   });
 
+  it("falls back to protected API goal save when client perms reject writes", async () => {
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        goals: [],
+      },
+    });
+
+    transactMock.mockRejectedValueOnce(new Error("Permission denied: not perms-pass?"));
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ goal: { id: "goal-server" } }), { status: 201 }));
+
+    const result = await dataRepository.saveGoal({
+      ownerUid: "user-1",
+      type: "professional",
+      title: "Create via fallback",
+      description: "desc",
+      projectedStartDate: null,
+      projectedEndDate: null,
+      timeframeLabel: "Q3",
+      isFocus: true,
+    });
+
+    expect(result.id).toBe("generated-id");
+    expect(transactMock).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/goals",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+      }),
+    );
+
+    fetchSpy.mockRestore();
+  });
+
+  it("loads goals via protected API route in browser runtime", async () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        location: { origin: "http://localhost:3000" },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          goals: [
+            buildGoal({ id: "goal-api", title: "From API" }),
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const goals = await dataRepository.listGoals("user-1", "professional");
+
+    expect(goals).toHaveLength(1);
+    expect(goals[0]?.id).toBe("goal-api");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/goals"),
+      expect.objectContaining({ method: "GET", credentials: "include" }),
+    );
+
+    fetchSpy.mockRestore();
+  });
+
   it("reorders goals using the supplied id order", async () => {
     queryOnceMock.mockResolvedValueOnce({
       data: {
@@ -869,5 +938,162 @@ describe("dataRepository offline queue expansion", () => {
         }),
       }),
     );
+  });
+
+  it("returns conflict guidance when replay targets an item changed on another device", async () => {
+    Object.defineProperty(globalThis, "navigator", {
+      value: { onLine: false },
+      configurable: true,
+      writable: true,
+    });
+
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        tasks: [buildTask({ id: "task-conflict" })],
+      },
+    });
+
+    await dataRepository.updateTaskStatus("user-1", "task-conflict", "done");
+
+    Object.defineProperty(globalThis, "navigator", {
+      value: { onLine: true },
+      configurable: true,
+      writable: true,
+    });
+
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        tasks: [],
+      },
+    });
+
+    const flushSummary = await dataRepository.flushOfflineMutations();
+
+    expect(flushSummary).toEqual(
+      expect.objectContaining({
+        processed: 0,
+        failed: 1,
+        remaining: 1,
+        failedOperation: "updateTaskStatus",
+      }),
+    );
+    expect(flushSummary.failedError).toContain("Offline conflict:");
+    expect(flushSummary.failedError).toContain("Task was not found for this user.");
+    expect(transactMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps queued mutations while offline and flushes them after reconnect", async () => {
+    Object.defineProperty(globalThis, "navigator", {
+      value: { onLine: false },
+      configurable: true,
+      writable: true,
+    });
+
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        goals: [buildGoal({ id: "goal-transition" })],
+      },
+    });
+
+    await dataRepository.updateGoalStatus("user-1", "goal-transition", "done");
+
+    const offlineFlushSummary = await dataRepository.flushOfflineMutations();
+    expect(offlineFlushSummary).toEqual(
+      expect.objectContaining({
+        processed: 0,
+        failed: 0,
+        remaining: 1,
+        failedOperation: null,
+        failedError: null,
+      }),
+    );
+    expect(transactMock).not.toHaveBeenCalled();
+
+    Object.defineProperty(globalThis, "navigator", {
+      value: { onLine: true },
+      configurable: true,
+      writable: true,
+    });
+
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        goals: [buildGoal({ id: "goal-transition" })],
+      },
+    });
+
+    const onlineFlushSummary = await dataRepository.flushOfflineMutations();
+
+    expect(onlineFlushSummary).toEqual(
+      expect.objectContaining({
+        processed: 1,
+        failed: 0,
+        remaining: 0,
+        failedOperation: null,
+        failedError: null,
+      }),
+    );
+    expect(transactMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays multiple queued mutations in order after reconnect", async () => {
+    Object.defineProperty(globalThis, "navigator", {
+      value: { onLine: false },
+      configurable: true,
+      writable: true,
+    });
+
+    queryOnceMock
+      .mockResolvedValueOnce({
+        data: {
+          tasks: [buildTask({ id: "task-ordered-1" })],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          tasks: [buildTask({ id: "task-ordered-2" })],
+        },
+      });
+
+    await dataRepository.updateTaskStatus("user-1", "task-ordered-1", "in_progress");
+    await dataRepository.updateTaskStatus("user-1", "task-ordered-2", "done");
+
+    Object.defineProperty(globalThis, "navigator", {
+      value: { onLine: true },
+      configurable: true,
+      writable: true,
+    });
+
+    queryOnceMock
+      .mockResolvedValueOnce({
+        data: {
+          tasks: [buildTask({ id: "task-ordered-1" })],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          tasks: [buildTask({ id: "task-ordered-2" })],
+        },
+      });
+
+    const flushSummary = await dataRepository.flushOfflineMutations();
+
+    expect(flushSummary).toEqual(
+      expect.objectContaining({
+        processed: 2,
+        failed: 0,
+        remaining: 0,
+        failedOperation: null,
+        failedError: null,
+      }),
+    );
+    expect(transactMock).toHaveBeenCalledTimes(2);
+
+    const firstMutation = transactMock.mock.calls[0]?.[0] as { entityId?: string; payload?: { status?: string } };
+    const secondMutation = transactMock.mock.calls[1]?.[0] as { entityId?: string; payload?: { status?: string } };
+
+    expect(firstMutation.entityId).toBe("task-ordered-1");
+    expect(firstMutation.payload?.status).toBe("in_progress");
+    expect(secondMutation.entityId).toBe("task-ordered-2");
+    expect(secondMutation.payload?.status).toBe("done");
   });
 });

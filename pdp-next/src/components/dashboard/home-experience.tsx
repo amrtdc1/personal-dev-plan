@@ -6,11 +6,15 @@ import { MagicCodeAuth } from "@/components/auth/magic-code-auth";
 import { CalendarWorkspace } from "@/components/dashboard/calendar-workspace";
 import { DashboardInsights } from "@/components/dashboard/dashboard-insights";
 import { JournalWorkspace } from "@/components/dashboard/journal-workspace";
-import { MigrationDataPreview } from "@/components/dashboard/migration-data-preview";
+import { MigrationDataPreview as GoalsWorkspace } from "@/components/dashboard/migration-data-preview";
 import { OfflineSyncStatus } from "@/components/dashboard/offline-sync-status";
 import { dataRepository } from "@/lib/data/repository";
 import { validateUserProfileWrite } from "@/lib/data/validation";
-import { formatOfflineOperationLabel } from "@/lib/offline/sync-status";
+import {
+  formatOfflineOperationLabel,
+  getFriendlySyncFailureReason,
+  getOfflineSyncDiagnosticCode,
+} from "@/lib/offline/sync-status";
 import allowlistData from "@/lib/theming/data/espn-d1-allowlist.json";
 import type { CollegeThemeTeam } from "@/lib/theming/providers/espn-college";
 import { db } from "@/lib/instantdb/client";
@@ -187,6 +191,9 @@ function SignedOutLanding() {
 function SignedInShell() {
   const { user } = db.useAuth();
   const [activeSection, setActiveSection] = useState<AppSection>("dashboard");
+  const [pendingOpenItem, setPendingOpenItem] = useState<
+    { kind: "goal" | "subgoal" | "task"; id: string } | null
+  >(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isThemeSaving, setIsThemeSaving] = useState(false);
   const [themeError, setThemeError] = useState<string | null>(null);
@@ -353,6 +360,13 @@ function SignedInShell() {
     setActiveSection(section);
   }
 
+  function handleOpenItemFromDashboard(
+    kind: "goal" | "subgoal" | "task",
+    id: string,
+  ) {
+    setPendingOpenItem({ kind, id });
+  }
+
   return (
     <main className="pdp-shell relative isolate mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 pb-24 pt-4 md:px-8 md:pb-8 md:pt-8">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
@@ -398,21 +412,6 @@ function SignedInShell() {
             <p className="mt-1 text-sm text-slate-600">
               Align your professional growth, personal life, and spiritual walk.
             </p>
-            <p className="mt-2 text-sm text-slate-600">Signed in as {currentUser.email}</p>
-            {selectedCollegeTeam ? (
-              <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
-                {brandVisual.logoUrl ? (
-                  <Image
-                    src={brandVisual.logoUrl}
-                    alt={`${selectedCollegeTeam.displayName} logo`}
-                    width={18}
-                    height={18}
-                    className="h-[18px] w-[18px] rounded-sm object-contain"
-                  />
-                ) : null}
-                <span className="text-xs font-semibold text-slate-700">{selectedCollegeTeam.displayName}</span>
-              </div>
-            ) : null}
           </div>
 
           <div className="flex items-center justify-end gap-2 self-start">
@@ -462,13 +461,14 @@ function SignedInShell() {
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
                 aria-haspopup="menu"
                 aria-expanded={isProfileMenuOpen}
-                aria-label="Open profile menu"
+                aria-label={`Open profile menu (signed in as ${currentUser.email})`}
+                title={`Signed in as ${currentUser.email}`}
               >
                 {initials}
               </button>
 
               {isProfileMenuOpen ? (
-                <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
                   <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Account</p>
                   <button
                     type="button"
@@ -480,10 +480,51 @@ function SignedInShell() {
                   >
                     Profile & Theme Settings
                   </button>
+                  <div className="mx-2 mt-1">
+                    {themeSource === "cwm" ? (
+                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                        <Image
+                          src="/cwm-logo.png"
+                          alt="CWM logo"
+                          width={16}
+                          height={16}
+                          className="h-4 w-4 rounded-sm object-contain"
+                        />
+                        <span className="text-xs font-semibold text-slate-700">CWM Theme</span>
+                      </span>
+                    ) : themeSource === "college" && selectedCollegeTeam ? (
+                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                        {brandVisual.logoUrl ? (
+                          <Image
+                            src={brandVisual.logoUrl}
+                            alt={`${selectedCollegeTeam.displayName} logo`}
+                            width={16}
+                            height={16}
+                            className="h-4 w-4 rounded-sm object-contain"
+                          />
+                        ) : null}
+                        <span className="text-xs font-semibold text-slate-700">
+                          {selectedCollegeTeam.displayName}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                        <span
+                          className="h-4 w-4 rounded-full border border-slate-300"
+                          style={{
+                            backgroundColor: PALETTE_THEME_TOKENS[resolvedPalette].primary,
+                          }}
+                        />
+                        <span className="text-xs font-semibold text-slate-700">
+                          Palette - {resolvedPalette.charAt(0).toUpperCase() + resolvedPalette.slice(1)}
+                        </span>
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => db.auth.signOut()}
-                    className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                    className="mt-2 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
                   >
                     Sign out
                   </button>
@@ -520,11 +561,16 @@ function SignedInShell() {
       {activeSection === "dashboard" ? (
         <>
           <OfflineSyncStatus />
-          <DashboardInsights />
+          <DashboardInsights onOpenItem={handleOpenItemFromDashboard} />
         </>
       ) : null}
 
-      {activeSection === "goals" ? <MigrationDataPreview /> : null}
+      <GoalsWorkspace
+        pendingOpenItem={pendingOpenItem}
+        onPendingItemConsumed={() => setPendingOpenItem(null)}
+        showWorkspaceShell={activeSection === "goals"}
+        enableDataHydration={activeSection === "goals" || pendingOpenItem !== null}
+      />
       {activeSection === "calendar" ? <CalendarWorkspace /> : null}
       {activeSection === "journal" ? <JournalWorkspace /> : null}
       {activeSection === "profile" ? (
@@ -853,8 +899,11 @@ function ProfileSettings({
       const result = await dataRepository.flushOfflineMutations();
       if (result.failed > 0) {
         const failedLabel = formatOfflineOperationLabel(result.failedOperation);
-        const reason = result.failedError ? ` (${result.failedError})` : "";
-        setSyncMessage(`Sync paused on ${failedLabel}. ${result.remaining} change(s) remain queued${reason}`);
+        const reason = getFriendlySyncFailureReason(result.failedError);
+        const diagnosticCode = getOfflineSyncDiagnosticCode(result.failedError);
+        setSyncMessage(
+          `Sync paused on ${failedLabel}. ${result.remaining} change(s) remain queued. ${reason} (${diagnosticCode})`,
+        );
       } else if (result.processed > 0) {
         setSyncMessage(`Synced ${result.processed} queued change(s).`);
       } else {
@@ -1876,7 +1925,7 @@ function getFriendlyProfileSaveError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : "";
 
   if (message.includes("not perms-pass")) {
-    return "We could not save that change because the workspace permissions rejected it. Please refresh and try again.";
+    return "We could not save that change because app permissions rejected it. Please refresh and try again.";
   }
 
   return getErrorMessage(error, fallback);

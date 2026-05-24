@@ -1,26 +1,47 @@
-"use client";
+﻿"use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import type { Goal, ItemStatus, Subgoal, Task, UserProfile } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
+import { CrudModal } from "@/components/ui/crud-modal";
+import { GoalTypeTag } from "@/components/ui/tags";
 
 type RepositorySnapshot = {
   profile: UserProfile | null;
   professionalGoals: Goal[];
   personalGoals: Goal[];
-  sampleGoalId: string | null;
-  sampleSubgoals: Subgoal[];
-  sampleTasks: Task[];
+  subgoalsByGoalId: Record<string, Subgoal[]>;
+  tasksBySubgoalId: Record<string, Task[]>;
 };
 
-export function MigrationDataPreview() {
+export function MigrationDataPreview({
+  pendingOpenItem,
+  onPendingItemConsumed,
+  showWorkspaceShell = true,
+  enableDataHydration = true,
+}: {
+  pendingOpenItem?: { kind: "goal" | "subgoal" | "task"; id: string } | null;
+  onPendingItemConsumed?: () => void;
+  showWorkspaceShell?: boolean;
+  enableDataHydration?: boolean;
+} = {}) {
   const { isLoading, user, error } = db.useAuth();
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [expandedGoalIds, setExpandedGoalIds] = useState<Set<string>>(new Set());
+  const [expandedSubgoalIds, setExpandedSubgoalIds] = useState<Set<string>>(new Set());
+  const [showArchivedGoals, setShowArchivedGoals] = useState(false);
+  const [targetGoalIdForSubgoal, setTargetGoalIdForSubgoal] = useState<string | null>(null);
+  const [targetSubgoalIdForTask, setTargetSubgoalIdForTask] = useState<string | null>(null);
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editingSubgoalId, setEditingSubgoalId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+  const [isSubgoalModalOpen, setIsSubgoalModalOpen] = useState(false);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [goalType, setGoalType] = useState<"professional" | "personal">("professional");
   const [goalTitle, setGoalTitle] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
@@ -49,10 +70,54 @@ export function MigrationDataPreview() {
     ],
     [snapshot],
   );
+  const allSubgoals = useMemo(
+    () => Object.values(snapshot?.subgoalsByGoalId ?? {}).flat(),
+    [snapshot?.subgoalsByGoalId],
+  );
+  const allTasks = useMemo(
+    () => Object.values(snapshot?.tasksBySubgoalId ?? {}).flat(),
+    [snapshot?.tasksBySubgoalId],
+  );
+  const archivedGoals = useMemo(
+    () => allGoals.filter((goal) => goal.deletedAt !== null),
+    [allGoals],
+  );
+  const orphanArchivedSubgoals = useMemo(
+    () =>
+      allSubgoals.filter((subgoal) => {
+        if (subgoal.deletedAt === null) {
+          return false;
+        }
+        const parentGoal = allGoals.find((goal) => goal.id === subgoal.goalId);
+        return parentGoal !== undefined && parentGoal.deletedAt === null;
+      }),
+    [allSubgoals, allGoals],
+  );
+  const orphanArchivedTasks = useMemo(
+    () =>
+      allTasks.filter((task) => {
+        if (task.deletedAt === null) {
+          return false;
+        }
+        const parentSubgoal = allSubgoals.find((subgoal) => subgoal.id === task.subgoalId);
+        if (parentSubgoal === undefined || parentSubgoal.deletedAt !== null) {
+          return false;
+        }
+        const parentGoal = allGoals.find((goal) => goal.id === parentSubgoal.goalId);
+        return parentGoal !== undefined && parentGoal.deletedAt === null;
+      }),
+    [allTasks, allSubgoals, allGoals],
+  );
+  const hasAnyArchived =
+    archivedGoals.length > 0 ||
+    orphanArchivedSubgoals.length > 0 ||
+    orphanArchivedTasks.length > 0;
   const editingGoal = allGoals.find((goal) => goal.id === editingGoalId) ?? null;
+  const editingSubgoal = allSubgoals.find((subgoal) => subgoal.id === editingSubgoalId) ?? null;
+  const editingTask = allTasks.find((task) => task.id === editingTaskId) ?? null;
 
   useEffect(() => {
-    if (!user) {
+    if (!enableDataHydration || !user) {
       return;
     }
 
@@ -70,25 +135,42 @@ export function MigrationDataPreview() {
           dataRepository.listGoals(currentUser.id, "personal", { includeDeleted: true }),
         ]);
 
-        const sampleGoal =
-          professionalGoals.find((goal) => !goal.deletedAt) ??
-          personalGoals.find((goal) => !goal.deletedAt) ??
-          null;
-        const sampleSubgoals = sampleGoal
-          ? await dataRepository.listSubgoals(currentUser.id, sampleGoal.id, { includeDeleted: true })
-          : [];
-        const sampleTasks = sampleSubgoals[0]
-          ? await dataRepository.listTasks(currentUser.id, sampleSubgoals[0].id, { includeDeleted: true })
-          : [];
+        const combinedGoals = [...professionalGoals, ...personalGoals];
+
+        const subgoalEntries = await Promise.all(
+          combinedGoals.map(async (goal) => {
+            const subgoals = await dataRepository.listSubgoals(currentUser.id, goal.id, {
+              includeDeleted: true,
+            });
+            return [goal.id, subgoals] as const;
+          }),
+        );
+        const subgoalsByGoalId: Record<string, Subgoal[]> = {};
+        for (const [goalId, subgoals] of subgoalEntries) {
+          subgoalsByGoalId[goalId] = subgoals;
+        }
+
+        const allSubgoalsFlat = subgoalEntries.flatMap(([, subgoals]) => subgoals);
+        const taskEntries = await Promise.all(
+          allSubgoalsFlat.map(async (subgoal) => {
+            const tasks = await dataRepository.listTasks(currentUser.id, subgoal.id, {
+              includeDeleted: true,
+            });
+            return [subgoal.id, tasks] as const;
+          }),
+        );
+        const tasksBySubgoalId: Record<string, Task[]> = {};
+        for (const [subgoalId, tasks] of taskEntries) {
+          tasksBySubgoalId[subgoalId] = tasks;
+        }
 
         if (!isCancelled) {
           setSnapshot({
             profile,
             professionalGoals,
             personalGoals,
-            sampleGoalId: sampleGoal?.id ?? null,
-            sampleSubgoals,
-            sampleTasks,
+            subgoalsByGoalId,
+            tasksBySubgoalId,
           });
         }
       } catch (repositoryError) {
@@ -107,7 +189,57 @@ export function MigrationDataPreview() {
     return () => {
       isCancelled = true;
     };
-  }, [refreshKey, user]);
+  }, [enableDataHydration, refreshKey, user]);
+
+  useEffect(() => {
+    if (!pendingOpenItem || snapshot === null) {
+      return;
+    }
+
+    if (pendingOpenItem.kind === "goal") {
+      const goal = allGoals.find((candidate) => candidate.id === pendingOpenItem.id);
+      if (goal) {
+        setGoalType(goal.type);
+        setGoalTitle(goal.title);
+        setGoalDescription(goal.description);
+        setGoalStartDate(goal.projectedStartDate ?? "");
+        setGoalEndDate(goal.projectedEndDate ?? "");
+        setGoalTimeframeLabel(goal.timeframe === "Ongoing" ? "" : goal.timeframe);
+        setGoalIsFocus(goal.isFocus);
+        setSaveError(null);
+        setEditingGoalId(goal.id);
+        setIsGoalModalOpen(true);
+      }
+    } else if (pendingOpenItem.kind === "subgoal") {
+      const subgoal = allSubgoals.find((candidate) => candidate.id === pendingOpenItem.id);
+      if (subgoal) {
+        setExpandedGoalIds((previous) => new Set(previous).add(subgoal.goalId));
+        setSubgoalTitle(subgoal.title);
+        setSubgoalDescription(subgoal.description);
+        setSubgoalTimeframeLabel(subgoal.timeframe === "Ongoing" ? "" : subgoal.timeframe);
+        setSubgoalSaveError(null);
+        setEditingSubgoalId(subgoal.id);
+        setIsSubgoalModalOpen(true);
+      }
+    } else if (pendingOpenItem.kind === "task") {
+      const task = allTasks.find((candidate) => candidate.id === pendingOpenItem.id);
+      if (task) {
+        const parentSubgoal = allSubgoals.find((candidate) => candidate.id === task.subgoalId);
+        if (parentSubgoal) {
+          setExpandedGoalIds((previous) => new Set(previous).add(parentSubgoal.goalId));
+          setExpandedSubgoalIds((previous) => new Set(previous).add(parentSubgoal.id));
+        }
+        setTaskTitle(task.title);
+        setTaskNotes(task.notes);
+        setTaskDueDate(task.dueDate ?? "");
+        setTaskSaveError(null);
+        setEditingTaskId(task.id);
+        setIsTaskModalOpen(true);
+      }
+    }
+
+    onPendingItemConsumed?.();
+  }, [pendingOpenItem, snapshot, allGoals, allSubgoals, allTasks, onPendingItemConsumed]);
 
   if (isLoading || error || !user) {
     return null;
@@ -115,7 +247,8 @@ export function MigrationDataPreview() {
 
   async function handleSubgoalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!user || !snapshot?.sampleGoalId) {
+    const parentGoalId = editingSubgoal?.goalId ?? targetGoalIdForSubgoal;
+    if (!user || !parentGoalId) {
       return;
     }
 
@@ -124,18 +257,19 @@ export function MigrationDataPreview() {
 
     try {
       await dataRepository.saveSubgoal({
+        subgoalId: editingSubgoal?.id,
         ownerUid: user.id,
-        goalId: snapshot.sampleGoalId,
+        goalId: parentGoalId,
         title: subgoalTitle,
         description: subgoalDescription,
         projectedStartDate: null,
         projectedEndDate: null,
         timeframeLabel: subgoalTimeframeLabel,
+        existingSubgoal: editingSubgoal ?? undefined,
       });
 
-      setSubgoalTitle("");
-      setSubgoalDescription("");
-      setSubgoalTimeframeLabel("");
+      resetSubgoalForm();
+      setIsSubgoalModalOpen(false);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
       setSubgoalSaveError(getErrorMessage(repositoryError, "We could not save the subgoal."));
@@ -160,6 +294,12 @@ export function MigrationDataPreview() {
       if (!goal.deletedAt && editingGoalId === goal.id) {
         resetGoalForm();
       }
+      if (!goal.deletedAt && editingSubgoal && editingSubgoal.goalId === goal.id) {
+        resetSubgoalForm();
+      }
+      if (!goal.deletedAt && editingTask) {
+        resetTaskForm();
+      }
 
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
@@ -180,6 +320,13 @@ export function MigrationDataPreview() {
         await dataRepository.softDeleteSubgoal(user.id, subgoal.id);
       }
 
+      if (!subgoal.deletedAt && editingSubgoalId === subgoal.id) {
+        resetSubgoalForm();
+      }
+      if (!subgoal.deletedAt && editingTask && editingTask.subgoalId === subgoal.id) {
+        resetTaskForm();
+      }
+
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not update subgoal archive state."));
@@ -197,6 +344,10 @@ export function MigrationDataPreview() {
         await dataRepository.restoreTask(user.id, task.id);
       } else {
         await dataRepository.softDeleteTask(user.id, task.id);
+      }
+
+      if (!task.deletedAt && editingTaskId === task.id) {
+        resetTaskForm();
       }
 
       setRefreshKey((value) => value + 1);
@@ -275,7 +426,8 @@ export function MigrationDataPreview() {
       return;
     }
 
-    const orderedIds = buildReorderedActiveIds(snapshot?.sampleSubgoals ?? [], subgoal.id, direction);
+    const siblings = snapshot?.subgoalsByGoalId[subgoal.goalId] ?? [];
+    const orderedIds = buildReorderedActiveIds(siblings, subgoal.id, direction);
     if (!orderedIds) {
       return;
     }
@@ -294,7 +446,8 @@ export function MigrationDataPreview() {
       return;
     }
 
-    const orderedIds = buildReorderedActiveIds(snapshot?.sampleTasks ?? [], task.id, direction);
+    const siblings = snapshot?.tasksBySubgoalId[task.subgoalId] ?? [];
+    const orderedIds = buildReorderedActiveIds(siblings, task.id, direction);
     if (!orderedIds) {
       return;
     }
@@ -310,7 +463,8 @@ export function MigrationDataPreview() {
 
   async function handleTaskSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!user || !snapshot?.sampleSubgoals[0]) {
+    const parentSubgoalId = editingTask?.subgoalId ?? targetSubgoalIdForTask;
+    if (!user || !parentSubgoalId) {
       return;
     }
 
@@ -319,16 +473,17 @@ export function MigrationDataPreview() {
 
     try {
       await dataRepository.saveTask({
+        taskId: editingTask?.id,
         ownerUid: user.id,
-        subgoalId: snapshot.sampleSubgoals[0].id,
+        subgoalId: parentSubgoalId,
         title: taskTitle,
         notes: taskNotes,
         dueDate: taskDueDate || null,
+        existingTask: editingTask ?? undefined,
       });
 
-      setTaskTitle("");
-      setTaskNotes("");
-      setTaskDueDate("");
+      resetTaskForm();
+      setIsTaskModalOpen(false);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
       setTaskSaveError(getErrorMessage(repositoryError, "We could not save the task."));
@@ -362,6 +517,7 @@ export function MigrationDataPreview() {
       });
 
       resetGoalForm();
+      setIsGoalModalOpen(false);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
       setSaveError(getErrorMessage(repositoryError, "We could not save the goal."));
@@ -380,6 +536,43 @@ export function MigrationDataPreview() {
     setGoalIsFocus(goal.isFocus);
     setSaveError(null);
     setEditingGoalId(goal.id);
+    setIsGoalModalOpen(true);
+  }
+
+  function startEditingSubgoal(subgoal: Subgoal) {
+    setSubgoalTitle(subgoal.title);
+    setSubgoalDescription(subgoal.description);
+    setSubgoalTimeframeLabel(subgoal.timeframe === "Ongoing" ? "" : subgoal.timeframe);
+    setSubgoalSaveError(null);
+    setEditingSubgoalId(subgoal.id);
+    setIsSubgoalModalOpen(true);
+  }
+
+  function resetSubgoalForm() {
+    setEditingSubgoalId(null);
+    setSubgoalTitle("");
+    setSubgoalDescription("");
+    setSubgoalTimeframeLabel("");
+    setSubgoalSaveError(null);
+    setTargetGoalIdForSubgoal(null);
+  }
+
+  function startEditingTask(task: Task) {
+    setTaskTitle(task.title);
+    setTaskNotes(task.notes);
+    setTaskDueDate(task.dueDate ?? "");
+    setTaskSaveError(null);
+    setEditingTaskId(task.id);
+    setIsTaskModalOpen(true);
+  }
+
+  function resetTaskForm() {
+    setEditingTaskId(null);
+    setTaskTitle("");
+    setTaskNotes("");
+    setTaskDueDate("");
+    setTaskSaveError(null);
+    setTargetSubgoalIdForTask(null);
   }
 
   function resetGoalForm() {
@@ -394,517 +587,905 @@ export function MigrationDataPreview() {
     setSaveError(null);
   }
 
+  function closeGoalModal() {
+    setIsGoalModalOpen(false);
+    resetGoalForm();
+  }
+
+  function closeSubgoalModal() {
+    setIsSubgoalModalOpen(false);
+    resetSubgoalForm();
+  }
+
+  function closeTaskModal() {
+    setIsTaskModalOpen(false);
+    resetTaskForm();
+  }
+
+  function openCreateSubgoalModal(goalId: string) {
+    resetSubgoalForm();
+    setTargetGoalIdForSubgoal(goalId);
+    setIsSubgoalModalOpen(true);
+  }
+
+  function openCreateTaskModal(subgoalId: string) {
+    resetTaskForm();
+    setTargetSubgoalIdForTask(subgoalId);
+    setIsTaskModalOpen(true);
+  }
+
+  function toggleGoalExpansion(goalId: string) {
+    setExpandedGoalIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(goalId)) {
+        next.delete(goalId);
+      } else {
+        next.add(goalId);
+      }
+      return next;
+    });
+  }
+
+  function toggleSubgoalExpansion(subgoalId: string) {
+    setExpandedSubgoalIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(subgoalId)) {
+        next.delete(subgoalId);
+      } else {
+        next.add(subgoalId);
+      }
+      return next;
+    });
+  }
+
   return (
-    <section className="pdp-panel">
+    <>
+      {showWorkspaceShell ? (
+        <section className="pdp-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Goals Workspace</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Goals</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
-            Create and manage professional and personal goals, plus related subgoals and tasks, from one place.
+            Break down your professional and personal development into clear, trackable goals.
           </p>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
-          {isRefreshing ? "Refreshing" : "Loaded"}
-        </span>
+        {isRefreshing ? (
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
+            Refreshing
+          </span>
+        ) : null}
       </div>
 
       {loadError ? <p className="mt-4 text-sm text-red-700">{loadError}</p> : null}
       {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
 
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
-        <MetricCard label="Profile" value={snapshot?.profile ? "Ready" : "Missing"} />
-        <MetricCard label="Professional goals" value={String(snapshot?.professionalGoals.length ?? 0)} />
-        <MetricCard label="Personal goals" value={String(snapshot?.personalGoals.length ?? 0)} />
-        <MetricCard
-          label="Archived goals"
-          value={String(allGoals.filter((goal) => goal.deletedAt !== null).length)}
-        />
-        <MetricCard label="Sample subgoals" value={String(snapshot?.sampleSubgoals.length ?? 0)} />
-        <MetricCard label="Sample tasks" value={String(snapshot?.sampleTasks.length ?? 0)} />
-      </div>
+      {hasAnyArchived ? (
+        <label className="mt-5 inline-flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={showArchivedGoals}
+            onChange={(event) => setShowArchivedGoals(event.target.checked)}
+            className="size-4 rounded border-slate-300"
+          />
+          Show archived
+        </label>
+      ) : null}
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <article className="pdp-panel-muted md:col-span-2">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Goal editor</h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Create new goals or update existing ones.
+        <GoalGroup
+          title="Professional goals"
+          goals={(snapshot?.professionalGoals ?? []).filter((goal) => goal.deletedAt === null)}
+          subgoalsByGoalId={snapshot?.subgoalsByGoalId ?? {}}
+          tasksBySubgoalId={snapshot?.tasksBySubgoalId ?? {}}
+          expandedGoalIds={expandedGoalIds}
+          expandedSubgoalIds={expandedSubgoalIds}
+          onToggleGoal={toggleGoalExpansion}
+          onToggleSubgoal={toggleSubgoalExpansion}
+          onAddGoal={() => {
+            resetGoalForm();
+            setGoalType("professional");
+            setIsGoalModalOpen(true);
+          }}
+          onEditGoal={startEditing}
+          onArchiveGoal={handleGoalArchiveToggle}
+          onMoveGoal={handleGoalMove}
+          onStatusChangeGoal={handleGoalStatusChange}
+          onAddSubgoal={openCreateSubgoalModal}
+          onEditSubgoal={startEditingSubgoal}
+          onArchiveSubgoal={handleSubgoalArchiveToggle}
+          onMoveSubgoal={handleSubgoalMove}
+          onStatusChangeSubgoal={handleSubgoalStatusChange}
+          onAddTask={openCreateTaskModal}
+          onEditTask={startEditingTask}
+          onArchiveTask={handleTaskArchiveToggle}
+          onMoveTask={handleTaskMove}
+          onStatusChangeTask={handleTaskStatusChange}
+        />
+
+        <GoalGroup
+          title="Personal goals"
+          goals={(snapshot?.personalGoals ?? []).filter((goal) => goal.deletedAt === null)}
+          subgoalsByGoalId={snapshot?.subgoalsByGoalId ?? {}}
+          tasksBySubgoalId={snapshot?.tasksBySubgoalId ?? {}}
+          expandedGoalIds={expandedGoalIds}
+          expandedSubgoalIds={expandedSubgoalIds}
+          onToggleGoal={toggleGoalExpansion}
+          onToggleSubgoal={toggleSubgoalExpansion}
+          onAddGoal={() => {
+            resetGoalForm();
+            setGoalType("personal");
+            setIsGoalModalOpen(true);
+          }}
+          onEditGoal={startEditing}
+          onArchiveGoal={handleGoalArchiveToggle}
+          onMoveGoal={handleGoalMove}
+          onStatusChangeGoal={handleGoalStatusChange}
+          onAddSubgoal={openCreateSubgoalModal}
+          onEditSubgoal={startEditingSubgoal}
+          onArchiveSubgoal={handleSubgoalArchiveToggle}
+          onMoveSubgoal={handleSubgoalMove}
+          onStatusChangeSubgoal={handleSubgoalStatusChange}
+          onAddTask={openCreateTaskModal}
+          onEditTask={startEditingTask}
+          onArchiveTask={handleTaskArchiveToggle}
+          onMoveTask={handleTaskMove}
+          onStatusChangeTask={handleTaskStatusChange}
+        />
+      </div>
+
+      {showArchivedGoals && hasAnyArchived ? (
+        <article className="pdp-panel-muted mt-5">
+          <h3 className="text-sm font-semibold text-slate-900">
+            Archived ({archivedGoals.length} goal{archivedGoals.length === 1 ? "" : "s"},{" "}
+            {orphanArchivedSubgoals.length} sub-goal{orphanArchivedSubgoals.length === 1 ? "" : "s"},{" "}
+            {orphanArchivedTasks.length} task{orphanArchivedTasks.length === 1 ? "" : "s"})
+          </h3>
+
+          {archivedGoals.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Goals ({archivedGoals.length})
               </p>
+              <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                {archivedGoals.map((goal) => (
+                  <li key={goal.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-slate-900">{goal.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {goal.type === "professional" ? "Professional" : "Personal"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleGoalArchiveToggle(goal)}
+                        className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
-            {editingGoal ? (
-              <button
-                type="button"
-                onClick={resetGoalForm}
-                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-white"
-              >
-                Cancel edit
-              </button>
-            ) : null}
-          </div>
+          ) : null}
 
-          <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={handleGoalSubmit}>
-            <label className="block text-sm text-slate-700">
-              Goal type
-              <select
-                value={goalType}
-                onChange={(event) => setGoalType(event.target.value as "professional" | "personal")}
-                className="pdp-control mt-1 rounded-xl"
-              >
-                <option value="professional">Professional</option>
-                <option value="personal">Personal</option>
-              </select>
-            </label>
-
-            <label className="block text-sm text-slate-700">
-              Title
-              <input
-                value={goalTitle}
-                onChange={(event) => setGoalTitle(event.target.value)}
-                className="pdp-control mt-1 rounded-xl"
-                placeholder="Improve leadership communication"
-              />
-            </label>
-
-            <label className="block text-sm text-slate-700 md:col-span-2">
-              Description
-              <textarea
-                value={goalDescription}
-                onChange={(event) => setGoalDescription(event.target.value)}
-                className="pdp-control mt-1 min-h-24 rounded-xl"
-                placeholder="Capture the business outcome and why this goal matters."
-              />
-            </label>
-
-            <label className="block text-sm text-slate-700">
-              Projected start
-              <input
-                type="date"
-                value={goalStartDate}
-                onChange={(event) => setGoalStartDate(event.target.value)}
-                className="pdp-control mt-1 rounded-xl"
-              />
-            </label>
-
-            <label className="block text-sm text-slate-700">
-              Projected end
-              <input
-                type="date"
-                value={goalEndDate}
-                onChange={(event) => setGoalEndDate(event.target.value)}
-                className="pdp-control mt-1 rounded-xl"
-              />
-            </label>
-
-            <label className="block text-sm text-slate-700">
-              Timeframe label
-              <input
-                value={goalTimeframeLabel}
-                onChange={(event) => setGoalTimeframeLabel(event.target.value)}
-                className="pdp-control mt-1 rounded-xl"
-                placeholder="Q3 2026"
-              />
-            </label>
-
-            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={goalIsFocus}
-                onChange={(event) => setGoalIsFocus(event.target.checked)}
-                className="size-4 rounded border-slate-300"
-              />
-              Mark as current focus goal
-            </label>
-
-            {saveError ? <p className="text-sm text-red-700 md:col-span-2">{saveError}</p> : null}
-
-            <div className="flex flex-wrap items-center gap-3 md:col-span-2">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="rounded-full bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                {isSaving ? "Saving..." : editingGoal ? "Update goal" : "Create goal"}
-              </button>
-              <span className="text-sm text-slate-500">
-                {editingGoal ? "Editing an existing goal." : "Create a new goal to get started."}
-              </span>
-            </div>
-          </form>
-        </article>
-
-        <article className="pdp-panel-muted">
-          <h3 className="text-sm font-semibold text-slate-900">Goal snapshot</h3>
-          <GoalList
-            title="Professional"
-            goals={snapshot?.professionalGoals ?? []}
-            onEdit={startEditing}
-            onToggleArchive={handleGoalArchiveToggle}
-            onStatusChange={handleGoalStatusChange}
-            onMove={handleGoalMove}
-          />
-          <GoalList
-            title="Personal"
-            goals={snapshot?.personalGoals ?? []}
-            onEdit={startEditing}
-            onToggleArchive={handleGoalArchiveToggle}
-            onStatusChange={handleGoalStatusChange}
-            onMove={handleGoalMove}
-          />
-        </article>
-
-        <article className="pdp-panel-muted md:col-span-2">
-          <h3 className="text-sm font-semibold text-slate-900">Subgoals and tasks</h3>
-          {snapshot?.sampleGoalId ? (
-            <>
-              <p className="mt-2 text-sm text-slate-700">
-                Showing data for goal <span className="font-mono text-xs text-slate-600">{snapshot.sampleGoalId}</span>
+          {orphanArchivedSubgoals.length > 0 ? (
+            <div className="mt-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Sub-goals ({orphanArchivedSubgoals.length})
               </p>
-              <p className="mt-2 text-xs font-medium uppercase tracking-wide text-slate-500">Subgoals</p>
-              {snapshot.sampleSubgoals.length > 0 ? (
-                <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                  {snapshot.sampleSubgoals.slice(0, 5).map((subgoal) => (
+              <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                {orphanArchivedSubgoals.map((subgoal) => {
+                  const parentGoal = allGoals.find((goal) => goal.id === subgoal.goalId);
+                  return (
                     <li key={subgoal.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-medium text-slate-900">
-                            {subgoal.title}
-                            {subgoal.deletedAt ? (
-                              <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Archived</span>
-                            ) : null}
+                          <p className="font-medium text-slate-900">{subgoal.title}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Under: {parentGoal?.title ?? "Unknown goal"}
                           </p>
-                          <p className="mt-1 text-xs text-slate-500">{subgoal.id}</p>
-                          <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Status
-                            <select
-                              value={subgoal.status}
-                              onChange={(event) => handleSubgoalStatusChange(subgoal, event.target.value as ItemStatus)}
-                              disabled={subgoal.deletedAt !== null}
-                              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                            >
-                              <option value="not_started">Not started</option>
-                              <option value="in_progress">In progress</option>
-                              <option value="done">Done</option>
-                            </select>
-                          </label>
                         </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleSubgoalMove(subgoal, "up")}
-                              disabled={subgoal.deletedAt !== null}
-                              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                            >
-                              Up
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSubgoalMove(subgoal, "down")}
-                              disabled={subgoal.deletedAt !== null}
-                              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                            >
-                              Down
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleSubgoalArchiveToggle(subgoal)}
-                            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                          >
-                            {subgoal.deletedAt ? "Restore" : "Archive"}
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSubgoalArchiveToggle(subgoal)}
+                          className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                        >
+                          Restore
+                        </button>
                       </div>
                     </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-2 text-sm text-slate-600">No subgoals found for this goal yet.</p>
-              )}
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
 
-              <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">Tasks from first subgoal</p>
-              {snapshot.sampleTasks.length > 0 ? (
-                <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                  {snapshot.sampleTasks.slice(0, 5).map((task) => (
+          {orphanArchivedTasks.length > 0 ? (
+            <div className="mt-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Tasks ({orphanArchivedTasks.length})
+              </p>
+              <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                {orphanArchivedTasks.map((task) => {
+                  const parentSubgoal = allSubgoals.find((subgoal) => subgoal.id === task.subgoalId);
+                  return (
                     <li key={task.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-medium text-slate-900">
-                            {task.title}
-                            {task.deletedAt ? (
-                              <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Archived</span>
-                            ) : null}
+                          <p className="font-medium text-slate-900">{task.title}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Under: {parentSubgoal?.title ?? "Unknown sub-goal"}
                           </p>
-                          <p className="mt-1 text-xs text-slate-500">{task.id}</p>
-                          <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Status
-                            <select
-                              value={task.status}
-                              onChange={(event) => handleTaskStatusChange(task, event.target.value as ItemStatus)}
-                              disabled={task.deletedAt !== null}
-                              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                            >
-                              <option value="not_started">Not started</option>
-                              <option value="in_progress">In progress</option>
-                              <option value="done">Done</option>
-                            </select>
-                          </label>
                         </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleTaskMove(task, "up")}
-                              disabled={task.deletedAt !== null}
-                              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                            >
-                              Up
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleTaskMove(task, "down")}
-                              disabled={task.deletedAt !== null}
-                              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                            >
-                              Down
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleTaskArchiveToggle(task)}
-                            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                          >
-                            {task.deletedAt ? "Restore" : "Archive"}
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleTaskArchiveToggle(task)}
+                          className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                        >
+                          Restore
+                        </button>
                       </div>
                     </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-2 text-sm text-slate-600">No tasks found for this subgoal yet.</p>
-              )}
-
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <form className="rounded-lg border border-slate-200 bg-white p-3" onSubmit={handleSubgoalSubmit}>
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Create subgoal</p>
-                  <label className="mt-2 block text-sm text-slate-700">
-                    Title
-                    <input
-                      value={subgoalTitle}
-                      onChange={(event) => setSubgoalTitle(event.target.value)}
-                      className="pdp-control mt-1 rounded-xl"
-                      placeholder="Break goal into measurable outcomes"
-                    />
-                  </label>
-                  <label className="mt-2 block text-sm text-slate-700">
-                    Description
-                    <textarea
-                      value={subgoalDescription}
-                      onChange={(event) => setSubgoalDescription(event.target.value)}
-                      className="pdp-control mt-1 min-h-20 rounded-xl"
-                    />
-                  </label>
-                  <label className="mt-2 block text-sm text-slate-700">
-                    Timeframe label
-                    <input
-                      value={subgoalTimeframeLabel}
-                      onChange={(event) => setSubgoalTimeframeLabel(event.target.value)}
-                      className="pdp-control mt-1 rounded-xl"
-                      placeholder="Q4 2026"
-                    />
-                  </label>
-                  {subgoalSaveError ? <p className="mt-2 text-sm text-red-700">{subgoalSaveError}</p> : null}
-                  <button
-                    type="submit"
-                    disabled={isSavingSubgoal}
-                    className="mt-3 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  >
-                    {isSavingSubgoal ? "Saving..." : "Create subgoal"}
-                  </button>
-                </form>
-
-                <form className="rounded-lg border border-slate-200 bg-white p-3" onSubmit={handleTaskSubmit}>
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Create task (first subgoal)</p>
-                  <label className="mt-2 block text-sm text-slate-700">
-                    Title
-                    <input
-                      value={taskTitle}
-                      onChange={(event) => setTaskTitle(event.target.value)}
-                      className="pdp-control mt-1 rounded-xl"
-                      placeholder="Define milestone and owner"
-                    />
-                  </label>
-                  <label className="mt-2 block text-sm text-slate-700">
-                    Notes
-                    <textarea
-                      value={taskNotes}
-                      onChange={(event) => setTaskNotes(event.target.value)}
-                      className="pdp-control mt-1 min-h-20 rounded-xl"
-                    />
-                  </label>
-                  <label className="mt-2 block text-sm text-slate-700">
-                    Due date
-                    <input
-                      type="date"
-                      value={taskDueDate}
-                      onChange={(event) => setTaskDueDate(event.target.value)}
-                      className="pdp-control mt-1 rounded-xl"
-                    />
-                  </label>
-                  {taskSaveError ? <p className="mt-2 text-sm text-red-700">{taskSaveError}</p> : null}
-                  <button
-                    type="submit"
-                    disabled={isSavingTask || snapshot.sampleSubgoals.length === 0}
-                    className="mt-3 rounded-full bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  >
-                    {isSavingTask ? "Saving..." : "Create task"}
-                  </button>
-                </form>
-              </div>
-            </>
-          ) : (
-            <p className="mt-2 text-sm text-slate-600">
-              Add at least one goal to start managing subgoals and tasks.
-            </p>
-          )}
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
         </article>
-      </div>
-    </section>
+      ) : null}
+
+        </section>
+      ) : null}
+
+      <CrudModal
+        isOpen={isGoalModalOpen}
+        title={editingGoal ? "Edit goal" : "Create goal"}
+        onClose={closeGoalModal}
+      >
+        <form className="grid gap-4 md:grid-cols-2" onSubmit={handleGoalSubmit}>
+          <label className="block text-sm text-slate-700">
+            Goal type
+            <select
+              value={goalType}
+              onChange={(event) => setGoalType(event.target.value as "professional" | "personal")}
+              className="pdp-control mt-1 rounded-xl"
+            >
+              <option value="professional">Professional</option>
+              <option value="personal">Personal</option>
+            </select>
+          </label>
+
+          <label className="block text-sm text-slate-700">
+            Title
+            <input
+              value={goalTitle}
+              onChange={(event) => setGoalTitle(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+              placeholder="Improve leadership communication"
+            />
+          </label>
+
+          <label className="block text-sm text-slate-700 md:col-span-2">
+            Description
+            <textarea
+              value={goalDescription}
+              onChange={(event) => setGoalDescription(event.target.value)}
+              className="pdp-control mt-1 min-h-24 rounded-xl"
+              placeholder="Capture the business outcome and why this goal matters."
+            />
+          </label>
+
+          <label className="block text-sm text-slate-700">
+            Projected start
+            <input
+              type="date"
+              value={goalStartDate}
+              onChange={(event) => setGoalStartDate(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+            />
+          </label>
+
+          <label className="block text-sm text-slate-700">
+            Projected end
+            <input
+              type="date"
+              value={goalEndDate}
+              onChange={(event) => setGoalEndDate(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+            />
+          </label>
+
+          <label className="block text-sm text-slate-700">
+            Timeframe label
+            <input
+              value={goalTimeframeLabel}
+              onChange={(event) => setGoalTimeframeLabel(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+              placeholder="Q3 2026"
+            />
+          </label>
+
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={goalIsFocus}
+              onChange={(event) => setGoalIsFocus(event.target.checked)}
+              className="size-4 rounded border-slate-300"
+            />
+            Mark as current focus goal
+          </label>
+
+          {saveError ? <p className="text-sm text-red-700 md:col-span-2">{saveError}</p> : null}
+
+          <div className="flex flex-wrap items-center gap-3 md:col-span-2">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="rounded-full bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {isSaving ? "Saving..." : editingGoal ? "Update goal" : "Create goal"}
+            </button>
+            <button
+              type="button"
+              onClick={closeGoalModal}
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </CrudModal>
+
+      <CrudModal
+        isOpen={isSubgoalModalOpen}
+        title={editingSubgoal ? "Edit subgoal" : "Create subgoal"}
+        onClose={closeSubgoalModal}
+      >
+        <form className="grid gap-4" onSubmit={handleSubgoalSubmit}>
+          {(() => {
+            const parentGoalId = editingSubgoal?.goalId ?? targetGoalIdForSubgoal;
+            const parentGoal = parentGoalId ? allGoals.find((goal) => goal.id === parentGoalId) : null;
+            return parentGoal ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Parent goal
+                </span>
+                <p className="mt-1 font-semibold text-slate-900">{parentGoal.title}</p>
+              </div>
+            ) : null;
+          })()}
+          <label className="block text-sm text-slate-700">
+            Title
+            <input
+              value={subgoalTitle}
+              onChange={(event) => setSubgoalTitle(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+              placeholder="Break goal into measurable outcomes"
+            />
+          </label>
+          <label className="block text-sm text-slate-700">
+            Description
+            <textarea
+              value={subgoalDescription}
+              onChange={(event) => setSubgoalDescription(event.target.value)}
+              className="pdp-control mt-1 min-h-20 rounded-xl"
+            />
+          </label>
+          <label className="block text-sm text-slate-700">
+            Timeframe label
+            <input
+              value={subgoalTimeframeLabel}
+              onChange={(event) => setSubgoalTimeframeLabel(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+              placeholder="Q4 2026"
+            />
+          </label>
+          {subgoalSaveError ? <p className="text-sm text-red-700">{subgoalSaveError}</p> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="submit"
+              disabled={isSavingSubgoal}
+              className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {isSavingSubgoal ? "Saving..." : editingSubgoal ? "Update subgoal" : "Create subgoal"}
+            </button>
+            <button
+              type="button"
+              onClick={closeSubgoalModal}
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </CrudModal>
+
+      <CrudModal
+        isOpen={isTaskModalOpen}
+        title={editingTask ? "Edit task" : "Create task"}
+        onClose={closeTaskModal}
+      >
+        <form className="grid gap-4" onSubmit={handleTaskSubmit}>
+          {(() => {
+            const parentSubgoalId = editingTask?.subgoalId ?? targetSubgoalIdForTask;
+            const parentSubgoal = parentSubgoalId
+              ? allSubgoals.find((subgoal) => subgoal.id === parentSubgoalId)
+              : null;
+            const parentGoal = parentSubgoal
+              ? allGoals.find((goal) => goal.id === parentSubgoal.goalId)
+              : null;
+            return parentSubgoal ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Parent sub-goal
+                </span>
+                <p className="mt-1 font-semibold text-slate-900">{parentSubgoal.title}</p>
+                {parentGoal ? (
+                  <p className="mt-1 text-xs text-slate-500">Goal: {parentGoal.title}</p>
+                ) : null}
+              </div>
+            ) : null;
+          })()}
+          <label className="block text-sm text-slate-700">
+            Title
+            <input
+              value={taskTitle}
+              onChange={(event) => setTaskTitle(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+              placeholder="Define milestone and owner"
+            />
+          </label>
+          <label className="block text-sm text-slate-700">
+            Notes
+            <textarea
+              value={taskNotes}
+              onChange={(event) => setTaskNotes(event.target.value)}
+              className="pdp-control mt-1 min-h-20 rounded-xl"
+            />
+          </label>
+          <label className="block text-sm text-slate-700">
+            Due date
+            <input
+              type="date"
+              value={taskDueDate}
+              onChange={(event) => setTaskDueDate(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+            />
+          </label>
+          {taskSaveError ? <p className="text-sm text-red-700">{taskSaveError}</p> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="submit"
+              disabled={isSavingTask || (!editingTask?.subgoalId && !targetSubgoalIdForTask)}
+              className="rounded-full bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {isSavingTask ? "Saving..." : editingTask ? "Update task" : "Create task"}
+            </button>
+            <button
+              type="button"
+              onClick={closeTaskModal}
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </CrudModal>
+    </>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="pdp-panel-muted">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
-    </div>
-  );
-}
-
-function GoalList({
-  title,
-  goals,
-  onEdit,
-  onToggleArchive,
-  onStatusChange,
-  onMove,
+function IconActionButton({
+  label,
+  onClick,
+  children,
 }: {
-  title: string;
-  goals: Goal[];
-  onEdit: (goal: Goal) => void;
-  onToggleArchive: (goal: Goal) => void;
-  onStatusChange: (goal: Goal, status: ItemStatus) => void;
-  onMove: (goal: Goal, direction: "up" | "down") => void;
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
 }) {
   return (
-    <div className="mt-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{title}</p>
-      {goals.length > 0 ? (
-        <ul className="mt-2 space-y-2 text-sm text-slate-700">
-          {goals.slice(0, 3).map((goal) => (
-            <li key={goal.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium text-slate-900">
-                    {goal.title}
-                    {goal.deletedAt ? (
-                      <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Archived</span>
-                    ) : null}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {goal.status.replaceAll("_", " ")} · {goal.timeframe || "No timeframe"}
-                  </p>
-                  <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Status
-                    <select
-                      value={goal.status}
-                      onChange={(event) => onStatusChange(goal, event.target.value as ItemStatus)}
-                      disabled={goal.deletedAt !== null}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                    >
-                      <option value="not_started">Not started</option>
-                      <option value="in_progress">In progress</option>
-                      <option value="done">Done</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onMove(goal, "up")}
-                    disabled={goal.deletedAt !== null}
-                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                  >
-                    Up
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onMove(goal, "down")}
-                    disabled={goal.deletedAt !== null}
-                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                  >
-                    Down
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onEdit(goal)}
-                    disabled={goal.deletedAt !== null}
-                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onToggleArchive(goal)}
-                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                  >
-                    {goal.deletedAt ? "Restore" : "Archive"}
-                  </button>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-2 text-sm text-slate-600">No goals found yet for this type.</p>
-      )}
-    </div>
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className="inline-flex size-8 items-center justify-center rounded-full border border-slate-300 text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+    >
+      {children}
+    </button>
   );
 }
 
-function getErrorMessage(error: unknown, fallbackMessage: string) {
-  if (typeof error === "object" && error !== null && "message" in error) {
-    const message = (error as { message?: string }).message;
-    if (message) {
-      return message;
-    }
-  }
-
-  return fallbackMessage;
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" />
+    </svg>
+  );
 }
 
-function buildReorderedActiveIds<TEntity extends { id: string; deletedAt: string | null }>(
-  entities: TEntity[],
-  entityId: string,
-  direction: "up" | "down",
-) {
-  const activeIds = entities.filter((entity) => entity.deletedAt === null).map((entity) => entity.id);
-  const currentIndex = activeIds.indexOf(entityId);
+function ArchiveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M3 7h18" />
+      <path d="M5 7h14v12H5z" />
+      <path d="M9 3h6v4H9z" />
+      <path d="M10 12h4" />
+    </svg>
+  );
+}
 
-  if (currentIndex === -1) {
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={`size-4 transition-transform ${expanded ? "rotate-90" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.length > 0) {
+    return error;
+  }
+  return fallback;
+}
+
+function buildReorderedActiveIds<T extends { id: string; deletedAt: string | null }>(
+  items: T[],
+  movingId: string,
+  direction: "up" | "down",
+): string[] | null {
+  const activeIds = items.filter((item) => item.deletedAt === null).map((item) => item.id);
+  const currentIndex = activeIds.indexOf(movingId);
+  if (currentIndex < 0) {
     return null;
   }
-
   const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
   if (targetIndex < 0 || targetIndex >= activeIds.length) {
     return null;
   }
-
   const nextIds = [...activeIds];
   const [movedId] = nextIds.splice(currentIndex, 1);
   nextIds.splice(targetIndex, 0, movedId);
   return nextIds;
 }
+
+type GoalGroupProps = {
+  title: string;
+  goals: Goal[];
+  subgoalsByGoalId: Record<string, Subgoal[]>;
+  tasksBySubgoalId: Record<string, Task[]>;
+  expandedGoalIds: Set<string>;
+  expandedSubgoalIds: Set<string>;
+  onToggleGoal: (goalId: string) => void;
+  onToggleSubgoal: (subgoalId: string) => void;
+  onAddGoal: () => void;
+  onEditGoal: (goal: Goal) => void;
+  onArchiveGoal: (goal: Goal) => void;
+  onMoveGoal: (goal: Goal, direction: "up" | "down") => void;
+  onStatusChangeGoal: (goal: Goal, status: ItemStatus) => void;
+  onAddSubgoal: (goalId: string) => void;
+  onEditSubgoal: (subgoal: Subgoal) => void;
+  onArchiveSubgoal: (subgoal: Subgoal) => void;
+  onMoveSubgoal: (subgoal: Subgoal, direction: "up" | "down") => void;
+  onStatusChangeSubgoal: (subgoal: Subgoal, status: ItemStatus) => void;
+  onAddTask: (subgoalId: string) => void;
+  onEditTask: (task: Task) => void;
+  onArchiveTask: (task: Task) => void;
+  onMoveTask: (task: Task, direction: "up" | "down") => void;
+  onStatusChangeTask: (task: Task, status: ItemStatus) => void;
+};
+
+function GoalGroup({
+  title,
+  goals,
+  subgoalsByGoalId,
+  tasksBySubgoalId,
+  expandedGoalIds,
+  expandedSubgoalIds,
+  onToggleGoal,
+  onToggleSubgoal,
+  onAddGoal,
+  onEditGoal,
+  onArchiveGoal,
+  onMoveGoal,
+  onStatusChangeGoal,
+  onAddSubgoal,
+  onEditSubgoal,
+  onArchiveSubgoal,
+  onMoveSubgoal,
+  onStatusChangeSubgoal,
+  onAddTask,
+  onEditTask,
+  onArchiveTask,
+  onMoveTask,
+  onStatusChangeTask,
+}: GoalGroupProps) {
+  return (
+    <article className="pdp-panel-muted">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-slate-900">
+          {title} ({goals.length})
+        </h3>
+        <IconActionButton label={`Add ${title.toLowerCase()}`} onClick={onAddGoal}>
+          <PlusIcon />
+        </IconActionButton>
+      </header>
+
+      {goals.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-600">No goals yet. Use the + button to create one.</p>
+      ) : (
+        <ul className="mt-3 space-y-3">
+          {goals.map((goal) => {
+            const subgoals = (subgoalsByGoalId[goal.id] ?? []).filter((subgoal) => subgoal.deletedAt === null);
+            const isGoalExpanded = expandedGoalIds.has(goal.id);
+
+            return (
+              <li
+                key={goal.id}
+                className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p
+                        className="pdp-heading text-2xl font-semibold leading-tight"
+                        style={{ color: "var(--pdp-theme-primary)" }}
+                      >
+                        {goal.title}
+                      </p>
+                      <GoalTypeTag type={goal.type} />
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {goal.status.replaceAll("_", " ")} · {goal.timeframe || "No timeframe"}
+                    </p>
+                    {goal.description ? (
+                      <p className="mt-2 text-sm text-slate-700">{goal.description}</p>
+                    ) : null}
+                    <label className="mt-2 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Status
+                      <select
+                        value={goal.status}
+                        onChange={(event) => onStatusChangeGoal(goal, event.target.value as ItemStatus)}
+                        className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal normal-case text-slate-900"
+                      >
+                        <option value="not_started">Not started</option>
+                        <option value="in_progress">In progress</option>
+                        <option value="done">Done</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onMoveGoal(goal, "up")}
+                      className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                      aria-label="Move goal up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onMoveGoal(goal, "down")}
+                      className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                      aria-label="Move goal down"
+                    >
+                      ↓
+                    </button>
+                    <IconActionButton label="Edit goal" onClick={() => onEditGoal(goal)}>
+                      <PencilIcon />
+                    </IconActionButton>
+                    <IconActionButton label="Archive goal" onClick={() => onArchiveGoal(goal)}>
+                      <ArchiveIcon />
+                    </IconActionButton>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => onToggleGoal(goal.id)}
+                      className="flex items-center gap-2 text-sm font-semibold text-slate-900"
+                      aria-expanded={isGoalExpanded}
+                    >
+                      <ChevronIcon expanded={isGoalExpanded} />
+                      Sub-goals ({subgoals.length})
+                    </button>
+                    <IconActionButton label="Add sub-goal" onClick={() => onAddSubgoal(goal.id)}>
+                      <PlusIcon />
+                    </IconActionButton>
+                  </div>
+
+                  {isGoalExpanded ? (
+                    subgoals.length === 0 ? (
+                      <p className="mt-3 text-sm text-slate-600">No sub-goals yet. Use the + button to add one.</p>
+                    ) : (
+                      <ul className="mt-3 space-y-3">
+                        {subgoals.map((subgoal) => {
+                          const tasks = (tasksBySubgoalId[subgoal.id] ?? []).filter((task) => task.deletedAt === null);
+                          const isSubgoalExpanded = expandedSubgoalIds.has(subgoal.id);
+
+                          return (
+                            <li
+                              key={subgoal.id}
+                              className="rounded-lg border border-slate-200 bg-white p-3"
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-slate-900">{subgoal.title}</p>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {subgoal.status.replaceAll("_", " ")} · {subgoal.timeframe || "No timeframe"}
+                                  </p>
+                                  {subgoal.description ? (
+                                    <p className="mt-2 text-sm text-slate-700">{subgoal.description}</p>
+                                  ) : null}
+                                  <label className="mt-2 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                                    Status
+                                    <select
+                                      value={subgoal.status}
+                                      onChange={(event) =>
+                                        onStatusChangeSubgoal(subgoal, event.target.value as ItemStatus)
+                                      }
+                                      className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal normal-case text-slate-900"
+                                    >
+                                      <option value="not_started">Not started</option>
+                                      <option value="in_progress">In progress</option>
+                                      <option value="done">Done</option>
+                                    </select>
+                                  </label>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => onMoveSubgoal(subgoal, "up")}
+                                    className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                                    aria-label="Move sub-goal up"
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onMoveSubgoal(subgoal, "down")}
+                                    className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                                    aria-label="Move sub-goal down"
+                                  >
+                                    ↓
+                                  </button>
+                                  <IconActionButton label="Edit sub-goal" onClick={() => onEditSubgoal(subgoal)}>
+                                    <PencilIcon />
+                                  </IconActionButton>
+                                  <IconActionButton label="Archive sub-goal" onClick={() => onArchiveSubgoal(subgoal)}>
+                                    <ArchiveIcon />
+                                  </IconActionButton>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => onToggleSubgoal(subgoal.id)}
+                                    className="flex items-center gap-2 text-sm font-semibold text-slate-900"
+                                    aria-expanded={isSubgoalExpanded}
+                                  >
+                                    <ChevronIcon expanded={isSubgoalExpanded} />
+                                    Tasks ({tasks.length})
+                                  </button>
+                                  <IconActionButton label="Add task" onClick={() => onAddTask(subgoal.id)}>
+                                    <PlusIcon />
+                                  </IconActionButton>
+                                </div>
+
+                                {isSubgoalExpanded ? (
+                                  tasks.length === 0 ? (
+                                    <p className="mt-3 text-sm text-slate-600">
+                                      No tasks yet. Use the + button to add one.
+                                    </p>
+                                  ) : (
+                                    <ul className="mt-3 space-y-2">
+                                      {tasks.map((task) => (
+                                        <li
+                                          key={task.id}
+                                          className="rounded-lg border border-slate-200 bg-white p-3"
+                                        >
+                                          <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div className="min-w-0 flex-1">
+                                              <p className="font-medium text-slate-900">{task.title}</p>
+                                              {task.dueDate ? (
+                                                <p className="mt-1 text-xs text-slate-500">Due {task.dueDate}</p>
+                                              ) : null}
+                                              {task.notes ? (
+                                                <p className="mt-2 text-sm text-slate-700">{task.notes}</p>
+                                              ) : null}
+                                              <label className="mt-2 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                                                Status
+                                                <select
+                                                  value={task.status}
+                                                  onChange={(event) =>
+                                                    onStatusChangeTask(task, event.target.value as ItemStatus)
+                                                  }
+                                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal normal-case text-slate-900"
+                                                >
+                                                  <option value="not_started">Not started</option>
+                                                  <option value="in_progress">In progress</option>
+                                                  <option value="done">Done</option>
+                                                </select>
+                                              </label>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => onMoveTask(task, "up")}
+                                                className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                                                aria-label="Move task up"
+                                              >
+                                                ↑
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => onMoveTask(task, "down")}
+                                                className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                                                aria-label="Move task down"
+                                              >
+                                                ↓
+                                              </button>
+                                              <IconActionButton label="Edit task" onClick={() => onEditTask(task)}>
+                                                <PencilIcon />
+                                              </IconActionButton>
+                                              <IconActionButton
+                                                label="Archive task"
+                                                onClick={() => onArchiveTask(task)}
+                                              >
+                                                <ArchiveIcon />
+                                              </IconActionButton>
+                                            </div>
+                                          </div>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )
+                                ) : null}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </article>
+  );
+}
+

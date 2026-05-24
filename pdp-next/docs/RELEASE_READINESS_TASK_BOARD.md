@@ -25,24 +25,15 @@ This board is the source of truth for final readiness work before new initiative
 ## Now
 | ID | Task | Status | Owner | Notes |
 | --- | --- | --- | --- | --- |
-| R1 | Stabilize local runtime startup and restart workflow | Todo | TBD | Confirm repeatable dev start/stop/restart and document recovery steps |
-| R2 | Run critical flow smoke pass (auth, onboarding return path, profile save, theme save, manual sync) | Todo | TBD | Record defects with severity and owner |
-| R3 | Validate branding behavior by theme source (palette, CWM, college) independent of display mode | Todo | TBD | Verify header logo and watermark behavior |
+| R10 | Verify soft-delete retention, restore-window, and purge behavior end-to-end | In Progress | Copilot + User | Automated evidence captured in `docs/SOFT_DELETE_LIFECYCLE_VERIFICATION.md`; staging signoff checklist pending |
 
 ## Next
 | ID | Task | Status | Owner | Notes |
 | --- | --- | --- | --- | --- |
-| R4 | Harden offline replay with retry/backoff for transient errors | Todo | TBD | Keep behavior idempotent and safe for repeated attempts |
-| R5 | Define and implement conflict handling for stale/offline mutations | Todo | TBD | Include user-facing guidance when server state changed |
-| R6 | Expand automated tests for offline-to-online transitions and replay outcomes | In Progress | Copilot + User | `sync-status` coverage added; transition/integration coverage pending |
-| R7 | Add friendly sync failure mapping and operator diagnostics consistency | In Progress | Copilot + User | Friendly mapping shipped in status pill; validate across additional surfaces |
 
 ## Later
 | ID | Task | Status | Owner | Notes |
 | --- | --- | --- | --- | --- |
-| R8 | Add structured observability for sync/API failures with sanitized operation context | Todo | TBD | Include quick triage checklist |
-| R9 | Perform final security and permission closure pass across protected routes | Todo | TBD | Validate authz, validation, and env safety |
-| R10 | Verify soft-delete retention, restore-window, and purge behavior end-to-end | Todo | TBD | Confirm expected lifecycle in staging |
 | R11 | Final staging smoke, release candidate checkpoint, and rollback plan | Todo | TBD | Required before launch declaration |
 
 ## Done
@@ -51,6 +42,15 @@ This board is the source of truth for final readiness work before new initiative
 | D1 | Extend offline queue operation coverage and replay metadata plumbing | 2026-05-23 | Added queued status/reorder/archive/restore replay support and failure metadata |
 | D2 | Surface sync failures in UI with retry action | 2026-05-23 | Added shared sync failure state and offline status diagnostics |
 | D3 | Add sync failure state unit tests and friendly failure copy mapping | 2026-05-23 | Added `sync-status` tests and user-friendly reason mapping |
+| D4 | Stabilize local runtime startup and restart workflow (R1) | 2026-05-23 | Root cause confirmed as duplicate `next dev` process on port 3000; validated 3 clean start/stop/restart cycles on port 3000; see `docs/DEV_RUNTIME_STARTUP_RUNBOOK.md` |
+| D5 | Critical flow smoke pass (R2) | 2026-05-23 | Automated checks passed and user-confirmed manual authenticated checks passed; see `docs/CRITICAL_FLOW_SMOKE_CHECKLIST.md` |
+| D6 | Branding validation by theme source (R3) | 2026-05-23 | User confirmed palette/CWM/college branding behavior and persistence are correct and independent of display mode |
+| D7 | Offline replay retry/backoff hardening (R4) | 2026-05-23 | Added transient-error retry/backoff in `write-queue` with dedicated tests; test/lint/build all green |
+| D8 | Conflict handling for stale/offline mutations (R5) | 2026-05-23 | Added offline replay conflict classification with user-facing guidance and conflict-path tests; test/lint/build all green |
+| D9 | Offline transition/replay automated coverage expansion (R6) | 2026-05-23 | Added offline->online and ordered multi-replay integration tests in `repository.test`; test/lint/build all green |
+| D10 | Friendly sync failure mapping and diagnostics consistency (R7) | 2026-05-23 | Centralized failure classification/reason/code helpers and applied consistent messaging across status pill and manual sync surface; test/lint/build all green |
+| D11 | Structured sync/API observability and triage checklist (R8) | 2026-05-23 | Added sanitized telemetry for sync replay + API failures and documented operator runbook in `docs/SYNC_API_TRIAGE_CHECKLIST.md` |
+| D12 | Security and permission closure pass (R9) | 2026-05-23 | Added API route auth-contract regression test, finalized CSP + permissions headers, and updated baseline security checklist statuses; test/lint/build all green |
 
 ## Session Handoff Template
 Copy this block at the end of each session:

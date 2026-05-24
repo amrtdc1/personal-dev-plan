@@ -7,6 +7,7 @@ import {
   InstantRouteBadRequestError,
   InstantRouteNotFoundError,
 } from "@/lib/server/instant-errors";
+import { logApiFailure } from "@/lib/observability/telemetry";
 
 type StatusUpdatePayload = {
   status?: ItemStatus;
@@ -47,8 +48,24 @@ export async function findOwnedGoal(ownerUid: string, goalId: string) {
     },
   });
 
-  const goal = goals.find((entry) => entry.id === goalId) as Goal | undefined;
-  if (!goal) {
+  const scopedGoal = (goals as Goal[]).find((entry) => entry.id === goalId);
+  if (scopedGoal && scopedGoal.ownerUid === ownerUid) {
+    return scopedGoal;
+  }
+
+  // Fallback lookup by id handles edge cases where scoped query misses the target row.
+  const { goals: goalById = [] } = await instantAdmin.query({
+    goals: {
+      $: {
+        where: {
+          id: goalId,
+        },
+      },
+    },
+  });
+
+  const goal = goalById[0] as Goal | undefined;
+  if (!goal || goal.ownerUid !== ownerUid) {
     throw new InstantRouteNotFoundError("Goal was not found for this user.");
   }
 
@@ -67,8 +84,23 @@ export async function findOwnedSubgoal(ownerUid: string, subgoalId: string) {
     },
   });
 
-  const subgoal = subgoals.find((entry) => entry.id === subgoalId) as Subgoal | undefined;
-  if (!subgoal) {
+  const scopedSubgoal = (subgoals as Subgoal[]).find((entry) => entry.id === subgoalId);
+  if (scopedSubgoal && scopedSubgoal.ownerUid === ownerUid) {
+    return scopedSubgoal;
+  }
+
+  const { subgoals: subgoalById = [] } = await instantAdmin.query({
+    subgoals: {
+      $: {
+        where: {
+          id: subgoalId,
+        },
+      },
+    },
+  });
+
+  const subgoal = subgoalById[0] as Subgoal | undefined;
+  if (!subgoal || subgoal.ownerUid !== ownerUid) {
     throw new InstantRouteNotFoundError("Subgoal was not found for this user.");
   }
 
@@ -87,15 +119,42 @@ export async function findOwnedTask(ownerUid: string, taskId: string) {
     },
   });
 
-  const task = tasks.find((entry) => entry.id === taskId) as Task | undefined;
-  if (!task) {
+  const scopedTask = (tasks as Task[]).find((entry) => entry.id === taskId);
+  if (scopedTask && scopedTask.ownerUid === ownerUid) {
+    return scopedTask;
+  }
+
+  const { tasks: taskById = [] } = await instantAdmin.query({
+    tasks: {
+      $: {
+        where: {
+          id: taskId,
+        },
+      },
+    },
+  });
+
+  const task = taskById[0] as Task | undefined;
+  if (!task || task.ownerUid !== ownerUid) {
     throw new InstantRouteNotFoundError("Task was not found for this user.");
   }
 
   return task;
 }
 
-export function instantRouteErrorResponse(error: unknown) {
+export function instantRouteErrorResponse(
+  error: unknown,
+  context?: { route?: string; method?: string; phase?: string },
+) {
   const response = resolveInstantRouteError(error);
+
+  logApiFailure({
+    route: context?.route,
+    method: context?.method,
+    phase: context?.phase,
+    status: response.status,
+    error,
+  });
+
   return NextResponse.json(response.payload, { status: response.status });
 }

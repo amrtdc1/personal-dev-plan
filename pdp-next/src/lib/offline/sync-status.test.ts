@@ -166,4 +166,33 @@ describe("offline sync failure state", () => {
     expect(syncStatusModule.formatOfflineOperationLabel("restore_task")).toBe("restore task");
     expect(syncStatusModule.formatOfflineOperationLabel(null)).toBe("an offline change");
   });
+
+  it("maps failure messages to consistent friendly guidance", async () => {
+    const syncStatusModule = await import("@/lib/offline/sync-status");
+
+    expect(syncStatusModule.getFriendlySyncFailureReason("Network request failed")).toBe(
+      "Connection issue. Reconnect and retry.",
+    );
+    expect(syncStatusModule.getFriendlySyncFailureReason("Unauthorized request")).toBe(
+      "Access issue. Sign in again, then retry.",
+    );
+    expect(syncStatusModule.getFriendlySyncFailureReason("Offline conflict: Task was not found for this user.")).toBe(
+      "Conflict detected. Refresh to review latest server changes, then retry.",
+    );
+    expect(syncStatusModule.getFriendlySyncFailureReason(null)).toBe(
+      "Unexpected sync issue. Try syncing again.",
+    );
+  });
+
+  it("maps failure messages to stable diagnostic codes", async () => {
+    const syncStatusModule = await import("@/lib/offline/sync-status");
+
+    expect(syncStatusModule.getOfflineSyncDiagnosticCode("Network timeout")).toBe("SYNC-NET");
+    expect(syncStatusModule.getOfflineSyncDiagnosticCode("Forbidden by policy")).toBe("SYNC-AUTH");
+    expect(syncStatusModule.getOfflineSyncDiagnosticCode("schema attribute missing")).toBe("SYNC-SCHEMA");
+    expect(syncStatusModule.getOfflineSyncDiagnosticCode("Offline conflict: entity changed")).toBe("SYNC-CONFLICT");
+    expect(syncStatusModule.getOfflineSyncDiagnosticCode("restore window has expired")).toBe("SYNC-RESTORE");
+    expect(syncStatusModule.getOfflineSyncDiagnosticCode("Task was not found for this user.")).toBe("SYNC-STALE");
+    expect(syncStatusModule.getOfflineSyncDiagnosticCode(null)).toBe("SYNC-UNKNOWN");
+  });
 });

@@ -5,6 +5,7 @@ import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import { renderStrictMarkdownToHtml } from "@/lib/journal/markdown";
 import type { Goal, JournalEntry } from "@/lib/domain/types";
+import { CrudModal } from "@/components/ui/crud-modal";
 
 const MOOD_OPTIONS = ["great", "good", "okay", "low", "stressed"] as const;
 
@@ -18,6 +19,7 @@ export function JournalWorkspace() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [mood, setMood] = useState("");
@@ -93,7 +95,7 @@ export function JournalWorkspace() {
   if (isLoading || isRefreshing) {
     return (
       <section className="pdp-panel">
-        <h2 className="text-lg font-semibold text-slate-900">Journal Workspace</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Journal</h2>
         <p className="mt-3 text-sm text-slate-700">Loading journal entries...</p>
       </section>
     );
@@ -102,7 +104,7 @@ export function JournalWorkspace() {
   if (error) {
     return (
       <section className="pdp-panel rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-red-700">Journal Workspace</h2>
+        <h2 className="text-lg font-semibold text-red-700">Journal</h2>
         <p className="mt-2 text-sm text-red-700">{error.message}</p>
       </section>
     );
@@ -111,7 +113,7 @@ export function JournalWorkspace() {
   if (!user) {
     return (
       <section className="pdp-panel">
-        <h2 className="text-lg font-semibold text-slate-900">Journal Workspace</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Journal</h2>
         <p className="mt-3 text-sm text-slate-700">Sign in to create and manage journal entries.</p>
       </section>
     );
@@ -149,6 +151,7 @@ export function JournalWorkspace() {
       });
 
       resetForm();
+      setIsEntryModalOpen(false);
       await refreshData();
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not save the journal entry."));
@@ -185,6 +188,18 @@ export function JournalWorkspace() {
     setTagsInput(entry.tags.join(", "));
     setRelatedGoalId(entry.relatedGoalId ?? "");
     setActionError(null);
+    setIsEntryModalOpen(true);
+  }
+
+  function openCreateEntryModal() {
+    resetForm();
+    setActionError(null);
+    setIsEntryModalOpen(true);
+  }
+
+  function closeEntryModal() {
+    setIsEntryModalOpen(false);
+    resetForm();
   }
 
   function resetForm() {
@@ -199,10 +214,19 @@ export function JournalWorkspace() {
   return (
     <section className="pdp-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-900">Journal Workspace</h2>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-          Entries: {filteredEntries.length}
-        </span>
+        <h2 className="text-lg font-semibold text-slate-900">Journal</h2>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={openCreateEntryModal}
+            className="rounded-full bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600"
+          >
+            + Entry
+          </button>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+            Entries: {filteredEntries.length}
+          </span>
+        </div>
       </div>
 
       <p className="mt-2 text-sm text-slate-600">
@@ -212,106 +236,107 @@ export function JournalWorkspace() {
       {loadError ? <p className="mt-3 text-sm text-red-700">{loadError}</p> : null}
       {actionError ? <p className="mt-3 text-sm text-red-700">{actionError}</p> : null}
 
-      <form onSubmit={handleSubmit} className="pdp-panel-muted mt-4 grid gap-3">
-        <p className="text-sm font-semibold text-slate-900">{editingEntry ? "Edit Entry" : "New Entry"}</p>
+      <CrudModal
+        isOpen={isEntryModalOpen}
+        title={editingEntry ? "Edit journal entry" : "New journal entry"}
+        onClose={closeEntryModal}
+      >
+        <form onSubmit={handleSubmit} className="grid gap-3">
+          <label className="text-sm font-medium text-slate-700" htmlFor="journal-title">
+            Title
+          </label>
+          <input
+            id="journal-title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="Weekly reflection"
+            className="pdp-control rounded-lg"
+            required
+          />
 
-        <label className="text-sm font-medium text-slate-700" htmlFor="journal-title">
-          Title
-        </label>
-        <input
-          id="journal-title"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="Weekly reflection"
-          className="pdp-control rounded-lg"
-          required
-        />
+          <label className="text-sm font-medium text-slate-700" htmlFor="journal-content">
+            Content (Markdown)
+          </label>
+          <textarea
+            id="journal-content"
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            rows={6}
+            placeholder="# What worked this week?"
+            className="pdp-control rounded-lg"
+          />
 
-        <label className="text-sm font-medium text-slate-700" htmlFor="journal-content">
-          Content (Markdown)
-        </label>
-        <textarea
-          id="journal-content"
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          rows={6}
-          placeholder="# What worked this week?"
-          className="pdp-control rounded-lg"
-        />
+          <div className="grid gap-3 md:grid-cols-3">
+            <div>
+              <label className="text-sm font-medium text-slate-700" htmlFor="journal-mood">
+                Mood
+              </label>
+              <select
+                id="journal-mood"
+                value={mood}
+                onChange={(event) => setMood(event.target.value)}
+                className="pdp-control mt-1"
+              >
+                <option value="">No mood</option>
+                {MOOD_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {capitalize(option)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <div>
-            <label className="text-sm font-medium text-slate-700" htmlFor="journal-mood">
-              Mood
-            </label>
-            <select
-              id="journal-mood"
-              value={mood}
-              onChange={(event) => setMood(event.target.value)}
-              className="pdp-control mt-1"
+            <div>
+              <label className="text-sm font-medium text-slate-700" htmlFor="journal-goal">
+                Related Goal
+              </label>
+              <select
+                id="journal-goal"
+                value={relatedGoalId}
+                onChange={(event) => setRelatedGoalId(event.target.value)}
+                className="pdp-control mt-1"
+              >
+                <option value="">No goal</option>
+                {goals.map((goal) => (
+                  <option key={goal.id} value={goal.id}>
+                    {goal.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-slate-700" htmlFor="journal-tags">
+                Tags (comma-separated)
+              </label>
+              <input
+                id="journal-tags"
+                value={tagsInput}
+                onChange={(event) => setTagsInput(event.target.value)}
+                placeholder="focus, planning, wins"
+                className="pdp-control mt-1"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="pdp-btn-primary rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option value="">No mood</option>
-              {MOOD_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {capitalize(option)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-slate-700" htmlFor="journal-goal">
-              Related Goal
-            </label>
-            <select
-              id="journal-goal"
-              value={relatedGoalId}
-              onChange={(event) => setRelatedGoalId(event.target.value)}
-              className="pdp-control mt-1"
-            >
-              <option value="">No goal</option>
-              {goals.map((goal) => (
-                <option key={goal.id} value={goal.id}>
-                  {goal.title}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-slate-700" htmlFor="journal-tags">
-              Tags (comma-separated)
-            </label>
-            <input
-              id="journal-tags"
-              value={tagsInput}
-              onChange={(event) => setTagsInput(event.target.value)}
-              placeholder="focus, planning, wins"
-              className="pdp-control mt-1"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="pdp-btn-primary rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isSaving ? "Saving..." : editingEntry ? "Update Entry" : "Save Entry"}
-          </button>
-
-          {editingEntry ? (
+              {isSaving ? "Saving..." : editingEntry ? "Update Entry" : "Save Entry"}
+            </button>
             <button
               type="button"
-              onClick={resetForm}
+              onClick={closeEntryModal}
               className="pdp-btn-secondary rounded-lg px-4 py-2 text-sm font-semibold"
             >
-              Cancel Edit
+              Cancel
             </button>
-          ) : null}
-        </div>
-      </form>
+          </div>
+        </form>
+      </CrudModal>
 
       <div className="pdp-panel-muted mt-4 grid gap-3 md:grid-cols-4">
         <label className="text-sm font-medium text-slate-700" htmlFor="journal-filter-mood">
