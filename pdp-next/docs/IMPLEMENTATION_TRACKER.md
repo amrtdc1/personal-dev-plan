@@ -1,9 +1,9 @@
 # Implementation Tracker
 
 ## Current Phase
-- Phase 1 foundation complete; core parity and schema hardening in progress
-- Quick enablement completed: starter D1 allowlist + ESPN provider scaffold for post-parity theming track
-- Protected owner-scoped API foundation is in place for goals/subgoals/tasks read and write paths
+- Phase 1 foundation complete; core parity closure and security hardening in progress
+- College theming track is now implemented end-to-end (palette/CWM/college source, logo rendering, profile persistence)
+- Protected owner-scoped API foundation is in place for goals/subgoals/tasks read and write paths, with profile writes now routed server-side
 
 ## Milestones
 - [x] Scaffold Next.js app in-repo (`pdp-next`)
@@ -20,7 +20,7 @@
 - [ ] Implement core Goals/Sub-goals/Tasks parity
 - [ ] Implement offline-first write queue and sync UX
 - [ ] Implement ICS export + tokenized subscription feed
-- [ ] Implement college athletics theme pack (logo + school colors)
+- [x] Implement college athletics theme pack (logo + school colors)
 - [ ] Complete staged cutover from legacy app
 
 ## Immediate Next Tasks
@@ -57,6 +57,12 @@
 - [x] Add seeded college team picker + persisted team identity + header team badge
 - [x] Add searchable college team picker with FBS/FCS filter and preview cards
 - [x] Add live ESPN-backed team catalog route with local fallback for picker resiliency
+- [x] Route profile saves through authenticated server API with Instant admin writes
+- [x] Push Instant schema/perms updates for profile/theming fields (`themeMode`, `collegeTeamId`, `collegeTeamName`)
+- [x] Align branding behavior so logo/watermark follow theme source (palette/CWM/college), not display mode alone
+- [x] Add live branding preview parity (header/watermark) while editing Profile & Theme before save
+- [x] Retheme calendar toolbar controls (prev/next/today/view toggles) with shared app tokens
+- [x] Set returning-user landing behavior to Dashboard while preserving first-login onboarding
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).
@@ -80,16 +86,17 @@
 	- Keep text contrast AA-compliant in both light and dark variants.
 	- Provide instant preview, revert action, and default fallback theme.
 - Delivery slices:
-	- Slice 1: Theme token architecture + profile fields + manual seeded teams.
-	- Slice 2: API integration + searchable team picker + logo rendering.
-	- Slice 3: Dark/light auto-derivation tuning + accessibility QA + persistence hardening.
+	- Slice 1: Theme token architecture + profile fields + manual seeded teams. (Done)
+	- Slice 2: API integration + searchable team picker + logo rendering. (Done)
+	- Slice 3: Dark/light auto-derivation tuning + accessibility QA + persistence hardening. (In Progress: tuning/persistence done; accessibility QA pass pending)
 
 ## Status Check
 - On track with the migration sequence: foundation, auth, profile bootstrap, repository-backed CRUD slices, and lifecycle primitives are complete.
 - Protected route coverage for goals/subgoals/tasks reads and writes is substantially complete and now needs hardening/test depth.
-- Current gap is expected: offline queueing, calendar export, and deployment smoke-testing are still pending by design and have not been skipped.
+- Profile writes now use a protected server route to avoid client permission drift and improve reliability.
+- Current gap is expected: deeper offline queue coverage (status/reorder/archive), ICS export/feed, and final parity closeout are still pending by design and have not been skipped.
 - No current work has diverged from the agreed architecture of Next.js + InstantDB + incremental in-place migration.
-- College athletics theming is now explicitly in-plan as a post-parity enhancement track, so it will not get lost while migration-critical work continues.
+- College athletics theming has moved from planned enhancement track to implemented feature set.
 
 ## Visual Parity Checklist (Signed-In Pages)
 - Scope: Dashboard, Goals, Calendar, Journal, Profile & Theme.
