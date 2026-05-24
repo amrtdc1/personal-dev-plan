@@ -352,6 +352,86 @@ function SignedInShell() {
     }
   }
 
+  function renderProfileMenuButton(buttonClassName: string) {
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setIsProfileMenuOpen((current) => !current)}
+          className={buttonClassName}
+          aria-haspopup="menu"
+          aria-expanded={isProfileMenuOpen}
+          aria-label={`Open profile menu (signed in as ${currentUser.email})`}
+          title={`Signed in as ${currentUser.email}`}
+        >
+          {initials}
+        </button>
+
+        {isProfileMenuOpen ? (
+          <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+            <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Account</p>
+            <button
+              type="button"
+              onClick={() => {
+                navigateToSection("profile");
+                setIsProfileMenuOpen(false);
+              }}
+              className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+            >
+              Profile & Theme Settings
+            </button>
+            <div className="mx-2 mt-1">
+              {themeSource === "cwm" ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                  <Image
+                    src="/cwm-logo.png"
+                    alt="CWM logo"
+                    width={16}
+                    height={16}
+                    className="h-4 w-4 rounded-sm object-contain"
+                  />
+                  <span className="text-xs font-semibold text-slate-700">CWM Theme</span>
+                </span>
+              ) : themeSource === "college" && selectedCollegeTeam ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                  {brandVisual.logoUrl ? (
+                    <Image
+                      src={brandVisual.logoUrl}
+                      alt={`${selectedCollegeTeam.displayName} logo`}
+                      width={16}
+                      height={16}
+                      className="h-4 w-4 rounded-sm object-contain"
+                    />
+                  ) : null}
+                  <span className="text-xs font-semibold text-slate-700">{selectedCollegeTeam.displayName}</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                  <span
+                    className="h-4 w-4 rounded-full border border-slate-300"
+                    style={{
+                      backgroundColor: PALETTE_THEME_TOKENS[resolvedPalette].primary,
+                    }}
+                  />
+                  <span className="text-xs font-semibold text-slate-700">
+                    Palette - {resolvedPalette.charAt(0).toUpperCase() + resolvedPalette.slice(1)}
+                  </span>
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => db.auth.signOut()}
+              className="mt-2 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+            >
+              Sign out
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   function navigateToSection(section: AppSection) {
     if (section !== "profile") {
       setPreviewThemeSnapshot(null);
@@ -386,9 +466,31 @@ function SignedInShell() {
       </div>
 
       <section className="pdp-panel">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+        <div className="mb-1 flex items-center justify-end gap-2 sm:hidden">
+          <button
+            type="button"
+            onClick={() => void handleQuickThemeChange(getNextThemeChoice(themeChoice))}
+            disabled={isThemeSaving}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label={`Switch theme mode (currently ${themeChoice})`}
+            title={`Theme: ${themeChoice}`}
+          >
+            {themeChoice === "light" ? (
+              <SunIcon className="h-4 w-4" />
+            ) : themeChoice === "dark" ? (
+              <MoonIcon className="h-4 w-4" />
+            ) : (
+              <SystemIcon className="h-4 w-4" />
+            )}
+          </button>
+          {renderProfileMenuButton(
+            "inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-sm font-semibold text-slate-800 transition hover:bg-slate-50",
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
           <div>
-            <div className="mb-2 flex items-center gap-2">
+            <div className="mb-2 flex min-w-0 items-center gap-2">
               {brandVisual.logoUrl ? (
                 <span className="inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <Image
@@ -402,19 +504,22 @@ function SignedInShell() {
                   />
                 </span>
               ) : null}
-              <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "var(--pdp-theme-primary)" }}>
+              <p
+                className="min-w-0 text-xs font-medium uppercase tracking-wide sm:text-sm"
+                style={{ color: "var(--pdp-theme-primary)" }}
+              >
                 Personal Development Plan
               </p>
             </div>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">
               Welcome back, {welcomeFirstName}
             </h1>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-2 max-w-none text-sm text-slate-600">
               Align your professional growth, personal life, and spiritual walk.
             </p>
           </div>
 
-          <div className="flex items-center justify-end gap-2 self-start">
+          <div className="hidden w-full items-center justify-end gap-2 self-start sm:flex sm:w-auto">
             <div className="inline-flex rounded-full border border-slate-300 bg-white p-1 shadow-sm">
               <button
                 type="button"
@@ -453,84 +558,9 @@ function SignedInShell() {
                 <SystemIcon className="h-4 w-4" />
               </button>
             </div>
-
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsProfileMenuOpen((current) => !current)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-                aria-haspopup="menu"
-                aria-expanded={isProfileMenuOpen}
-                aria-label={`Open profile menu (signed in as ${currentUser.email})`}
-                title={`Signed in as ${currentUser.email}`}
-              >
-                {initials}
-              </button>
-
-              {isProfileMenuOpen ? (
-                <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-                  <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Account</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigateToSection("profile");
-                      setIsProfileMenuOpen(false);
-                    }}
-                    className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
-                  >
-                    Profile & Theme Settings
-                  </button>
-                  <div className="mx-2 mt-1">
-                    {themeSource === "cwm" ? (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
-                        <Image
-                          src="/cwm-logo.png"
-                          alt="CWM logo"
-                          width={16}
-                          height={16}
-                          className="h-4 w-4 rounded-sm object-contain"
-                        />
-                        <span className="text-xs font-semibold text-slate-700">CWM Theme</span>
-                      </span>
-                    ) : themeSource === "college" && selectedCollegeTeam ? (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
-                        {brandVisual.logoUrl ? (
-                          <Image
-                            src={brandVisual.logoUrl}
-                            alt={`${selectedCollegeTeam.displayName} logo`}
-                            width={16}
-                            height={16}
-                            className="h-4 w-4 rounded-sm object-contain"
-                          />
-                        ) : null}
-                        <span className="text-xs font-semibold text-slate-700">
-                          {selectedCollegeTeam.displayName}
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
-                        <span
-                          className="h-4 w-4 rounded-full border border-slate-300"
-                          style={{
-                            backgroundColor: PALETTE_THEME_TOKENS[resolvedPalette].primary,
-                          }}
-                        />
-                        <span className="text-xs font-semibold text-slate-700">
-                          Palette - {resolvedPalette.charAt(0).toUpperCase() + resolvedPalette.slice(1)}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => db.auth.signOut()}
-                    className="mt-2 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
-                  >
-                    Sign out
-                  </button>
-                </div>
-              ) : null}
-            </div>
+            {renderProfileMenuButton(
+              "inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-sm font-semibold text-slate-800 transition hover:bg-slate-50",
+            )}
           </div>
         </div>
 
@@ -1663,6 +1693,16 @@ function readCachedPalette(): UserProfile["palette"] | null {
 
 function toThemeChoice(theme: "light" | "dark" | "cwm"): ThemeChoice {
   return theme === "cwm" ? "system" : theme;
+}
+
+function getNextThemeChoice(current: ThemeChoice): ThemeChoice {
+  if (current === "light") {
+    return "dark";
+  }
+  if (current === "dark") {
+    return "system";
+  }
+  return "light";
 }
 
 type UserProfileServerPatch = {

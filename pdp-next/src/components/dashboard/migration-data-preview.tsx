@@ -1,6 +1,24 @@
 ﻿"use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  type DragEndEvent,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { Goal, ItemStatus, Subgoal, Task, UserProfile } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
@@ -62,6 +80,7 @@ export function MigrationDataPreview({
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [selectedSubgoalId, setSelectedSubgoalId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"goals" | "subgoals" | "tasks">("goals");
 
   const allGoals = useMemo(
@@ -150,6 +169,21 @@ export function MigrationDataPreview({
         : [],
     [selectedSubgoal, snapshot?.tasksBySubgoalId],
   );
+  const selectedTask = useMemo(
+    () => tasksForSelectedSubgoal.find((task) => task.id === selectedTaskId) ?? null,
+    [selectedTaskId, tasksForSelectedSubgoal],
+  );
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 120, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   useEffect(() => {
     if (!enableDataHydration || !user) {
@@ -235,6 +269,8 @@ export function MigrationDataPreview({
       const goal = allGoals.find((candidate) => candidate.id === pendingOpenItem.id);
       if (goal) {
         setSelectedGoalId(goal.id);
+        setSelectedSubgoalId(null);
+        setSelectedTaskId(null);
         setMobileView("goals");
         setGoalType(goal.type);
         setGoalTitle(goal.title);
@@ -252,6 +288,7 @@ export function MigrationDataPreview({
       if (subgoal) {
         setSelectedGoalId(subgoal.goalId);
         setSelectedSubgoalId(subgoal.id);
+        setSelectedTaskId(null);
         setMobileView("subgoals");
         setSubgoalTitle(subgoal.title);
         setSubgoalDescription(subgoal.description);
@@ -268,6 +305,7 @@ export function MigrationDataPreview({
           setSelectedGoalId(parentSubgoal.goalId);
           setSelectedSubgoalId(parentSubgoal.id);
         }
+        setSelectedTaskId(task.id);
         setMobileView("tasks");
         setTaskTitle(task.title);
         setTaskNotes(task.notes);
@@ -285,6 +323,7 @@ export function MigrationDataPreview({
     if (activeGoals.length === 0) {
       setSelectedGoalId(null);
       setSelectedSubgoalId(null);
+      setSelectedTaskId(null);
       return;
     }
 
@@ -295,13 +334,31 @@ export function MigrationDataPreview({
 
     if (subgoalsForSelectedGoal.length === 0) {
       setSelectedSubgoalId(null);
+      setSelectedTaskId(null);
       return;
     }
 
     if (!selectedSubgoalId || !subgoalsForSelectedGoal.some((subgoal) => subgoal.id === selectedSubgoalId)) {
       setSelectedSubgoalId(subgoalsForSelectedGoal[0].id);
+      return;
     }
-  }, [activeGoals, selectedGoalId, selectedSubgoalId, subgoalsForSelectedGoal]);
+
+    if (tasksForSelectedSubgoal.length === 0) {
+      setSelectedTaskId(null);
+      return;
+    }
+
+    if (!selectedTaskId || !tasksForSelectedSubgoal.some((task) => task.id === selectedTaskId)) {
+      setSelectedTaskId(tasksForSelectedSubgoal[0].id);
+    }
+  }, [
+    activeGoals,
+    selectedGoalId,
+    selectedSubgoalId,
+    selectedTaskId,
+    subgoalsForSelectedGoal,
+    tasksForSelectedSubgoal,
+  ]);
 
   if (isLoading || error || !user) {
     return null;
@@ -460,67 +517,117 @@ export function MigrationDataPreview({
     }
   }
 
-  async function handleGoalMove(goal: Goal, direction: "up" | "down") {
+  async function handleGoalReorder(type: Goal["type"], orderedGoalIds: string[]) {
     if (!user) {
-      return;
-    }
-
-    const orderedIds = buildReorderedActiveIds(
-      allGoals.filter((candidate) => candidate.type === goal.type),
-      goal.id,
-      direction,
-    );
-    if (!orderedIds) {
       return;
     }
 
     setActionError(null);
     try {
-      await dataRepository.reorderGoals(user.id, goal.type, orderedIds);
+      await dataRepository.reorderGoals(user.id, type, orderedGoalIds);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not reorder goals."));
     }
   }
 
-  async function handleSubgoalMove(subgoal: Subgoal, direction: "up" | "down") {
+  async function handleSubgoalReorder(goalId: string, orderedSubgoalIds: string[]) {
     if (!user) {
-      return;
-    }
-
-    const siblings = snapshot?.subgoalsByGoalId[subgoal.goalId] ?? [];
-    const orderedIds = buildReorderedActiveIds(siblings, subgoal.id, direction);
-    if (!orderedIds) {
       return;
     }
 
     setActionError(null);
     try {
-      await dataRepository.reorderSubgoals(user.id, subgoal.goalId, orderedIds);
+      await dataRepository.reorderSubgoals(user.id, goalId, orderedSubgoalIds);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not reorder subgoals."));
     }
   }
 
-  async function handleTaskMove(task: Task, direction: "up" | "down") {
+  async function handleTaskReorder(subgoalId: string, orderedTaskIds: string[]) {
     if (!user) {
-      return;
-    }
-
-    const siblings = snapshot?.tasksBySubgoalId[task.subgoalId] ?? [];
-    const orderedIds = buildReorderedActiveIds(siblings, task.id, direction);
-    if (!orderedIds) {
       return;
     }
 
     setActionError(null);
     try {
-      await dataRepository.reorderTasks(user.id, task.subgoalId, orderedIds);
+      await dataRepository.reorderTasks(user.id, subgoalId, orderedTaskIds);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not reorder tasks."));
     }
+  }
+
+  function reorderIds(ids: string[], activeId: string, overId: string): string[] | null {
+    const oldIndex = ids.indexOf(activeId);
+    const newIndex = ids.indexOf(overId);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
+      return null;
+    }
+    return arrayMove(ids, oldIndex, newIndex);
+  }
+
+  function handleGoalDragEnd(type: Goal["type"], goals: Goal[], event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) {
+      return;
+    }
+
+    const orderedIds = reorderIds(
+      goals.map((goal) => goal.id),
+      String(active.id),
+      String(over.id),
+    );
+    if (!orderedIds) {
+      return;
+    }
+
+    void handleGoalReorder(type, orderedIds);
+  }
+
+  function handleSubgoalDragEnd(event: DragEndEvent) {
+    if (!selectedGoal) {
+      return;
+    }
+
+    const { active, over } = event;
+    if (!over) {
+      return;
+    }
+
+    const orderedIds = reorderIds(
+      subgoalsForSelectedGoal.map((subgoal) => subgoal.id),
+      String(active.id),
+      String(over.id),
+    );
+    if (!orderedIds) {
+      return;
+    }
+
+    void handleSubgoalReorder(selectedGoal.id, orderedIds);
+  }
+
+  function handleTaskDragEnd(event: DragEndEvent) {
+    if (!selectedSubgoal) {
+      return;
+    }
+
+    const { active, over } = event;
+    if (!over) {
+      return;
+    }
+
+    const orderedIds = reorderIds(
+      tasksForSelectedSubgoal.map((task) => task.id),
+      String(active.id),
+      String(over.id),
+    );
+    if (!orderedIds) {
+      return;
+    }
+
+    void handleTaskReorder(selectedSubgoal.id, orderedIds);
   }
 
   async function handleTaskSubmit(event: FormEvent<HTMLFormElement>) {
@@ -745,11 +852,13 @@ export function MigrationDataPreview({
         </button>
       </div>
 
-      <div className="mt-4 hidden text-xs text-slate-500 lg:block">
-        <span>Relationship path:</span>{" "}
+      <div className="pdp-card sticky top-2 z-10 mt-4 px-3 py-2 text-[11px] leading-5 text-slate-500 shadow-sm backdrop-blur sm:text-xs lg:static lg:shadow-none">
+        <span className="font-semibold uppercase tracking-wide text-slate-500">Relationship path:</span>{" "}
         <span className="font-semibold text-slate-700">{selectedGoal?.title ?? "Select a goal"}</span>{" "}
         <span>&gt;</span>{" "}
-        <span className="font-semibold text-slate-700">{selectedSubgoal?.title ?? "Select a sub-goal"}</span>
+        <span className="font-semibold text-slate-700">{selectedSubgoal?.title ?? "Select a sub-goal"}</span>{" "}
+        <span>&gt;</span>{" "}
+        <span className="font-semibold text-slate-700">{selectedTask?.title ?? "Select a task"}</span>
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
@@ -786,80 +895,80 @@ export function MigrationDataPreview({
 
           <div className="mt-3 space-y-3">
             {[
-              ["Professional", professionalGoals] as const,
-              ["Personal", personalGoals] as const,
-            ].map(([groupLabel, groupGoals]) => (
+              ["professional", "Professional", professionalGoals] as const,
+              ["personal", "Personal", personalGoals] as const,
+            ].map(([groupType, groupLabel, groupGoals]) => (
               <div key={groupLabel}>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{groupLabel}</p>
-                <ul className="mt-2 space-y-2">
-                  {groupGoals.length === 0 ? (
+                {groupGoals.length === 0 ? (
+                  <ul className="mt-2 space-y-2">
                     <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
                       No {groupLabel.toLowerCase()} goals yet.
                     </li>
-                  ) : (
-                    groupGoals.map((goal) => {
-                      const isSelected = goal.id === selectedGoalId;
-                      const subgoalCount = (snapshot?.subgoalsByGoalId[goal.id] ?? []).filter((item) => item.deletedAt === null).length;
-                      return (
-                        <li key={goal.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedGoalId(goal.id);
-                              setMobileView("subgoals");
-                            }}
-                            className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                              isSelected
-                                ? "border-blue-300 bg-blue-50"
-                                : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                            }`}
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="font-medium text-slate-900">{goal.title}</p>
-                              <GoalTypeTag type={goal.type} />
-                            </div>
-                            <p className="mt-1 text-xs text-slate-600">
-                              {subgoalCount} sub-goal{subgoalCount === 1 ? "" : "s"} | {goal.percentComplete}% complete
-                            </p>
-                          </button>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <IconActionButton label="Edit goal" onClick={() => startEditing(goal)}>
-                              <PencilIcon />
-                            </IconActionButton>
-                            <IconActionButton label="Archive goal" onClick={() => void handleGoalArchiveToggle(goal)}>
-                              <ArchiveIcon />
-                            </IconActionButton>
-                            <button
-                              type="button"
-                              onClick={() => void handleGoalMove(goal, "up")}
-                              className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                            >
-                              Up
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleGoalMove(goal, "down")}
-                              className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                            >
-                              Down
-                            </button>
-                            <select
-                              value={goal.status}
-                              onChange={(event) => {
-                                void handleGoalStatusChange(goal, event.target.value as ItemStatus);
-                              }}
-                              className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
-                            >
-                              <option value="not_started">Not started</option>
-                              <option value="in_progress">In progress</option>
-                              <option value="done">Done</option>
-                            </select>
-                          </div>
-                        </li>
-                      );
-                    })
-                  )}
-                </ul>
+                  </ul>
+                ) : (
+                  <DndContext
+                    sensors={dndSensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={(event) => handleGoalDragEnd(groupType, groupGoals, event)}
+                  >
+                    <SortableContext items={groupGoals.map((goal) => goal.id)} strategy={verticalListSortingStrategy}>
+                      <ul className="mt-2 space-y-2">
+                        {groupGoals.map((goal) => {
+                          const isSelected = goal.id === selectedGoalId;
+                          const subgoalCount = (snapshot?.subgoalsByGoalId[goal.id] ?? []).filter(
+                            (item) => item.deletedAt === null,
+                          ).length;
+                          return (
+                            <SortableListItem key={goal.id} id={goal.id} label={`Drag to reorder goal ${goal.title}`}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedGoalId(goal.id);
+                                  setSelectedSubgoalId(null);
+                                  setSelectedTaskId(null);
+                                  setMobileView("subgoals");
+                                }}
+                                className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                                  isSelected
+                                    ? "pdp-selectable-row pdp-selectable-row-selected pdp-selectable-row-interactive"
+                                    : "pdp-selectable-row pdp-selectable-row-interactive border-slate-200 bg-white hover:border-slate-300"
+                                }`}
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-medium text-slate-900">{goal.title}</p>
+                                  <GoalTypeTag type={goal.type} />
+                                </div>
+                                <p className="mt-1 text-xs text-slate-600">
+                                  {subgoalCount} sub-goal{subgoalCount === 1 ? "" : "s"} | {goal.percentComplete}% complete
+                                </p>
+                              </button>
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <IconActionButton label="Edit goal" onClick={() => startEditing(goal)}>
+                                  <PencilIcon />
+                                </IconActionButton>
+                                <IconActionButton label="Archive goal" onClick={() => void handleGoalArchiveToggle(goal)}>
+                                  <ArchiveIcon />
+                                </IconActionButton>
+                                <select
+                                  value={goal.status}
+                                  onChange={(event) => {
+                                    void handleGoalStatusChange(goal, event.target.value as ItemStatus);
+                                  }}
+                                  className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                                >
+                                  <option value="not_started">Not started</option>
+                                  <option value="in_progress">In progress</option>
+                                  <option value="done">Done</option>
+                                </select>
+                              </div>
+                            </SortableListItem>
+                          );
+                        })}
+                      </ul>
+                    </SortableContext>
+                  </DndContext>
+                )}
               </div>
             ))}
           </div>
@@ -896,67 +1005,63 @@ export function MigrationDataPreview({
                 No sub-goals yet.
               </li>
             ) : (
-              subgoalsForSelectedGoal.map((subgoal) => {
-                const isSelected = subgoal.id === selectedSubgoalId;
-                const taskCount = (snapshot?.tasksBySubgoalId[subgoal.id] ?? []).filter((item) => item.deletedAt === null).length;
-                return (
-                  <li key={subgoal.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedSubgoalId(subgoal.id);
-                        setMobileView("tasks");
-                      }}
-                      className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                        isSelected
-                          ? "border-blue-300 bg-blue-50"
-                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                      }`}
-                    >
-                      <p className="font-medium text-slate-900">{subgoal.title}</p>
-                      <p className="mt-1 text-xs text-slate-600">
-                        {taskCount} task{taskCount === 1 ? "" : "s"} | {subgoal.percentComplete}% complete
-                      </p>
-                    </button>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <IconActionButton label="Edit sub-goal" onClick={() => startEditingSubgoal(subgoal)}>
-                        <PencilIcon />
-                      </IconActionButton>
-                      <IconActionButton
-                        label="Archive sub-goal"
-                        onClick={() => void handleSubgoalArchiveToggle(subgoal)}
-                      >
-                        <ArchiveIcon />
-                      </IconActionButton>
-                      <button
-                        type="button"
-                        onClick={() => void handleSubgoalMove(subgoal, "up")}
-                        className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                      >
-                        Up
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleSubgoalMove(subgoal, "down")}
-                        className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                      >
-                        Down
-                      </button>
-                      <select
-                        value={subgoal.status}
-                        onChange={(event) => {
-                          void handleSubgoalStatusChange(subgoal, event.target.value as ItemStatus);
-                        }}
-                        className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
-                      >
-                        <option value="not_started">Not started</option>
-                        <option value="in_progress">In progress</option>
-                        <option value="done">Done</option>
-                      </select>
-                    </div>
-                  </li>
-                );
-              })
+              <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleSubgoalDragEnd}>
+                <SortableContext
+                  items={subgoalsForSelectedGoal.map((subgoal) => subgoal.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {subgoalsForSelectedGoal.map((subgoal) => {
+                    const isSelected = subgoal.id === selectedSubgoalId;
+                    const taskCount = (snapshot?.tasksBySubgoalId[subgoal.id] ?? []).filter(
+                      (item) => item.deletedAt === null,
+                    ).length;
+                    return (
+                      <SortableListItem key={subgoal.id} id={subgoal.id} label={`Drag to reorder sub-goal ${subgoal.title}`}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedSubgoalId(subgoal.id);
+                            setSelectedTaskId(null);
+                            setMobileView("tasks");
+                          }}
+                          className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                            isSelected
+                              ? "pdp-selectable-row pdp-selectable-row-selected pdp-selectable-row-interactive"
+                              : "pdp-selectable-row pdp-selectable-row-interactive border-slate-200 bg-white hover:border-slate-300"
+                          }`}
+                        >
+                          <p className="font-medium text-slate-900">{subgoal.title}</p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            {taskCount} task{taskCount === 1 ? "" : "s"} | {subgoal.percentComplete}% complete
+                          </p>
+                        </button>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <IconActionButton label="Edit sub-goal" onClick={() => startEditingSubgoal(subgoal)}>
+                            <PencilIcon />
+                          </IconActionButton>
+                          <IconActionButton
+                            label="Archive sub-goal"
+                            onClick={() => void handleSubgoalArchiveToggle(subgoal)}
+                          >
+                            <ArchiveIcon />
+                          </IconActionButton>
+                          <select
+                            value={subgoal.status}
+                            onChange={(event) => {
+                              void handleSubgoalStatusChange(subgoal, event.target.value as ItemStatus);
+                            }}
+                            className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                          >
+                            <option value="not_started">Not started</option>
+                            <option value="in_progress">In progress</option>
+                            <option value="done">Done</option>
+                          </select>
+                        </div>
+                      </SortableListItem>
+                    );
+                  })}
+                </SortableContext>
+              </DndContext>
             )}
           </ul>
         </article>
@@ -992,53 +1097,56 @@ export function MigrationDataPreview({
                 No tasks yet.
               </li>
             ) : (
-              tasksForSelectedSubgoal.map((task) => (
-                <li key={task.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => startEditingTask(task)}
-                    className="w-full text-left"
-                  >
-                    <p className="font-medium text-slate-900">{task.title}</p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      {task.dueDate ? `Due ${task.dueDate}` : "No due date"} | {task.percentComplete}% complete
-                    </p>
-                  </button>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <IconActionButton label="Edit task" onClick={() => startEditingTask(task)}>
-                      <PencilIcon />
-                    </IconActionButton>
-                    <IconActionButton label="Archive task" onClick={() => void handleTaskArchiveToggle(task)}>
-                      <ArchiveIcon />
-                    </IconActionButton>
-                    <button
-                      type="button"
-                      onClick={() => void handleTaskMove(task, "up")}
-                      className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                    >
-                      Up
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleTaskMove(task, "down")}
-                      className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                    >
-                      Down
-                    </button>
-                    <select
-                      value={task.status}
-                      onChange={(event) => {
-                        void handleTaskStatusChange(task, event.target.value as ItemStatus);
-                      }}
-                      className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
-                    >
-                      <option value="not_started">Not started</option>
-                      <option value="in_progress">In progress</option>
-                      <option value="done">Done</option>
-                    </select>
-                  </div>
-                </li>
-              ))
+              <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
+                <SortableContext
+                  items={tasksForSelectedSubgoal.map((task) => task.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {tasksForSelectedSubgoal.map((task) => {
+                    const isSelected = task.id === selectedTaskId;
+                    return (
+                      <SortableListItem key={task.id} id={task.id} label={`Drag to reorder task ${task.title}`}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTaskId(task.id);
+                            startEditingTask(task);
+                          }}
+                          className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                            isSelected
+                              ? "pdp-selectable-row pdp-selectable-row-selected pdp-selectable-row-interactive"
+                              : "pdp-selectable-row pdp-selectable-row-interactive border-slate-200 bg-white hover:border-slate-300"
+                          }`}
+                        >
+                          <p className="font-medium text-slate-900">{task.title}</p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            {task.dueDate ? `Due ${task.dueDate}` : "No due date"} | {task.percentComplete}% complete
+                          </p>
+                        </button>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <IconActionButton label="Edit task" onClick={() => startEditingTask(task)}>
+                            <PencilIcon />
+                          </IconActionButton>
+                          <IconActionButton label="Archive task" onClick={() => void handleTaskArchiveToggle(task)}>
+                            <ArchiveIcon />
+                          </IconActionButton>
+                          <select
+                            value={task.status}
+                            onChange={(event) => {
+                              void handleTaskStatusChange(task, event.target.value as ItemStatus);
+                            }}
+                            className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                          >
+                            <option value="not_started">Not started</option>
+                            <option value="in_progress">In progress</option>
+                            <option value="done">Done</option>
+                          </select>
+                        </div>
+                      </SortableListItem>
+                    );
+                  })}
+                </SortableContext>
+              </DndContext>
             )}
           </ul>
         </article>
@@ -1388,6 +1496,53 @@ export function MigrationDataPreview({
   );
 }
 
+function SortableListItem({
+  id,
+  label,
+  children,
+}: {
+  id: string;
+  label: string;
+  children: ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={`${isDragging ? "opacity-80" : ""}`}
+    >
+      <div className="relative rounded-lg border border-slate-200 bg-white px-2 py-2">
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          aria-label={label}
+          title={label}
+          className="absolute right-2 top-2 inline-flex items-center justify-center rounded-full border border-slate-300 bg-white p-1 text-slate-600 transition hover:border-slate-400 hover:bg-slate-50 active:cursor-grabbing"
+          onClick={(event) => event.preventDefault()}
+          {...attributes}
+          {...listeners}
+        >
+          <GripIcon />
+        </button>
+        <div className="min-w-0 pr-9">{children}</div>
+      </div>
+    </li>
+  );
+}
+
 function IconActionButton({
   label,
   onClick,
@@ -1433,6 +1588,19 @@ function ArchiveIcon() {
   );
 }
 
+function GripIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-3.5" fill="currentColor" aria-hidden="true">
+      <circle cx="8" cy="7" r="1.4" />
+      <circle cx="16" cy="7" r="1.4" />
+      <circle cx="8" cy="12" r="1.4" />
+      <circle cx="16" cy="12" r="1.4" />
+      <circle cx="8" cy="17" r="1.4" />
+      <circle cx="16" cy="17" r="1.4" />
+    </svg>
+  );
+}
+
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -1441,25 +1609,5 @@ function getErrorMessage(error: unknown, fallback: string): string {
     return error;
   }
   return fallback;
-}
-
-function buildReorderedActiveIds<T extends { id: string; deletedAt: string | null }>(
-  items: T[],
-  movingId: string,
-  direction: "up" | "down",
-): string[] | null {
-  const activeIds = items.filter((item) => item.deletedAt === null).map((item) => item.id);
-  const currentIndex = activeIds.indexOf(movingId);
-  if (currentIndex < 0) {
-    return null;
-  }
-  const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-  if (targetIndex < 0 || targetIndex >= activeIds.length) {
-    return null;
-  }
-  const nextIds = [...activeIds];
-  const [movedId] = nextIds.splice(currentIndex, 1);
-  nextIds.splice(targetIndex, 0, movedId);
-  return nextIds;
 }
 
