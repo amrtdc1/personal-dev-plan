@@ -43,29 +43,8 @@ export function setOfflineSyncFailureState(input: OfflineSyncFailureInput | null
 export function subscribeOfflineSyncFailureState(listener: (state: OfflineSyncFailureState) => void) {
   listeners.add(listener);
 
-  if (!isBrowser() || typeof window.addEventListener !== "function") {
-    return () => {
-      listeners.delete(listener);
-    };
-  }
-
-  const wrapped = (event: Event) => {
-    const customEvent = event as CustomEvent<{ state?: OfflineSyncFailureState }>;
-    const nextState = customEvent.detail?.state;
-
-    if (nextState) {
-      listener(nextState);
-      return;
-    }
-
-    listener(getOfflineSyncFailureState());
-  };
-
-  window.addEventListener(EVENT_NAME, wrapped);
-
   return () => {
     listeners.delete(listener);
-    window.removeEventListener(EVENT_NAME, wrapped);
   };
 }
 
