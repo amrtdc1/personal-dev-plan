@@ -23,6 +23,7 @@ import type { Goal, ItemStatus, Subgoal, Task, UserProfile } from "@/lib/domain/
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { GoalTypeTag } from "@/components/ui/tags";
 
 type RepositorySnapshot = {
@@ -69,6 +70,7 @@ export function MigrationDataPreview({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [subgoalTitle, setSubgoalTitle] = useState("");
   const [subgoalDescription, setSubgoalDescription] = useState("");
+  const [subgoalDueDate, setSubgoalDueDate] = useState("");
   const [subgoalTimeframeLabel, setSubgoalTimeframeLabel] = useState("");
   const [isSavingSubgoal, setIsSavingSubgoal] = useState(false);
   const [subgoalSaveError, setSubgoalSaveError] = useState<string | null>(null);
@@ -292,6 +294,7 @@ export function MigrationDataPreview({
         setMobileView("subgoals");
         setSubgoalTitle(subgoal.title);
         setSubgoalDescription(subgoal.description);
+        setSubgoalDueDate(subgoal.projectedEndDate ?? "");
         setSubgoalTimeframeLabel(subgoal.timeframe === "Ongoing" ? "" : subgoal.timeframe);
         setSubgoalSaveError(null);
         setEditingSubgoalId(subgoal.id);
@@ -382,7 +385,7 @@ export function MigrationDataPreview({
         title: subgoalTitle,
         description: subgoalDescription,
         projectedStartDate: null,
-        projectedEndDate: null,
+        projectedEndDate: subgoalDueDate || null,
         timeframeLabel: subgoalTimeframeLabel,
         existingSubgoal: editingSubgoal ?? undefined,
       });
@@ -711,6 +714,7 @@ export function MigrationDataPreview({
   function startEditingSubgoal(subgoal: Subgoal) {
     setSubgoalTitle(subgoal.title);
     setSubgoalDescription(subgoal.description);
+    setSubgoalDueDate(subgoal.projectedEndDate ?? "");
     setSubgoalTimeframeLabel(subgoal.timeframe === "Ongoing" ? "" : subgoal.timeframe);
     setSubgoalSaveError(null);
     setEditingSubgoalId(subgoal.id);
@@ -721,6 +725,7 @@ export function MigrationDataPreview({
     setEditingSubgoalId(null);
     setSubgoalTitle("");
     setSubgoalDescription("");
+    setSubgoalDueDate("");
     setSubgoalTimeframeLabel("");
     setSubgoalSaveError(null);
     setTargetGoalIdForSubgoal(null);
@@ -789,8 +794,13 @@ export function MigrationDataPreview({
         <section className="pdp-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Goals</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">Goals</h2>
+            <InfoPopover className="self-center sm:hidden" label="Goals help">
+              Break down your professional and personal development into clear, trackable goals.
+            </InfoPopover>
+          </div>
+          <p className="mt-2 hidden max-w-2xl text-sm leading-6 text-slate-700 sm:block">
             Break down your professional and personal development into clear, trackable goals.
           </p>
         </div>
@@ -920,47 +930,50 @@ export function MigrationDataPreview({
                             (item) => item.deletedAt === null,
                           ).length;
                           return (
-                            <SortableListItem key={goal.id} id={goal.id} label={`Drag to reorder goal ${goal.title}`}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedGoalId(goal.id);
-                                  setSelectedSubgoalId(null);
-                                  setSelectedTaskId(null);
-                                  setMobileView("subgoals");
-                                }}
-                                className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                                  isSelected
-                                    ? "pdp-selectable-row pdp-selectable-row-selected pdp-selectable-row-interactive"
-                                    : "pdp-selectable-row pdp-selectable-row-interactive border-slate-200 bg-white hover:border-slate-300"
-                                }`}
-                              >
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-medium text-slate-900">{goal.title}</p>
-                                  <GoalTypeTag type={goal.type} />
-                                </div>
-                                <p className="mt-1 text-xs text-slate-600">
-                                  {subgoalCount} sub-goal{subgoalCount === 1 ? "" : "s"} | {goal.percentComplete}% complete
-                                </p>
-                              </button>
-                              <div className="mt-2 flex flex-wrap items-center gap-2">
-                                <IconActionButton label="Edit goal" onClick={() => startEditing(goal)}>
-                                  <PencilIcon />
-                                </IconActionButton>
-                                <IconActionButton label="Archive goal" onClick={() => void handleGoalArchiveToggle(goal)}>
-                                  <ArchiveIcon />
-                                </IconActionButton>
-                                <select
-                                  value={goal.status}
-                                  onChange={(event) => {
-                                    void handleGoalStatusChange(goal, event.target.value as ItemStatus);
+                            <SortableListItem
+                              key={goal.id}
+                              id={goal.id}
+                              label={`Drag to reorder goal ${goal.title}`}
+                              isSelected={isSelected}
+                            >
+                              <div className="rounded-lg px-3 py-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedGoalId(goal.id);
+                                    setSelectedSubgoalId(null);
+                                    setSelectedTaskId(null);
+                                    setMobileView("subgoals");
                                   }}
-                                  className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                                  className="w-full text-left"
                                 >
-                                  <option value="not_started">Not started</option>
-                                  <option value="in_progress">In progress</option>
-                                  <option value="done">Done</option>
-                                </select>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="font-medium text-slate-900">{goal.title}</p>
+                                    <GoalTypeTag type={goal.type} />
+                                  </div>
+                                  <p className="mt-1 text-xs text-slate-600">
+                                    {subgoalCount} sub-goal{subgoalCount === 1 ? "" : "s"} | {goal.percentComplete}% complete
+                                  </p>
+                                </button>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <IconActionButton label="Edit goal" onClick={() => startEditing(goal)}>
+                                    <PencilIcon />
+                                  </IconActionButton>
+                                  <IconActionButton label="Archive goal" onClick={() => void handleGoalArchiveToggle(goal)}>
+                                    <ArchiveIcon />
+                                  </IconActionButton>
+                                  <select
+                                    value={goal.status}
+                                    onChange={(event) => {
+                                      void handleGoalStatusChange(goal, event.target.value as ItemStatus);
+                                    }}
+                                    className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                                  >
+                                    <option value="not_started">Not started</option>
+                                    <option value="in_progress">In progress</option>
+                                    <option value="done">Done</option>
+                                  </select>
+                                </div>
                               </div>
                             </SortableListItem>
                           );
@@ -1016,7 +1029,12 @@ export function MigrationDataPreview({
                       (item) => item.deletedAt === null,
                     ).length;
                     return (
-                      <SortableListItem key={subgoal.id} id={subgoal.id} label={`Drag to reorder sub-goal ${subgoal.title}`}>
+                      <SortableListItem
+                        key={subgoal.id}
+                        id={subgoal.id}
+                        label={`Drag to reorder sub-goal ${subgoal.title}`}
+                        isSelected={isSelected}
+                      >
                         <button
                           type="button"
                           onClick={() => {
@@ -1024,16 +1042,15 @@ export function MigrationDataPreview({
                             setSelectedTaskId(null);
                             setMobileView("tasks");
                           }}
-                          className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                            isSelected
-                              ? "pdp-selectable-row pdp-selectable-row-selected pdp-selectable-row-interactive"
-                              : "pdp-selectable-row pdp-selectable-row-interactive border-slate-200 bg-white hover:border-slate-300"
-                          }`}
+                          className="w-full rounded-lg px-3 py-2 text-left"
                         >
                           <p className="font-medium text-slate-900">{subgoal.title}</p>
                           <p className="mt-1 text-xs text-slate-600">
                             {taskCount} task{taskCount === 1 ? "" : "s"} | {subgoal.percentComplete}% complete
                           </p>
+                          {subgoal.projectedEndDate ? (
+                            <p className="mt-1 text-xs text-slate-500">Due {subgoal.projectedEndDate}</p>
+                          ) : null}
                         </button>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <IconActionButton label="Edit sub-goal" onClick={() => startEditingSubgoal(subgoal)}>
@@ -1105,18 +1122,19 @@ export function MigrationDataPreview({
                   {tasksForSelectedSubgoal.map((task) => {
                     const isSelected = task.id === selectedTaskId;
                     return (
-                      <SortableListItem key={task.id} id={task.id} label={`Drag to reorder task ${task.title}`}>
+                      <SortableListItem
+                        key={task.id}
+                        id={task.id}
+                        label={`Drag to reorder task ${task.title}`}
+                        isSelected={isSelected}
+                      >
                         <button
                           type="button"
                           onClick={() => {
                             setSelectedTaskId(task.id);
                             startEditingTask(task);
                           }}
-                          className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                            isSelected
-                              ? "pdp-selectable-row pdp-selectable-row-selected pdp-selectable-row-interactive"
-                              : "pdp-selectable-row pdp-selectable-row-interactive border-slate-200 bg-white hover:border-slate-300"
-                          }`}
+                          className="w-full rounded-lg px-3 py-2 text-left"
                         >
                           <p className="font-medium text-slate-900">{task.title}</p>
                           <p className="mt-1 text-xs text-slate-600">
@@ -1393,6 +1411,15 @@ export function MigrationDataPreview({
             />
           </label>
           <label className="block text-sm text-slate-700">
+            Due date
+            <input
+              type="date"
+              value={subgoalDueDate}
+              onChange={(event) => setSubgoalDueDate(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+            />
+          </label>
+          <label className="block text-sm text-slate-700">
             Timeframe label
             <input
               value={subgoalTimeframeLabel}
@@ -1499,10 +1526,12 @@ export function MigrationDataPreview({
 function SortableListItem({
   id,
   label,
+  isSelected = false,
   children,
 }: {
   id: string;
   label: string;
+  isSelected?: boolean;
   children: ReactNode;
 }) {
   const {
@@ -1524,13 +1553,19 @@ function SortableListItem({
       }}
       className={`${isDragging ? "opacity-80" : ""}`}
     >
-      <div className="relative rounded-lg border border-slate-200 bg-white px-2 py-2">
+      <div
+        className={`relative rounded-lg border px-2 py-2 transition ${
+          isSelected
+            ? "pdp-selectable-row pdp-selectable-row-selected pdp-selectable-row-interactive"
+            : "pdp-selectable-row pdp-selectable-row-interactive border-slate-200 bg-white hover:border-slate-300"
+        }`}
+      >
         <button
           ref={setActivatorNodeRef}
           type="button"
           aria-label={label}
           title={label}
-          className="absolute right-2 top-2 inline-flex items-center justify-center rounded-full border border-slate-300 bg-white p-1 text-slate-600 transition hover:border-slate-400 hover:bg-slate-50 active:cursor-grabbing"
+          className="absolute right-2 top-2 inline-flex items-center justify-center rounded-full p-1 text-slate-600 transition hover:bg-slate-50 active:cursor-grabbing"
           onClick={(event) => event.preventDefault()}
           {...attributes}
           {...listeners}
@@ -1561,7 +1596,7 @@ function IconActionButton({
         event.stopPropagation();
         onClick();
       }}
-      className="inline-flex size-8 items-center justify-center rounded-full border border-slate-300 text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+      className="inline-flex size-8 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-50"
     >
       {children}
     </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -16,6 +16,7 @@ import type { Goal, GoalType, ItemStatus, Subgoal, Task } from "@/lib/domain/typ
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
+import { InfoPopover } from "@/components/ui/info-popover";
 
 type CalendarItemKind = "goal" | "subgoal" | "task";
 type CreateType = "goal" | "subgoal" | "task";
@@ -37,6 +38,21 @@ type AgendaItem = {
   title: string;
   status: ItemStatus;
   hierarchy: string;
+};
+
+type EventPreview = {
+  kind: CalendarItemKind;
+  title: string;
+  status: ItemStatus;
+  hierarchy: string;
+  dateSummary: string;
+  details: string;
+  pinned: boolean;
+  position: {
+    left: number;
+    top: number;
+    width: number;
+  };
 };
 
 const DEFAULT_SELECTION = getTodaySelection();
@@ -74,9 +90,13 @@ export function CalendarWorkspace() {
   const [showTasks, setShowTasks] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [scopeGoalType, setScopeGoalType] = useState<"all" | GoalType>("all");
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
+  const [eventPreview, setEventPreview] = useState<EventPreview | null>(null);
 
   const [isCompactToolbar, setIsCompactToolbar] = useState(false);
   const [isTouchFriendly, setIsTouchFriendly] = useState(false);
+  const [isMobileCalendar, setIsMobileCalendar] = useState(false);
+  const suppressNextEventClickRef = useRef<{ id: string; until: number } | null>(null);
 
   const goalMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
   const subgoalMap = useMemo(() => new Map(subgoals.map((subgoal) => [subgoal.id, subgoal])), [subgoals]);
@@ -106,6 +126,60 @@ export function CalendarWorkspace() {
         mediaQuery.removeEventListener("change", updateCompactToolbar);
       } else {
         mediaQuery.removeListener(updateCompactToolbar);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const viewportQuery = window.matchMedia("(max-width: 640px)");
+    const syncMobileCalendar = () => {
+      setIsMobileCalendar(viewportQuery.matches);
+    };
+
+    syncMobileCalendar();
+
+    if (typeof viewportQuery.addEventListener === "function") {
+      viewportQuery.addEventListener("change", syncMobileCalendar);
+    } else {
+      viewportQuery.addListener(syncMobileCalendar);
+    }
+
+    return () => {
+      if (typeof viewportQuery.removeEventListener === "function") {
+        viewportQuery.removeEventListener("change", syncMobileCalendar);
+      } else {
+        viewportQuery.removeListener(syncMobileCalendar);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mobileQuery = window.matchMedia("(max-width: 768px)");
+    const syncFilterPanel = () => {
+      setIsFilterPanelOpen(!mobileQuery.matches);
+    };
+
+    syncFilterPanel();
+
+    if (typeof mobileQuery.addEventListener === "function") {
+      mobileQuery.addEventListener("change", syncFilterPanel);
+    } else {
+      mobileQuery.addListener(syncFilterPanel);
+    }
+
+    return () => {
+      if (typeof mobileQuery.removeEventListener === "function") {
+        mobileQuery.removeEventListener("change", syncFilterPanel);
+      } else {
+        mobileQuery.removeListener(syncFilterPanel);
       }
     };
   }, []);
@@ -288,6 +362,19 @@ export function CalendarWorkspace() {
     tasks,
   ]);
 
+  const formatPreviewDateSummary = (startDate: string | null, endDate: string | null) => {
+    const normalized = normalizeDateRange(startDate, endDate);
+    if (!normalized) {
+      return "No scheduled date";
+    }
+
+    if (normalized.start === normalized.end) {
+      return `Due ${normalized.start}`;
+    }
+
+    return `${normalized.start} to ${normalized.end}`;
+  };
+
   const todaysAgenda = useMemo<AgendaItem[]>(() => {
     const todayDate = toDateOnly(new Date());
     const agendaItems: AgendaItem[] = [];
@@ -444,6 +531,12 @@ export function CalendarWorkspace() {
   }
 
   function handleEventClick(clickArg: EventClickArg) {
+    const suppressClick = suppressNextEventClickRef.current;
+    if (suppressClick && suppressClick.id === clickArg.event.id && Date.now() < suppressClick.until) {
+      suppressNextEventClickRef.current = null;
+      return;
+    }
+
     const [kind, id] = clickArg.event.id.split(":") as [CalendarItemKind, string];
 
     if (kind === "goal") {
@@ -490,6 +583,123 @@ export function CalendarWorkspace() {
     setSelectedEventRef({ kind, id });
     setActionError(null);
     setIsEditModalOpen(true);
+  }
+
+  function getPreviewPosition(anchorEl: HTMLElement) {
+    const rect = anchorEl.getBoundingClientRect();
+    const viewportPadding = 12;
+    const preferredWidth = 320;
+    const maxHeight = 320;
+    const previewGap = 8;
+    const isMobileViewport = window.innerWidth <= 640;
+
+    if (isMobileViewport) {
+      const width = Math.min(360, Math.max(240, window.innerWidth - viewportPadding * 2));
+      const left = Math.max(viewportPadding, (window.innerWidth - width) / 2);
+      const prefersAbove = rect.top > window.innerHeight / 2;
+      const topCandidate = prefersAbove ? rect.top - previewGap - maxHeight : rect.bottom + previewGap;
+      const top = Math.min(
+        Math.max(topCandidate, viewportPadding),
+        Math.max(viewportPadding, window.innerHeight - viewportPadding - maxHeight),
+      );
+
+      return { left, top, width };
+    }
+
+    const width = Math.min(preferredWidth, Math.max(220, window.innerWidth - viewportPadding * 2));
+    const centerX = rect.left + rect.width / 2;
+    const left = Math.min(
+      Math.max(centerX - width / 2, viewportPadding),
+      Math.max(viewportPadding, window.innerWidth - viewportPadding - width),
+    );
+
+    const prefersAbove = rect.top > window.innerHeight / 2;
+    const topCandidate = prefersAbove ? rect.top - previewGap - maxHeight : rect.bottom + previewGap;
+    const top = Math.min(
+      Math.max(topCandidate, viewportPadding),
+      Math.max(viewportPadding, window.innerHeight - viewportPadding - maxHeight),
+    );
+
+    return { left, top, width };
+  }
+
+  function buildPreview(eventId: string, pinned: boolean, anchorEl: HTMLElement): EventPreview | null {
+    const [kind, id] = eventId.split(":") as [CalendarItemKind, string];
+    const position = getPreviewPosition(anchorEl);
+
+    if (kind === "goal") {
+      const goal = goals.find((item) => item.id === id);
+      if (!goal) {
+        return null;
+      }
+
+      return {
+        kind,
+        title: goal.title,
+        status: goal.status,
+        hierarchy: `${goal.type === "professional" ? "Professional" : "Personal"} goal`,
+        dateSummary: formatPreviewDateSummary(goal.projectedStartDate, goal.projectedEndDate),
+        details: goal.description || "No description provided.",
+        pinned,
+        position,
+      };
+    }
+
+    if (kind === "subgoal") {
+      const subgoal = subgoals.find((item) => item.id === id);
+      if (!subgoal) {
+        return null;
+      }
+
+      const parentGoal = goalMap.get(subgoal.goalId);
+
+      return {
+        kind,
+        title: subgoal.title,
+        status: subgoal.status,
+        hierarchy: parentGoal ? `${parentGoal.title} -> ${subgoal.title}` : "Subgoal",
+        dateSummary: formatPreviewDateSummary(subgoal.projectedStartDate, subgoal.projectedEndDate),
+        details: subgoal.description || "No description provided.",
+        pinned,
+        position,
+      };
+    }
+
+    const task = tasks.find((item) => item.id === id);
+    if (!task) {
+      return null;
+    }
+
+    const parentSubgoal = subgoalMap.get(task.subgoalId);
+    const parentGoal = parentSubgoal ? goalMap.get(parentSubgoal.goalId) : null;
+    const hierarchyBits = [
+      parentGoal ? `Goal: ${parentGoal.title}` : null,
+      parentSubgoal ? `Subgoal: ${parentSubgoal.title}` : null,
+    ].filter((bit): bit is string => Boolean(bit));
+
+    return {
+      kind,
+      title: task.title,
+      status: task.status,
+      hierarchy: hierarchyBits.length > 0 ? hierarchyBits.join(" | ") : "Task",
+      dateSummary: task.dueDate ? `Due ${task.dueDate}` : "No due date",
+      details: task.notes || "No notes provided.",
+      pinned,
+      position,
+    };
+  }
+
+  function openEventPreview(eventId: string, anchorEl: HTMLElement, pinned: boolean) {
+    const preview = buildPreview(eventId, pinned, anchorEl);
+    if (!preview) {
+      return;
+    }
+
+    setEventPreview(preview);
+  }
+
+  function closeEventPreview() {
+    setEventPreview((current) => (current?.pinned ? current : null));
   }
 
   async function handleEventDrop(dropArg: EventDropArg) {
@@ -790,8 +1000,16 @@ export function CalendarWorkspace() {
     <section className={`pdp-panel ${isTouchFriendly ? "pdp-touch-mode" : ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Calendar</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">Calendar</h2>
+            <InfoPopover
+              className="self-center sm:hidden"
+              label="Calendar help"
+            >
+              Select dates to create goals/subgoals/tasks, drag events to reschedule, and inspect hierarchy links directly in the calendar.
+            </InfoPopover>
+          </div>
+          <p className="mt-2 hidden max-w-3xl text-sm leading-6 text-slate-700 sm:block">
             Select dates to create goals/subgoals/tasks, drag events to reschedule, and inspect hierarchy links directly in the calendar.
           </p>
         </div>
@@ -805,70 +1023,113 @@ export function CalendarWorkspace() {
       {loadError ? <p className="mt-4 text-sm text-red-700">{loadError}</p> : null}
       {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)] xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
-        <div className="order-1 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:order-1">
-          <div className="mb-3 grid gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Type filters</p>
-              <label className="flex items-center gap-2 text-xs text-slate-700">
-                <input type="checkbox" checked={showGoals} onChange={(event) => setShowGoals(event.target.checked)} />
-                Goals
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={showSubgoals}
-                  onChange={(event) => setShowSubgoals(event.target.checked)}
-                />
-                Subgoals
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-700">
-                <input type="checkbox" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} />
-                Tasks
-              </label>
+      <div className="mt-5">
+        <div className="pdp-panel-muted mb-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-900">Quick actions</h3>
+              <InfoPopover className="self-center sm:hidden" label="Quick actions help">
+                Selection: {selection.startDate} to {selection.endDate}. Drag to select dates or click an event to edit it.
+              </InfoPopover>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setActionError(null);
+                setIsCreateModalOpen(true);
+              }}
+              className="rounded-full bg-blue-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-blue-600"
+            >
+              + New item
+            </button>
+          </div>
+          <p className="mt-2 hidden text-xs text-slate-600 sm:block">
+            Selection: {selection.startDate} to {selection.endDate}
+          </p>
+          <p className="mt-1 hidden text-xs text-slate-500 sm:block">
+            Drag to select dates or click an event to edit it.
+          </p>
+        </div>
 
-            <label className="block text-xs text-slate-700">
-              Status filter
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-                className="pdp-control mt-1 px-2 py-2 text-xs"
-              >
-                <option value="all">All statuses</option>
-                <option value="not_started">Not started</option>
-                <option value="in_progress">In progress</option>
-                <option value="done">Done</option>
-              </select>
-            </label>
-
-            <label className="block text-xs text-slate-700">
-              Goal scope
-              <select
-                value={scopeGoalType}
-                onChange={(event) => setScopeGoalType(event.target.value as "all" | GoalType)}
-                className="pdp-control mt-1 px-2 py-2 text-xs"
-              >
-                <option value="all">All goals</option>
-                <option value="professional">Professional only</option>
-                <option value="personal">Personal only</option>
-              </select>
-            </label>
-
-            <label className="block text-xs text-slate-700">
-              Interaction density
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Calendar filters</p>
               <button
                 type="button"
-                onClick={() => setIsTouchFriendly((current) => !current)}
-                className="pdp-btn-secondary mt-1 w-full rounded-lg px-2 py-2 text-xs font-medium"
+                onClick={() => setIsFilterPanelOpen((current) => !current)}
+                className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                aria-expanded={isFilterPanelOpen}
               >
-                {isTouchFriendly ? "Comfortable taps enabled" : "Compact controls"}
+                {isFilterPanelOpen ? "Hide filters" : "Show filters"}
               </button>
-            </label>
+            </div>
+
+            {isFilterPanelOpen ? (
+              <>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                    <input type="checkbox" checked={showGoals} onChange={(event) => setShowGoals(event.target.checked)} />
+                    Goals
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={showSubgoals}
+                      onChange={(event) => setShowSubgoals(event.target.checked)}
+                    />
+                    Subgoals
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                    <input type="checkbox" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} />
+                    Tasks
+                  </label>
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <label className="block text-xs text-slate-700">
+                    Status filter
+                    <select
+                      value={statusFilter}
+                      onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                      className="pdp-control mt-1 px-2 py-2 text-xs"
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="not_started">Not started</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </label>
+
+                  <label className="block text-xs text-slate-700">
+                    Goal scope
+                    <select
+                      value={scopeGoalType}
+                      onChange={(event) => setScopeGoalType(event.target.value as "all" | GoalType)}
+                      className="pdp-control mt-1 px-2 py-2 text-xs"
+                    >
+                      <option value="all">All goals</option>
+                      <option value="professional">Professional only</option>
+                      <option value="personal">Personal only</option>
+                    </select>
+                  </label>
+
+                  <label className="block text-xs text-slate-700">
+                    Interaction density
+                    <button
+                      type="button"
+                      onClick={() => setIsTouchFriendly((current) => !current)}
+                      className="pdp-btn-secondary mt-1 w-full rounded-lg px-2 py-2 text-xs font-medium"
+                    >
+                      {isTouchFriendly ? "Comfortable taps enabled" : "Compact controls"}
+                    </button>
+                  </label>
+                </div>
+              </>
+            ) : null}
           </div>
 
-          <div className="overflow-x-auto">
-            <div className="min-w-[320px] md:min-w-[680px] lg:min-w-0">
+          <div className="pdp-calendar">
               <FullCalendar
                 plugins={[dayGridPlugin, interactionPlugin, listPlugin]}
                 initialView="dayGridMonth"
@@ -877,15 +1138,88 @@ export function CalendarWorkspace() {
                 editable
                 selectable
                 selectMirror
-                dayMaxEventRows={4}
+                dayMaxEventRows={isMobileCalendar ? 2 : 4}
+                dayMaxEvents={isMobileCalendar ? 2 : false}
+                fixedWeekCount={false}
                 events={events}
                 select={handleDateSelect}
                 eventClick={handleEventClick}
+                eventMouseEnter={(hoverArg) => {
+                  if (eventPreview?.pinned) {
+                    return;
+                  }
+
+                  openEventPreview(hoverArg.event.id, hoverArg.el, false);
+                }}
+                eventMouseLeave={() => {
+                  closeEventPreview();
+                }}
+                eventDidMount={(mountArg) => {
+                  const { event, el } = mountArg;
+                  let pressTimer: number | null = null;
+
+                  const handleTouchStart = () => {
+                    pressTimer = window.setTimeout(() => {
+                      openEventPreview(event.id, el, true);
+                      suppressNextEventClickRef.current = {
+                        id: event.id,
+                        until: Date.now() + 900,
+                      };
+                    }, 420);
+                  };
+
+                  const clearPressTimer = () => {
+                    if (pressTimer !== null) {
+                      window.clearTimeout(pressTimer);
+                      pressTimer = null;
+                    }
+                  };
+
+                  el.addEventListener("touchstart", handleTouchStart, { passive: true });
+                  el.addEventListener("touchend", clearPressTimer, { passive: true });
+                  el.addEventListener("touchcancel", clearPressTimer, { passive: true });
+
+                  (el as HTMLElement & {
+                    __pdpTouchCleanup?: () => void;
+                  }).__pdpTouchCleanup = () => {
+                    clearPressTimer();
+                    el.removeEventListener("touchstart", handleTouchStart);
+                    el.removeEventListener("touchend", clearPressTimer);
+                    el.removeEventListener("touchcancel", clearPressTimer);
+                  };
+                }}
+                eventWillUnmount={(unmountArg) => {
+                  const el = unmountArg.el as HTMLElement & {
+                    __pdpTouchCleanup?: () => void;
+                  };
+
+                  el.__pdpTouchCleanup?.();
+                  delete el.__pdpTouchCleanup;
+                }}
                 eventDrop={handleEventDrop}
                 eventResize={handleEventResize}
                 eventContent={(contentArg) => {
                   const hierarchy = String(contentArg.event.extendedProps.hierarchy ?? "");
                   const status = String(contentArg.event.extendedProps.status ?? "not_started") as ItemStatus;
+                  const kind = String(contentArg.event.extendedProps.kind ?? "task") as CalendarItemKind;
+
+                  if (isMobileCalendar && contentArg.view.type === "dayGridMonth") {
+                    return (
+                      <div className="pdp-calendar-event-dot" title={`${contentArg.event.title} - ${hierarchy}`}>
+                        <span
+                          className={`pdp-calendar-event-dot-marker pdp-calendar-event-dot-marker-${kind}`}
+                          style={{
+                            backgroundColor:
+                              typeof contentArg.backgroundColor === "string" && contentArg.backgroundColor.length > 0
+                                ? contentArg.backgroundColor
+                                : "var(--pdp-theme-primary)",
+                          }}
+                        />
+                        <span className="sr-only">{contentArg.event.title}</span>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div className="pdp-calendar-event">
                       <div className="truncate font-semibold leading-tight">{contentArg.event.title}</div>
@@ -897,14 +1231,88 @@ export function CalendarWorkspace() {
                   );
                 }}
               />
-            </div>
           </div>
 
-          <div className="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 sm:grid-cols-3">
-            <p><span className="font-semibold text-blue-700">G</span> Goal range events</p>
-            <p><span className="font-semibold text-amber-600">SG</span> Subgoal child events</p>
-            <p><span className="font-semibold text-emerald-600">T</span> Task due-date markers</p>
-          </div>
+          {eventPreview ? (
+            <div
+              className="pdp-card fixed z-40 max-h-[min(60vh,20rem)] overflow-auto p-3 text-xs shadow-xl"
+              style={{
+                left: `${eventPreview.position.left}px`,
+                top: `${eventPreview.position.top}px`,
+                width: `${eventPreview.position.width}px`,
+              }}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p
+                    className="text-[11px] font-semibold uppercase tracking-wide"
+                    style={{ color: "var(--pdp-text-muted)" }}
+                  >
+                    {eventPreview.kind === "goal" ? "Goal" : eventPreview.kind === "subgoal" ? "Sub-goal" : "Task"}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold" style={{ color: "var(--pdp-text-strong)" }}>
+                    {eventPreview.title}
+                  </p>
+                </div>
+                {eventPreview.pinned ? (
+                  <button
+                    type="button"
+                    onClick={() => setEventPreview(null)}
+                    className="rounded-full border px-2 py-1 text-[11px] font-semibold transition hover:opacity-90"
+                    style={{
+                      borderColor: "var(--pdp-border)",
+                      color: "var(--pdp-text-muted)",
+                      backgroundColor: "color-mix(in srgb, var(--pdp-surface) 92%, var(--pdp-muted-surface))",
+                    }}
+                  >
+                    Close
+                  </button>
+                ) : null}
+              </div>
+
+              <p className="mt-2" style={{ color: "var(--pdp-text-muted)" }}>{eventPreview.hierarchy}</p>
+              <p className="mt-1" style={{ color: "var(--pdp-text-muted)" }}>{eventPreview.dateSummary}</p>
+              <span className={`mt-2 inline-flex pdp-status-chip ${statusChipClass(eventPreview.status)}`}>
+                {eventPreview.status.replaceAll("_", " ")}
+              </span>
+              <p className="mt-2 leading-5" style={{ color: "var(--pdp-text)" }}>{eventPreview.details}</p>
+            </div>
+          ) : null}
+
+          {isMobileCalendar ? (
+            <div className="pdp-card sticky top-2 z-20 mt-3 p-3 text-xs text-slate-700 backdrop-blur">
+              <p className="font-semibold uppercase tracking-wide text-slate-500">Glyph legend</p>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="pdp-calendar-event-dot-marker pdp-calendar-event-dot-marker-goal"
+                    style={{ backgroundColor: eventColors.goalProfessionalBackground }}
+                  />
+                  Goal
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="pdp-calendar-event-dot-marker pdp-calendar-event-dot-marker-subgoal"
+                    style={{ backgroundColor: eventColors.subgoalBackground }}
+                  />
+                  Sub-goal
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="pdp-calendar-event-dot-marker pdp-calendar-event-dot-marker-task"
+                    style={{ backgroundColor: eventColors.taskBackground }}
+                  />
+                  Task
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 sm:grid-cols-3">
+              <p><span className="font-semibold text-blue-700">G</span> Goal range events</p>
+              <p><span className="font-semibold text-amber-600">SG</span> Subgoal child events</p>
+              <p><span className="font-semibold text-emerald-600">T</span> Task due-date markers</p>
+            </div>
+          )}
 
           <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
             <h3 className="text-sm font-semibold text-slate-900">Today&apos;s agenda</h3>
@@ -927,29 +1335,6 @@ export function CalendarWorkspace() {
             )}
           </div>
         </div>
-
-        <aside className="order-2 space-y-4 lg:order-2">
-          <div className="pdp-panel-muted">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-slate-900">Quick actions</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setActionError(null);
-                  setIsCreateModalOpen(true);
-                }}
-                className="rounded-full bg-blue-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-blue-600"
-              >
-                + New item
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-slate-600">
-              Selection: {selection.startDate} to {selection.endDate}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Drag to select dates or click an event to edit it.
-            </p>
-          </div>
 
           <CrudModal
             isOpen={isCreateModalOpen}
@@ -1168,7 +1553,6 @@ export function CalendarWorkspace() {
               ) : null}
             </form>
           </CrudModal>
-        </aside>
       </div>
     </section>
   );

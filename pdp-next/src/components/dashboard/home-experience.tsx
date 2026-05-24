@@ -465,13 +465,13 @@ function SignedInShell() {
         ) : null}
       </div>
 
-      <section className="pdp-panel">
-        <div className="mb-1 flex items-center justify-end gap-2 sm:hidden">
+      <div className="flex items-center justify-end gap-2">
+        <div className="sm:hidden">
           <button
             type="button"
             onClick={() => void handleQuickThemeChange(getNextThemeChoice(themeChoice))}
             disabled={isThemeSaving}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             aria-label={`Switch theme mode (currently ${themeChoice})`}
             title={`Theme: ${themeChoice}`}
           >
@@ -483,12 +483,55 @@ function SignedInShell() {
               <SystemIcon className="h-4 w-4" />
             )}
           </button>
-          {renderProfileMenuButton(
-            "inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-sm font-semibold text-slate-800 transition hover:bg-slate-50",
-          )}
         </div>
+        <div className="hidden items-center gap-2 sm:flex">
+          <div className="inline-flex rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => void handleQuickThemeChange("light")}
+              disabled={isThemeSaving}
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition ${
+                themeChoice === "light" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+              }`}
+              aria-label="Set light mode"
+              title="Light mode"
+            >
+              <SunIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleQuickThemeChange("dark")}
+              disabled={isThemeSaving}
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition ${
+                themeChoice === "dark" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+              }`}
+              aria-label="Set dark mode"
+              title="Dark mode"
+            >
+              <MoonIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleQuickThemeChange("system")}
+              disabled={isThemeSaving}
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition ${
+                themeChoice === "system" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+              }`}
+              aria-label="Set system mode"
+              title="System mode"
+            >
+              <SystemIcon className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        {renderProfileMenuButton(
+          "inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-xs font-semibold text-slate-800 transition hover:bg-slate-50 sm:h-9 sm:w-9",
+        )}
+      </div>
 
-        <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+      <section className="pdp-panel">
+
+        <div className="flex flex-col gap-3">
           <div>
             <div className="mb-2 flex min-w-0 items-center gap-2">
               {brandVisual.logoUrl ? (
@@ -514,53 +557,9 @@ function SignedInShell() {
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">
               Welcome back, {welcomeFirstName}
             </h1>
-            <p className="mt-2 max-w-none text-sm text-slate-600">
+            <p className="mt-2 hidden max-w-none text-sm text-slate-600 sm:block">
               Align your professional growth, personal life, and spiritual walk.
             </p>
-          </div>
-
-          <div className="hidden w-full items-center justify-end gap-2 self-start sm:flex sm:w-auto">
-            <div className="inline-flex rounded-full border border-slate-300 bg-white p-1 shadow-sm">
-              <button
-                type="button"
-                onClick={() => void handleQuickThemeChange("light")}
-                disabled={isThemeSaving}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition ${
-                  themeChoice === "light" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-                }`}
-                aria-label="Set light mode"
-                title="Light mode"
-              >
-                <SunIcon className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleQuickThemeChange("dark")}
-                disabled={isThemeSaving}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition ${
-                  themeChoice === "dark" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-                }`}
-                aria-label="Set dark mode"
-                title="Dark mode"
-              >
-                <MoonIcon className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleQuickThemeChange("system")}
-                disabled={isThemeSaving}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition ${
-                  themeChoice === "system" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-                }`}
-                aria-label="Set system mode"
-                title="System mode"
-              >
-                <SystemIcon className="h-4 w-4" />
-              </button>
-            </div>
-            {renderProfileMenuButton(
-              "inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-sm font-semibold text-slate-800 transition hover:bg-slate-50",
-            )}
           </div>
         </div>
 
@@ -1616,7 +1615,7 @@ function getBrandVisual(
       label: "CWM brand mark",
       logoUrl: "/cwm-logo.png",
       watermarkUrl: "/cwm-logo.png",
-      watermarkOpacity: 0.1,
+      watermarkOpacity: 0.5,
       watermarkScale: 1,
     };
   }
@@ -1629,7 +1628,7 @@ function getBrandVisual(
       label: `${selectedCollegeTeam.displayName} brand mark`,
       logoUrl: brandLogoUrl ?? selectedCollegeTeam.logoUrl,
       watermarkUrl: brandLogoUrl ?? selectedCollegeTeam.logoUrl,
-      watermarkOpacity: isDark ? 0.08 : 0.06,
+      watermarkOpacity: 0.5,
       watermarkScale: isDark ? 1.04 : 1,
     };
   }

@@ -8,6 +8,12 @@
   --pdp-theme-soft: #e2e8f0;
   --pdp-surface: #ffffff;
   --pdp-muted-surface: #f8fafc;
+  --pdp-surface-panel-opacity: 82%;
+  --pdp-surface-muted-opacity: 82%;
+  --pdp-surface-card-opacity: 84%;
+  --pdp-surface-secondary-opacity: 80%;
+  --pdp-muted-secondary-opacity: 76%;
+  --pdp-muted-article-opacity: 70%;
   --pdp-border: #cbd5e1;
   --pdp-text-strong: #0f172a;
   --pdp-text: #334155;
@@ -47,6 +53,12 @@
   --foreground: #171717;
   --pdp-surface: #ffffff;
   --pdp-muted-surface: #f8fafc;
+  --pdp-surface-panel-opacity: 82%;
+  --pdp-surface-muted-opacity: 82%;
+  --pdp-surface-card-opacity: 84%;
+  --pdp-surface-secondary-opacity: 80%;
+  --pdp-muted-secondary-opacity: 76%;
+  --pdp-muted-article-opacity: 70%;
   --pdp-border: #cbd5e1;
   --pdp-text-strong: #0f172a;
   --pdp-text: #334155;
@@ -64,6 +76,12 @@
   --foreground: #ededed;
   --pdp-surface: #0f172a;
   --pdp-muted-surface: #111827;
+  --pdp-surface-panel-opacity: 87%;
+  --pdp-surface-muted-opacity: 72%;
+  --pdp-surface-card-opacity: 74%;
+  --pdp-surface-secondary-opacity: 66%;
+  --pdp-muted-secondary-opacity: 62%;
+  --pdp-muted-article-opacity: 56%;
   --pdp-border: #334155;
   --pdp-text-strong: #f8fafc;
   --pdp-text: #e2e8f0;
@@ -105,7 +123,7 @@ h1, h2, h3, h4, h5, h6,
 }
 
 .pdp-shell .bg-white {
-  background-color: var(--pdp-surface) !important;
+  background-color: color-mix(in srgb, var(--pdp-surface) var(--pdp-surface-secondary-opacity), transparent) !important;
 }
 
 .pdp-shell .bg-slate-50,
@@ -113,7 +131,7 @@ h1, h2, h3, h4, h5, h6,
 .pdp-shell .bg-slate-50\/70,
 .pdp-shell .bg-slate-100,
 .pdp-shell .bg-slate-200 {
-  background-color: var(--pdp-muted-surface) !important;
+  background-color: color-mix(in srgb, var(--pdp-muted-surface) var(--pdp-muted-secondary-opacity), transparent) !important;
 }
 
 .pdp-shell .bg-slate-900,
@@ -163,22 +181,29 @@ h1, h2, h3, h4, h5, h6,
 .pdp-panel {
   border-radius: 1rem;
   border: 1px solid var(--pdp-border);
-  background-color: var(--pdp-surface);
+  background-color: color-mix(in srgb, var(--pdp-surface) var(--pdp-surface-panel-opacity), transparent);
   padding: 1.25rem;
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+  backdrop-filter: blur(2px);
 }
 
 .pdp-panel-muted {
   border-radius: 0.75rem;
   border: 1px solid var(--pdp-border);
-  background-color: var(--pdp-muted-surface);
+  background-color: color-mix(in srgb, var(--pdp-muted-surface) var(--pdp-surface-muted-opacity), transparent);
   padding: 1rem;
+  backdrop-filter: blur(2px);
+}
+
+.pdp-shell article.pdp-panel-muted {
+  background-color: color-mix(in srgb, var(--pdp-muted-surface) var(--pdp-muted-article-opacity), transparent);
 }
 
 .pdp-card {
   border-radius: 0.75rem;
   border: 1px solid var(--pdp-border);
-  background-color: var(--pdp-surface);
+  background-color: color-mix(in srgb, var(--pdp-surface) var(--pdp-surface-card-opacity), transparent);
+  backdrop-filter: blur(2px);
 }
 
 .pdp-shell .pdp-selectable-row {
@@ -385,6 +410,36 @@ h1, h2, h3, h4, h5, h6,
   line-height: 1.2;
 }
 
+.pdp-calendar-event-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0.75rem;
+}
+
+.pdp-calendar-event-dot-marker {
+  display: inline-block;
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--pdp-text-strong) 30%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pdp-surface) 65%, transparent);
+}
+
+.pdp-calendar-event-dot-marker-goal {
+  border-radius: 999px;
+}
+
+.pdp-calendar-event-dot-marker-subgoal {
+  border-radius: 0.14rem;
+}
+
+.pdp-calendar-event-dot-marker-task {
+  border-radius: 0.08rem;
+  transform: rotate(45deg);
+}
+
 .pdp-status-chip {
   margin-top: 2px;
   display: inline-flex;
@@ -504,6 +559,14 @@ h1, h2, h3, h4, h5, h6,
   min-height: 5.25rem;
 }
 
+.pdp-calendar .fc {
+  max-width: 100%;
+}
+
+.pdp-calendar .fc .fc-scrollgrid {
+  width: 100% !important;
+}
+
 .pdp-touch-mode .fc .fc-button {
   min-height: 2.5rem;
   padding: 0.45rem 0.9rem;
@@ -568,12 +631,23 @@ h1, h2, h3, h4, h5, h6,
   }
 
   .fc .fc-daygrid-day-number {
-    font-size: 0.8rem;
-    padding: 4px;
+    font-size: 0.74rem;
+    padding: 2px 3px;
   }
 
   .fc .fc-daygrid-event {
-    padding: 2px 3px;
+    padding: 1px 2px;
+    margin-top: 1px;
+  }
+
+  .fc .fc-daygrid-day-frame {
+    min-height: 4.15rem;
+  }
+
+  .fc .fc-col-header-cell-cushion {
+    font-size: 0.67rem;
+    padding: 5px 2px;
+    letter-spacing: 0.01em;
   }
 
   .pdp-status-chip {

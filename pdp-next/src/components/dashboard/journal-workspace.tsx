@@ -6,6 +6,7 @@ import { db } from "@/lib/instantdb/client";
 import { renderStrictMarkdownToHtml } from "@/lib/journal/markdown";
 import type { Goal, JournalEntry } from "@/lib/domain/types";
 import { CrudModal } from "@/components/ui/crud-modal";
+import { InfoPopover } from "@/components/ui/info-popover";
 
 const MOOD_OPTIONS = ["great", "good", "okay", "low", "stressed"] as const;
 
@@ -30,6 +31,34 @@ export function JournalWorkspace() {
   const [goalFilter, setGoalFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mobileQuery = window.matchMedia("(max-width: 768px)");
+    const syncFilterPanel = () => {
+      setIsFilterPanelOpen(!mobileQuery.matches);
+    };
+
+    syncFilterPanel();
+
+    if (typeof mobileQuery.addEventListener === "function") {
+      mobileQuery.addEventListener("change", syncFilterPanel);
+    } else {
+      mobileQuery.addListener(syncFilterPanel);
+    }
+
+    return () => {
+      if (typeof mobileQuery.removeEventListener === "function") {
+        mobileQuery.removeEventListener("change", syncFilterPanel);
+      } else {
+        mobileQuery.removeListener(syncFilterPanel);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -214,7 +243,12 @@ export function JournalWorkspace() {
   return (
     <section className="pdp-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-900">Journal</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-slate-900">Journal</h2>
+          <InfoPopover className="self-center sm:hidden" label="Journal help">
+            Create, edit, archive, and filter journal entries with strict markdown rendering.
+          </InfoPopover>
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -229,7 +263,7 @@ export function JournalWorkspace() {
         </div>
       </div>
 
-      <p className="mt-2 text-sm text-slate-600">
+      <p className="mt-2 hidden text-sm text-slate-600 sm:block">
         Create, edit, archive, and filter journal entries with strict markdown rendering.
       </p>
 
@@ -338,60 +372,76 @@ export function JournalWorkspace() {
         </form>
       </CrudModal>
 
-      <div className="pdp-panel-muted mt-4 grid gap-3 md:grid-cols-4">
-        <label className="text-sm font-medium text-slate-700" htmlFor="journal-filter-mood">
-          Mood Filter
-          <select
-            id="journal-filter-mood"
-            value={moodFilter}
-            onChange={(event) => setMoodFilter(event.target.value)}
-            className="pdp-control mt-1"
+      <div className="pdp-panel-muted mt-4 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-slate-900">Journal filters</p>
+          <button
+            type="button"
+            onClick={() => setIsFilterPanelOpen((current) => !current)}
+            className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+            aria-expanded={isFilterPanelOpen}
           >
-            <option value="all">All moods</option>
-            {MOOD_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {capitalize(option)}
-              </option>
-            ))}
-          </select>
-        </label>
+            {isFilterPanelOpen ? "Hide filters" : "Show filters"}
+          </button>
+        </div>
 
-        <label className="text-sm font-medium text-slate-700" htmlFor="journal-filter-goal">
-          Goal Filter
-          <select
-            id="journal-filter-goal"
-            value={goalFilter}
-            onChange={(event) => setGoalFilter(event.target.value)}
-            className="pdp-control mt-1"
-          >
-            <option value="all">All goals</option>
-            {goals.map((goal) => (
-              <option key={goal.id} value={goal.id}>
-                {goal.title}
-              </option>
-            ))}
-          </select>
-        </label>
+        {isFilterPanelOpen ? (
+          <div className="mt-3 grid gap-3 md:grid-cols-4">
+            <label className="text-sm font-medium text-slate-700" htmlFor="journal-filter-mood">
+              Mood Filter
+              <select
+                id="journal-filter-mood"
+                value={moodFilter}
+                onChange={(event) => setMoodFilter(event.target.value)}
+                className="pdp-control mt-1"
+              >
+                <option value="all">All moods</option>
+                {MOOD_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {capitalize(option)}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        <label className="text-sm font-medium text-slate-700" htmlFor="journal-filter-tag">
-          Tag Filter
-          <input
-            id="journal-filter-tag"
-            value={tagFilter}
-            onChange={(event) => setTagFilter(event.target.value)}
-            placeholder="Search tag"
-            className="pdp-control mt-1"
-          />
-        </label>
+            <label className="text-sm font-medium text-slate-700" htmlFor="journal-filter-goal">
+              Goal Filter
+              <select
+                id="journal-filter-goal"
+                value={goalFilter}
+                onChange={(event) => setGoalFilter(event.target.value)}
+                className="pdp-control mt-1"
+              >
+                <option value="all">All goals</option>
+                {goals.map((goal) => (
+                  <option key={goal.id} value={goal.id}>
+                    {goal.title}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 md:pt-7">
-          <input
-            type="checkbox"
-            checked={includeArchived}
-            onChange={(event) => setIncludeArchived(event.target.checked)}
-          />
-          Include archived
-        </label>
+            <label className="text-sm font-medium text-slate-700" htmlFor="journal-filter-tag">
+              Tag Filter
+              <input
+                id="journal-filter-tag"
+                value={tagFilter}
+                onChange={(event) => setTagFilter(event.target.value)}
+                placeholder="Search tag"
+                className="pdp-control mt-1"
+              />
+            </label>
+
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700 md:pt-7">
+              <input
+                type="checkbox"
+                checked={includeArchived}
+                onChange={(event) => setIncludeArchived(event.target.checked)}
+              />
+              Include archived
+            </label>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-4 space-y-3">
