@@ -97,6 +97,7 @@
 - [x] Add permanent delete cascade workflow with explicit archived-item confirmation UX
 - [x] Add permanent delete action for archived journal entries with explicit confirmation
 - [x] Align journal CRUD/archive/restore/delete flows to protected server API routes
+- [x] Add route-level regression tests for journal list/detail/archive/restore/delete APIs
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).
