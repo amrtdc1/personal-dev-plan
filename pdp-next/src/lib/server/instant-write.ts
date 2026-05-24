@@ -1,4 +1,13 @@
-import type { Goal, GoalType, ItemStatus, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
+import type {
+  Goal,
+  GoalType,
+  Habit,
+  HabitCheckin,
+  ItemStatus,
+  JournalEntry,
+  Subgoal,
+  Task,
+} from "@/lib/domain/types";
 import {
   validateGoalWrite,
   validateJournalEntryWrite,
@@ -7,20 +16,27 @@ import {
 } from "@/lib/data/validation";
 import { statusToPercent } from "@/lib/domain/status";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
+import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {
   findOwnedGoal,
+  findOwnedHabit,
+  findOwnedHabitCheckin,
   findOwnedJournalEntry,
   findOwnedSubgoal,
   findOwnedTask,
 } from "@/lib/server/instant-route";
 import {
   parseGoalWritePayload,
+  parseHabitCheckinWritePayload,
+  parseHabitWritePayload,
   parseJournalWritePayload,
   parseSubgoalWritePayload,
   parseTaskWritePayload,
 } from "@/lib/server/instant-write-params";
 import type {
   ParsedGoalWritePayload,
+  ParsedHabitCheckinWritePayload,
+  ParsedHabitWritePayload,
   ParsedJournalWritePayload,
   ParsedSubgoalWritePayload,
   ParsedTaskWritePayload,
@@ -28,6 +44,8 @@ import type {
 
 export {
   parseGoalWritePayload,
+  parseHabitCheckinWritePayload,
+  parseHabitWritePayload,
   parseJournalWritePayload,
   parseSubgoalWritePayload,
   parseTaskWritePayload,
@@ -501,6 +519,157 @@ export async function updateJournalEntry(
   );
 
   return journalEntry;
+}
+
+export async function createHabit(ownerUid: string, payload: ParsedHabitWritePayload) {
+  const instantAdmin = getInstantAdmin();
+  const now = new Date().toISOString();
+  const habitId = crypto.randomUUID();
+  const trimmedTitle = payload.title.trim();
+
+  if (!trimmedTitle) {
+    throw new InstantRouteBadRequestError("Habit title is required.");
+  }
+
+  const habit: Habit = {
+    id: habitId,
+    ownerUid,
+    title: trimmedTitle,
+    cadence: payload.cadence,
+    targetCount: payload.targetCount,
+    status: payload.status,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+    deletedBy: null,
+    restoreUntil: null,
+    purgeAt: null,
+  };
+
+  await instantAdmin.transact(
+    instantAdmin.tx.habits[habitId].update({
+      ownerUid: habit.ownerUid,
+      title: habit.title,
+      cadence: habit.cadence,
+      targetCount: habit.targetCount,
+      status: habit.status,
+      createdAt: habit.createdAt,
+      updatedAt: habit.updatedAt,
+      deletedAt: habit.deletedAt,
+      deletedBy: habit.deletedBy,
+      restoreUntil: habit.restoreUntil,
+      purgeAt: habit.purgeAt,
+    }),
+  );
+
+  return habit;
+}
+
+export async function updateHabit(ownerUid: string, habitId: string, payload: ParsedHabitWritePayload) {
+  const instantAdmin = getInstantAdmin();
+  const existingHabit = await findOwnedHabit(ownerUid, habitId);
+  const now = new Date().toISOString();
+  const trimmedTitle = payload.title.trim();
+
+  if (!trimmedTitle) {
+    throw new InstantRouteBadRequestError("Habit title is required.");
+  }
+
+  const habit: Habit = {
+    ...existingHabit,
+    title: trimmedTitle,
+    cadence: payload.cadence,
+    targetCount: payload.targetCount,
+    status: payload.status,
+    updatedAt: now,
+  };
+
+  await instantAdmin.transact(
+    instantAdmin.tx.habits[habitId].update({
+      title: habit.title,
+      cadence: habit.cadence,
+      targetCount: habit.targetCount,
+      status: habit.status,
+      updatedAt: habit.updatedAt,
+    }),
+  );
+
+  return habit;
+}
+
+export async function createHabitCheckin(
+  ownerUid: string,
+  habitId: string,
+  payload: ParsedHabitCheckinWritePayload,
+) {
+  const instantAdmin = getInstantAdmin();
+  await findOwnedHabit(ownerUid, habitId);
+  const now = new Date().toISOString();
+  const checkinId = crypto.randomUUID();
+
+  const checkin: HabitCheckin = {
+    id: checkinId,
+    ownerUid,
+    habitId,
+    checkInDate: payload.checkInDate,
+    notes: payload.notes,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await instantAdmin.transact(
+    instantAdmin.tx.habitCheckins[checkinId].update({
+      ownerUid: checkin.ownerUid,
+      habitId: checkin.habitId,
+      checkInDate: checkin.checkInDate,
+      notes: checkin.notes,
+      createdAt: checkin.createdAt,
+      updatedAt: checkin.updatedAt,
+    }),
+  );
+
+  return checkin;
+}
+
+export async function updateHabitCheckin(
+  ownerUid: string,
+  habitId: string,
+  checkinId: string,
+  payload: ParsedHabitCheckinWritePayload,
+) {
+  const instantAdmin = getInstantAdmin();
+  await findOwnedHabit(ownerUid, habitId);
+  const existingCheckin = await findOwnedHabitCheckin(ownerUid, habitId, checkinId);
+  const now = new Date().toISOString();
+
+  const checkin: HabitCheckin = {
+    ...existingCheckin,
+    checkInDate: payload.checkInDate,
+    notes: payload.notes,
+    updatedAt: now,
+  };
+
+  await instantAdmin.transact(
+    instantAdmin.tx.habitCheckins[checkinId].update({
+      checkInDate: checkin.checkInDate,
+      notes: checkin.notes,
+      updatedAt: checkin.updatedAt,
+    }),
+  );
+
+  return checkin;
+}
+
+export async function deleteHabitCheckin(ownerUid: string, habitId: string, checkinId: string) {
+  const instantAdmin = getInstantAdmin();
+  await findOwnedHabit(ownerUid, habitId);
+  await findOwnedHabitCheckin(ownerUid, habitId, checkinId);
+
+  await instantAdmin.transact(instantAdmin.tx.habitCheckins[checkinId].delete());
+
+  return {
+    deletedCheckinId: checkinId,
+  };
 }
 
 async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {

@@ -98,6 +98,14 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-archivo), var(--font-geist-sans), "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+@media (min-width: 1200px) {
+  body {
+    font-size: 17px;
+  }
 }
 
 h1, h2, h3, h4, h5, h6,
@@ -108,6 +116,13 @@ h1, h2, h3, h4, h5, h6,
 
 .pdp-shell {
   position: relative;
+  font-size: 1.02rem;
+}
+
+@media (min-width: 1024px) {
+  .pdp-shell {
+    font-size: 1.06rem;
+  }
 }
 
 .pdp-shell::before {
@@ -197,6 +212,16 @@ h1, h2, h3, h4, h5, h6,
   backdrop-filter: blur(2px);
 }
 
+.pdp-shell .pdp-panel > h2 {
+  font-size: clamp(1.35rem, 1.1rem + 0.7vw, 1.85rem);
+  line-height: 1.15;
+}
+
+.pdp-shell .pdp-panel-muted > h3 {
+  font-size: clamp(1rem, 0.9rem + 0.45vw, 1.3rem);
+  line-height: 1.2;
+}
+
 .pdp-panel-muted {
   border-radius: 0.75rem;
   border: 1px solid var(--pdp-border);
@@ -248,7 +273,7 @@ h1, h2, h3, h4, h5, h6,
   background-color: var(--pdp-surface);
   color: var(--pdp-text-strong);
   padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
+  font-size: 0.95rem;
   line-height: 1.25rem;
 }
 

@@ -103,6 +103,17 @@
 - [x] Add dashboard regression test coverage for weekly-default goal horizon filter controls
 - [x] Add goal route-level regression tests for horizon-aware create/update payload handling
 - [x] Add horizon filter count badges and repository regression coverage for legacy goals without horizon
+- [x] Persist goals horizon filter preference locally so users return to their last selected horizon
+- [x] Add owner-scoped habits API scaffolding (list/create/detail/update/archive/restore/delete) with route-level regression tests
+- [x] Add nested habit check-in API scaffolding (list/create) with parser and route-level regression tests
+- [x] Add nested habit check-in detail mutations (get/update/delete) with ownership checks and route-level regression tests
+- [x] Add repository habits/check-ins client layer (list/save/archive/restore/delete) with offline replay coverage and API-path regression tests
+- [x] Add dashboard habits/check-ins panel (list, create habit, quick daily check-in) with component regression coverage
+- [x] Reshape dashboard into today-first command center with collapsed Review & Analysis and direct goals-workspace CTA
+- [x] Increase global typography scale (desktop-first) and strengthen panel heading hierarchy for faster scanning
+- [x] Replace dashboard Review toggle with Today/Review tabs, default to Today, and persist tab preference locally
+- [x] Apply dashboard density pass by trimming redundant helper copy, tightening spacing, and standardizing quick-action button styling
+- [x] Add Today Queue sorting toggle (Urgent vs Quick Wins) with local persistence and dashboard regression coverage
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).

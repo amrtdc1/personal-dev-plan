@@ -1,6 +1,8 @@
 export type GoalType = "professional" | "personal";
 export type GoalHorizon = "long_term" | "medium_term" | "short_term";
 export type ItemStatus = "not_started" | "in_progress" | "done";
+export type HabitCadence = "daily" | "weekly";
+export type HabitState = "active" | "paused" | "archived";
 
 export type SoftDeleteFields = {
   deletedAt: string | null;
@@ -70,6 +72,27 @@ export type JournalEntry = SoftDeleteFields & {
   mood: string | null;
   tags: string[];
   relatedGoalId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Habit = SoftDeleteFields & {
+  id: string;
+  ownerUid: string;
+  title: string;
+  cadence: HabitCadence;
+  targetCount: number;
+  status: HabitState;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type HabitCheckin = {
+  id: string;
+  ownerUid: string;
+  habitId: string;
+  checkInDate: string;
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
 };

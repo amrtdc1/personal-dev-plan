@@ -1,9 +1,10 @@
 import { env } from "@/lib/config/env";
-import type { Subgoal, Task } from "@/lib/domain/types";
+import type { Habit, Subgoal, Task } from "@/lib/domain/types";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {
   findOwnedGoal,
+  findOwnedHabit,
   findOwnedJournalEntry,
   findOwnedSubgoal,
   findOwnedTask,
@@ -362,6 +363,73 @@ export async function restoreJournalEntry(ownerUid: string, journalEntryId: stri
   };
 }
 
+export async function archiveHabit(ownerUid: string, habitId: string) {
+  const instantAdmin = getInstantAdmin();
+  const habit = await findOwnedHabit(ownerUid, habitId);
+
+  if (habit.deletedAt) {
+    return habit;
+  }
+
+  const now = new Date().toISOString();
+  const lifecycle = buildSoftDeleteLifecycle(now);
+
+  await instantAdmin.transact(
+    instantAdmin.tx.habits[habitId].update({
+      deletedAt: now,
+      deletedBy: ownerUid,
+      restoreUntil: lifecycle.restoreUntil,
+      purgeAt: lifecycle.purgeAt,
+      updatedAt: now,
+      status: "archived",
+    }),
+  );
+
+  return {
+    ...habit,
+    deletedAt: now,
+    deletedBy: ownerUid,
+    restoreUntil: lifecycle.restoreUntil,
+    purgeAt: lifecycle.purgeAt,
+    updatedAt: now,
+    status: "archived" as Habit["status"],
+  };
+}
+
+export async function restoreHabit(ownerUid: string, habitId: string) {
+  const instantAdmin = getInstantAdmin();
+  const habit = await findOwnedHabit(ownerUid, habitId);
+
+  if (!habit.deletedAt) {
+    return habit;
+  }
+
+  assertRestoreWindowOpen(habit.restoreUntil, "Habit");
+
+  const now = new Date().toISOString();
+
+  await instantAdmin.transact(
+    instantAdmin.tx.habits[habitId].update({
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+      updatedAt: now,
+      status: "active",
+    }),
+  );
+
+  return {
+    ...habit,
+    deletedAt: null,
+    deletedBy: null,
+    restoreUntil: null,
+    purgeAt: null,
+    updatedAt: now,
+    status: "active" as Habit["status"],
+  };
+}
+
 export async function permanentlyDeleteGoal(ownerUid: string, goalId: string) {
   const instantAdmin = getInstantAdmin();
   const goal = await findOwnedGoal(ownerUid, goalId);
@@ -445,6 +513,38 @@ export async function permanentlyDeleteJournalEntry(ownerUid: string, journalEnt
 
   return {
     deletedJournalEntryId: journalEntryId,
+  };
+}
+
+export async function permanentlyDeleteHabit(ownerUid: string, habitId: string) {
+  const instantAdmin = getInstantAdmin();
+  const habit = await findOwnedHabit(ownerUid, habitId);
+
+  if (!habit.deletedAt) {
+    throw new InstantRouteBadRequestError("Habit must be archived before permanent deletion.");
+  }
+
+  const { habitCheckins = [] } = await instantAdmin.query({
+    habitCheckins: {
+      $: {
+        where: {
+          ownerUid,
+          habitId,
+        },
+      },
+    },
+  });
+
+  const deleteMutations = [
+    ...(habitCheckins as Array<{ id: string }>).map((checkin) => instantAdmin.tx.habitCheckins[checkin.id].delete()),
+    instantAdmin.tx.habits[habitId].delete(),
+  ];
+
+  await instantAdmin.transact(deleteMutations);
+
+  return {
+    deletedHabitId: habitId,
+    deletedCheckins: habitCheckins.length,
   };
 }
 

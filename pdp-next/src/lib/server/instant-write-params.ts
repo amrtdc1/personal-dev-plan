@@ -1,4 +1,4 @@
-import type { GoalHorizon, GoalType } from "@/lib/domain/types";
+import type { GoalHorizon, GoalType, HabitCadence, HabitState } from "@/lib/domain/types";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 
 type GoalWritePayload = {
@@ -36,6 +36,18 @@ type JournalWritePayload = {
   relatedGoalId?: string | null;
 };
 
+type HabitWritePayload = {
+  title?: string;
+  cadence?: HabitCadence;
+  targetCount?: number;
+  status?: HabitState;
+};
+
+type HabitCheckinWritePayload = {
+  checkInDate?: string;
+  notes?: string | null;
+};
+
 export type ParsedGoalWritePayload = {
   type: GoalType;
   horizon: GoalHorizon;
@@ -69,6 +81,18 @@ export type ParsedJournalWritePayload = {
   mood: string | null;
   tags: string[];
   relatedGoalId: string | null;
+};
+
+export type ParsedHabitWritePayload = {
+  title: string;
+  cadence: HabitCadence;
+  targetCount: number;
+  status: HabitState;
+};
+
+export type ParsedHabitCheckinWritePayload = {
+  checkInDate: string;
+  notes: string | null;
 };
 
 export async function parseGoalWritePayload(request: Request): Promise<ParsedGoalWritePayload> {
@@ -176,6 +200,54 @@ export async function parseJournalWritePayload(request: Request): Promise<Parsed
   };
 }
 
+export async function parseHabitWritePayload(request: Request): Promise<ParsedHabitWritePayload> {
+  const payload = await parseJsonPayload<HabitWritePayload>(request);
+
+  if (typeof payload.title !== "string") {
+    throw new InstantRouteBadRequestError("Habit title is required.");
+  }
+
+  if (!payload.cadence || !isHabitCadence(payload.cadence)) {
+    throw new InstantRouteBadRequestError("Habit cadence is required.");
+  }
+
+  if (typeof payload.targetCount !== "number" || !Number.isFinite(payload.targetCount)) {
+    throw new InstantRouteBadRequestError("Habit target count is required.");
+  }
+
+  if (payload.targetCount <= 0) {
+    throw new InstantRouteBadRequestError("Habit target count must be greater than zero.");
+  }
+
+  if (payload.status !== undefined && !isHabitState(payload.status)) {
+    throw new InstantRouteBadRequestError("Habit status is not supported.");
+  }
+
+  return {
+    title: payload.title,
+    cadence: payload.cadence,
+    targetCount: Math.round(payload.targetCount),
+    status: payload.status ?? "active",
+  };
+}
+
+export async function parseHabitCheckinWritePayload(request: Request): Promise<ParsedHabitCheckinWritePayload> {
+  const payload = await parseJsonPayload<HabitCheckinWritePayload>(request);
+
+  if (typeof payload.checkInDate !== "string" || payload.checkInDate.trim().length === 0) {
+    throw new InstantRouteBadRequestError("Habit check-in date is required.");
+  }
+
+  if (payload.notes !== undefined && payload.notes !== null && typeof payload.notes !== "string") {
+    throw new InstantRouteBadRequestError("Habit check-in notes must be a string when provided.");
+  }
+
+  return {
+    checkInDate: payload.checkInDate.trim(),
+    notes: payload.notes?.trim() ? payload.notes.trim() : null,
+  };
+}
+
 async function parseJsonPayload<TPayload>(request: Request) {
   try {
     return (await request.json()) as TPayload;
@@ -214,4 +286,12 @@ function parseGoalHorizon(value: unknown): GoalHorizon {
   }
 
   return value;
+}
+
+function isHabitCadence(value: string): value is HabitCadence {
+  return value === "daily" || value === "weekly";
+}
+
+function isHabitState(value: string): value is HabitState {
+  return value === "active" || value === "paused" || value === "archived";
 }

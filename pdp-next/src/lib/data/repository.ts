@@ -6,6 +6,10 @@ import type {
   Goal,
   GoalHorizon,
   GoalType,
+  Habit,
+  HabitCadence,
+  HabitCheckin,
+  HabitState,
   ItemStatus,
   JournalEntry,
   Subgoal,
@@ -97,6 +101,25 @@ export type SaveJournalEntryInput = {
   existingJournalEntry?: JournalEntry;
 };
 
+export type SaveHabitInput = {
+  habitId?: string;
+  ownerUid: string;
+  title: string;
+  cadence: HabitCadence;
+  targetCount: number;
+  status?: HabitState;
+  existingHabit?: Habit;
+};
+
+export type SaveHabitCheckinInput = {
+  checkinId?: string;
+  ownerUid: string;
+  habitId: string;
+  checkInDate: string;
+  notes: string | null;
+  existingCheckin?: HabitCheckin;
+};
+
 type GoalStatusUpdateInput = {
   ownerUid: string;
   goalId: string;
@@ -173,6 +196,22 @@ type JournalPermanentDeleteInput = {
   journalEntryId: string;
 };
 
+type HabitArchiveInput = {
+  ownerUid: string;
+  habitId: string;
+};
+
+type HabitPermanentDeleteInput = {
+  ownerUid: string;
+  habitId: string;
+};
+
+type HabitCheckinDeleteInput = {
+  ownerUid: string;
+  habitId: string;
+  checkinId: string;
+};
+
 export type DataRepository = {
   listGoals: (ownerUid: string, type: GoalType, options?: ListOptions) => Promise<Goal[]>;
   saveGoal: (input: SaveGoalInput) => Promise<Goal>;
@@ -206,6 +245,14 @@ export type DataRepository = {
   softDeleteJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<JournalEntry>;
   restoreJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<JournalEntry>;
   permanentlyDeleteJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<void>;
+  listHabits: (ownerUid: string, options?: ListOptions) => Promise<Habit[]>;
+  saveHabit: (input: SaveHabitInput) => Promise<Habit>;
+  softDeleteHabit: (ownerUid: string, habitId: string) => Promise<Habit>;
+  restoreHabit: (ownerUid: string, habitId: string) => Promise<Habit>;
+  permanentlyDeleteHabit: (ownerUid: string, habitId: string) => Promise<void>;
+  listHabitCheckins: (ownerUid: string, habitId: string) => Promise<HabitCheckin[]>;
+  saveHabitCheckin: (input: SaveHabitCheckinInput) => Promise<HabitCheckin>;
+  deleteHabitCheckin: (ownerUid: string, habitId: string, checkinId: string) => Promise<void>;
   getOfflineMutationCount: () => number;
   subscribeOfflineMutationCount: (listener: (count: number) => void) => () => void;
   flushOfflineMutations: () => Promise<OfflineFlushResult>;
@@ -1379,6 +1426,210 @@ export const dataRepository: DataRepository = {
       },
     );
   },
+  async listHabits(ownerUid, options) {
+    if (canUseProtectedApiRoutes()) {
+      const searchParams = new URLSearchParams({
+        includeDeleted: String(Boolean(options?.includeDeleted)),
+      });
+      const response = await invokeProtectedRead<{ habits?: Habit[] }>(`/api/habits?${searchParams.toString()}`);
+      return filterDeleted(response.habits ?? [], options).sort((left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt) || right.createdAt.localeCompare(left.createdAt),
+      );
+    }
+
+    const data = await runClientQuery<{ habits?: Habit[] }>({
+      habits: {
+        $: {
+          where: {
+            ownerUid,
+          },
+        },
+      },
+    });
+
+    return filterDeleted(data.habits ?? [], options).sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt) || right.createdAt.localeCompare(left.createdAt),
+    );
+  },
+  async saveHabit(input) {
+    ensureClientMutationSupport();
+
+    const now = new Date().toISOString();
+    const habitId = input.existingHabit?.id ?? input.habitId ?? id();
+    const title = input.title.trim();
+    if (!title) {
+      throw new Error("Habit title is required.");
+    }
+
+    if (!Number.isFinite(input.targetCount) || input.targetCount <= 0) {
+      throw new Error("Habit target count must be greater than zero.");
+    }
+
+    const habit: Habit = {
+      id: habitId,
+      ownerUid: input.ownerUid,
+      title,
+      cadence: input.cadence,
+      targetCount: Math.round(input.targetCount),
+      status: input.status ?? input.existingHabit?.status ?? "active",
+      createdAt: input.existingHabit?.createdAt ?? now,
+      updatedAt: now,
+      deletedAt: input.existingHabit?.deletedAt ?? null,
+      deletedBy: input.existingHabit?.deletedBy ?? null,
+      restoreUntil: input.existingHabit?.restoreUntil ?? null,
+      purgeAt: input.existingHabit?.purgeAt ?? null,
+    };
+
+    let persistedHabit: Habit | null = null;
+
+    await commitOrQueueMutation("saveHabit", input, async () => {
+      persistedHabit = await saveHabitViaApi(habit, Boolean(input.existingHabit));
+    });
+
+    return persistedHabit ?? habit;
+  },
+  async softDeleteHabit(ownerUid, habitId) {
+    ensureClientMutationSupport();
+
+    const habit = await findHabitById(ownerUid, habitId);
+    if (!habit) {
+      throw new Error("Habit was not found for this user.");
+    }
+
+    if (habit.deletedAt) {
+      return habit;
+    }
+
+    let archivedHabit: Habit | null = null;
+
+    await commitOrQueueMutation("softDeleteHabit", { ownerUid, habitId } as HabitArchiveInput, async () => {
+      archivedHabit = await archiveHabitViaApi(habitId);
+    });
+
+    if (archivedHabit) {
+      return archivedHabit;
+    }
+
+    const now = new Date().toISOString();
+    const lifecycle = buildSoftDeleteLifecycle(now);
+    return {
+      ...habit,
+      deletedAt: now,
+      deletedBy: ownerUid,
+      restoreUntil: lifecycle.restoreUntil,
+      purgeAt: lifecycle.purgeAt,
+      updatedAt: now,
+      status: "archived",
+    };
+  },
+  async restoreHabit(ownerUid, habitId) {
+    ensureClientMutationSupport();
+
+    const habit = await findHabitById(ownerUid, habitId);
+    if (!habit) {
+      throw new Error("Habit was not found for this user.");
+    }
+
+    if (!habit.deletedAt) {
+      return habit;
+    }
+
+    let restoredHabit: Habit | null = null;
+
+    await commitOrQueueMutation("restoreHabit", { ownerUid, habitId } as HabitArchiveInput, async () => {
+      restoredHabit = await restoreHabitViaApi(habitId);
+    });
+
+    if (restoredHabit) {
+      return restoredHabit;
+    }
+
+    const now = new Date().toISOString();
+    return {
+      ...habit,
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+      updatedAt: now,
+      status: "active",
+    };
+  },
+  async permanentlyDeleteHabit(ownerUid, habitId) {
+    ensureClientMutationSupport();
+
+    await commitOrQueueMutation(
+      "permanentlyDeleteHabit",
+      { ownerUid, habitId } as HabitPermanentDeleteInput,
+      async () => {
+        await permanentlyDeleteHabitViaApi(habitId);
+      },
+    );
+  },
+  async listHabitCheckins(ownerUid, habitId) {
+    if (canUseProtectedApiRoutes()) {
+      const response = await invokeProtectedRead<{ checkins?: HabitCheckin[] }>(`/api/habits/${habitId}/checkins`);
+      return (response.checkins ?? []).sort(
+        (left, right) => right.checkInDate.localeCompare(left.checkInDate) || right.createdAt.localeCompare(left.createdAt),
+      );
+    }
+
+    const data = await runClientQuery<{ habitCheckins?: HabitCheckin[] }>({
+      habitCheckins: {
+        $: {
+          where: {
+            ownerUid,
+            habitId,
+          },
+        },
+      },
+    });
+
+    return (data.habitCheckins ?? []).sort(
+      (left, right) => right.checkInDate.localeCompare(left.checkInDate) || right.createdAt.localeCompare(left.createdAt),
+    );
+  },
+  async saveHabitCheckin(input) {
+    ensureClientMutationSupport();
+
+    const checkInDate = input.checkInDate.trim();
+    if (!checkInDate) {
+      throw new Error("Habit check-in date is required.");
+    }
+
+    const normalizedNotes = input.notes?.trim() ? input.notes.trim() : null;
+    const now = new Date().toISOString();
+    const checkinId = input.existingCheckin?.id ?? input.checkinId ?? id();
+
+    const checkin: HabitCheckin = {
+      id: checkinId,
+      ownerUid: input.ownerUid,
+      habitId: input.habitId,
+      checkInDate,
+      notes: normalizedNotes,
+      createdAt: input.existingCheckin?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    let persistedCheckin: HabitCheckin | null = null;
+
+    await commitOrQueueMutation("saveHabitCheckin", input, async () => {
+      persistedCheckin = await saveHabitCheckinViaApi(checkin, Boolean(input.existingCheckin));
+    });
+
+    return persistedCheckin ?? checkin;
+  },
+  async deleteHabitCheckin(ownerUid, habitId, checkinId) {
+    ensureClientMutationSupport();
+
+    await commitOrQueueMutation(
+      "deleteHabitCheckin",
+      { ownerUid, habitId, checkinId } as HabitCheckinDeleteInput,
+      async () => {
+        await deleteHabitCheckinViaApi(habitId, checkinId);
+      },
+    );
+  },
   getOfflineMutationCount() {
     return getOfflineMutationCountFromQueue();
   },
@@ -1573,6 +1824,33 @@ async function findJournalEntryById(ownerUid: string, journalEntryId: string) {
   });
 
   return (data.journalEntries ?? []).find((entry) => entry.id === journalEntryId) ?? null;
+}
+
+async function findHabitById(ownerUid: string, habitId: string) {
+  if (canUseProtectedApiRoutes()) {
+    try {
+      const response = await invokeProtectedRead<{ habit?: Habit }>(`/api/habits/${habitId}`);
+      return response.habit ?? null;
+    } catch (error) {
+      if (isProtectedNotFoundError(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  const data = await runClientQuery<{ habits?: Habit[] }>({
+    habits: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  return (data.habits ?? []).find((habit) => habit.id === habitId) ?? null;
 }
 
 function filterDeleted<
@@ -1939,6 +2217,52 @@ async function permanentlyDeleteJournalEntryViaApi(journalEntryId: string) {
   await invokeProtectedWrite(`/api/journal/${journalEntryId}`, "DELETE");
 }
 
+async function saveHabitViaApi(habit: Habit, isUpdate: boolean) {
+  const path = isUpdate ? `/api/habits/${habit.id}` : "/api/habits";
+  const method = isUpdate ? "PATCH" : "POST";
+
+  const response = await invokeProtectedWriteAndParse<{ habit: Habit }>(path, method, {
+    title: habit.title,
+    cadence: habit.cadence,
+    targetCount: habit.targetCount,
+    status: habit.status,
+  });
+
+  return response.habit;
+}
+
+async function archiveHabitViaApi(habitId: string) {
+  const response = await invokeProtectedWriteAndParse<{ habit: Habit }>(`/api/habits/${habitId}/archive`, "PATCH", {});
+  return response.habit;
+}
+
+async function restoreHabitViaApi(habitId: string) {
+  const response = await invokeProtectedWriteAndParse<{ habit: Habit }>(`/api/habits/${habitId}/restore`, "PATCH", {});
+  return response.habit;
+}
+
+async function permanentlyDeleteHabitViaApi(habitId: string) {
+  await invokeProtectedWrite(`/api/habits/${habitId}`, "DELETE");
+}
+
+async function saveHabitCheckinViaApi(checkin: HabitCheckin, isUpdate: boolean) {
+  const path = isUpdate
+    ? `/api/habits/${checkin.habitId}/checkins/${checkin.id}`
+    : `/api/habits/${checkin.habitId}/checkins`;
+  const method = isUpdate ? "PATCH" : "POST";
+
+  const response = await invokeProtectedWriteAndParse<{ checkin: HabitCheckin }>(path, method, {
+    checkInDate: checkin.checkInDate,
+    notes: checkin.notes,
+  });
+
+  return response.checkin;
+}
+
+async function deleteHabitCheckinViaApi(habitId: string, checkinId: string) {
+  await invokeProtectedWrite(`/api/habits/${habitId}/checkins/${checkinId}`, "DELETE");
+}
+
 async function invokeProtectedWrite(path: string, method: "POST" | "PATCH" | "DELETE", payload?: unknown) {
   const hasBody = typeof payload !== "undefined";
   const response = await fetch(path, {
@@ -2155,6 +2479,32 @@ async function replayOfflineMutation(mutation: OfflineMutation) {
       case "permanentlyDeleteJournalEntry": {
         const payload = mutation.payload as JournalPermanentDeleteInput;
         await dataRepository.permanentlyDeleteJournalEntry(payload.ownerUid, payload.journalEntryId);
+        return;
+      }
+      case "saveHabit":
+        await dataRepository.saveHabit(mutation.payload as SaveHabitInput);
+        return;
+      case "softDeleteHabit": {
+        const payload = mutation.payload as HabitArchiveInput;
+        await dataRepository.softDeleteHabit(payload.ownerUid, payload.habitId);
+        return;
+      }
+      case "restoreHabit": {
+        const payload = mutation.payload as HabitArchiveInput;
+        await dataRepository.restoreHabit(payload.ownerUid, payload.habitId);
+        return;
+      }
+      case "permanentlyDeleteHabit": {
+        const payload = mutation.payload as HabitPermanentDeleteInput;
+        await dataRepository.permanentlyDeleteHabit(payload.ownerUid, payload.habitId);
+        return;
+      }
+      case "saveHabitCheckin":
+        await dataRepository.saveHabitCheckin(mutation.payload as SaveHabitCheckinInput);
+        return;
+      case "deleteHabitCheckin": {
+        const payload = mutation.payload as HabitCheckinDeleteInput;
+        await dataRepository.deleteHabitCheckin(payload.ownerUid, payload.habitId, payload.checkinId);
         return;
       }
       default:

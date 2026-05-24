@@ -1,4 +1,4 @@
-import type { Goal, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, Habit, HabitCheckin, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
 
 // Keep mocks in vi.hoisted so they are initialized before hoisted vi.mock factories run.
 const { queryOnceMock, transactMock } = vi.hoisted(() => ({
@@ -145,6 +145,37 @@ function buildJournalEntry(overrides: Partial<JournalEntry> = {}): JournalEntry 
     deletedBy: null,
     restoreUntil: null,
     purgeAt: null,
+    ...overrides,
+  };
+}
+
+function buildHabit(overrides: Partial<Habit> = {}): Habit {
+  return {
+    id: "habit-1",
+    ownerUid: "user-1",
+    title: "Daily review",
+    cadence: "daily",
+    targetCount: 1,
+    status: "active",
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+    deletedAt: null,
+    deletedBy: null,
+    restoreUntil: null,
+    purgeAt: null,
+    ...overrides,
+  };
+}
+
+function buildHabitCheckin(overrides: Partial<HabitCheckin> = {}): HabitCheckin {
+  return {
+    id: "checkin-1",
+    ownerUid: "user-1",
+    habitId: "habit-1",
+    checkInDate: "2026-05-21",
+    notes: "Completed",
+    createdAt: "2026-05-21T00:00:00.000Z",
+    updatedAt: "2026-05-21T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -834,6 +865,108 @@ describe("dataRepository soft-delete cascade", () => {
         }),
       }),
     );
+  });
+
+  it("lists habits via protected API route", async () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        location: { origin: "http://localhost:3000" },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          habits: [
+            buildHabit({ id: "habit-old", updatedAt: "2026-05-20T00:00:00.000Z" }),
+            buildHabit({ id: "habit-new", updatedAt: "2026-05-21T00:00:00.000Z" }),
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const habits = await dataRepository.listHabits("user-1");
+
+    expect(habits.map((habit) => habit.id)).toEqual(["habit-new", "habit-old"]);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/habits"),
+      expect.objectContaining({ method: "GET", credentials: "include" }),
+    );
+
+    fetchSpy.mockRestore();
+  });
+
+  it("saves a habit via protected API route", async () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        location: { origin: "http://localhost:3000" },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ habit: buildHabit({ id: "habit-api" }) }), { status: 201 }),
+    );
+
+    const result = await dataRepository.saveHabit({
+      ownerUid: "user-1",
+      title: "  Daily review  ",
+      cadence: "daily",
+      targetCount: 1,
+    });
+
+    expect(result.id).toBe("habit-api");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/habits",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+
+    fetchSpy.mockRestore();
+  });
+
+  it("saves and deletes habit checkins via protected API routes", async () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        location: { origin: "http://localhost:3000" },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ checkin: buildHabitCheckin({ id: "checkin-new" }) }), { status: 201 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ summary: { deletedCheckinId: "checkin-new" } }), { status: 200 }));
+
+    const checkin = await dataRepository.saveHabitCheckin({
+      ownerUid: "user-1",
+      habitId: "habit-1",
+      checkInDate: "2026-05-21",
+      notes: " Completed ",
+    });
+
+    await dataRepository.deleteHabitCheckin("user-1", "habit-1", "checkin-new");
+
+    expect(checkin.id).toBe("checkin-new");
+    expect(checkin.notes).toBe("Completed");
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      "/api/habits/habit-1/checkins",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      2,
+      "/api/habits/habit-1/checkins/checkin-new",
+      expect.objectContaining({ method: "DELETE", credentials: "include" }),
+    );
+
+    fetchSpy.mockRestore();
   });
 });
 

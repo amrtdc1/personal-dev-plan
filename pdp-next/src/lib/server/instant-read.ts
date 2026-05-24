@@ -1,9 +1,10 @@
-import type { Goal, GoalType, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, GoalType, Habit, HabitCheckin, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 export {
   parseGoalType,
   parseIncludeDeleted,
   parseRequiredGoalId,
+  parseRequiredHabitId,
   parseRequiredSubgoalId,
 } from "@/lib/server/instant-read-params";
 
@@ -76,6 +77,40 @@ export async function listOwnedJournalEntries(ownerUid: string, input: { include
 
   const filteredEntries = filterDeleted(journalEntries as JournalEntry[], input.includeDeleted);
   return filteredEntries.sort(compareByUpdatedAtDesc);
+}
+
+export async function listOwnedHabits(ownerUid: string, input: { includeDeleted: boolean }) {
+  const instantAdmin = getInstantAdmin();
+  const { habits = [] } = await instantAdmin.query({
+    habits: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  const filteredHabits = filterDeleted(habits as Habit[], input.includeDeleted);
+  return filteredHabits.sort(compareByUpdatedAtDesc);
+}
+
+export async function listOwnedHabitCheckins(ownerUid: string, input: { habitId: string }) {
+  const instantAdmin = getInstantAdmin();
+  const { habitCheckins = [] } = await instantAdmin.query({
+    habitCheckins: {
+      $: {
+        where: {
+          ownerUid,
+          habitId: input.habitId,
+        },
+      },
+    },
+  });
+
+  return (habitCheckins as HabitCheckin[]).sort((left, right) =>
+    right.checkInDate.localeCompare(left.checkInDate) || right.createdAt.localeCompare(left.createdAt),
+  );
 }
 
 function filterDeleted<TEntity extends { deletedAt: string | null }>(entities: TEntity[], includeDeleted: boolean) {

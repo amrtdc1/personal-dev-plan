@@ -1,5 +1,7 @@
 import {
+  parseHabitCheckinWritePayload,
   parseGoalWritePayload,
+  parseHabitWritePayload,
   parseSubgoalWritePayload,
   parseTaskWritePayload,
 } from "@/lib/server/instant-write-params";
@@ -140,5 +142,58 @@ describe("instant write payload parsing", () => {
     });
 
     await expect(parseTaskWritePayload(request)).rejects.toThrow("Request body must be valid JSON.");
+  });
+
+  it("parses valid habit payload and defaults status", async () => {
+    const payload = await parseHabitWritePayload(
+      buildRequest({
+        title: "Write daily summary",
+        cadence: "daily",
+        targetCount: 1,
+      }),
+    );
+
+    expect(payload).toEqual({
+      title: "Write daily summary",
+      cadence: "daily",
+      targetCount: 1,
+      status: "active",
+    });
+  });
+
+  it("rejects habit payload when target count is invalid", async () => {
+    await expect(
+      parseHabitWritePayload(
+        buildRequest({
+          title: "Write daily summary",
+          cadence: "daily",
+          targetCount: 0,
+        }),
+      ),
+    ).rejects.toThrow("Habit target count must be greater than zero.");
+  });
+
+  it("parses habit checkin payload", async () => {
+    const payload = await parseHabitCheckinWritePayload(
+      buildRequest({
+        checkInDate: "2026-05-24",
+        notes: " Completed review ",
+      }),
+    );
+
+    expect(payload).toEqual({
+      checkInDate: "2026-05-24",
+      notes: "Completed review",
+    });
+  });
+
+  it("rejects habit checkin payload when date is missing", async () => {
+    await expect(
+      parseHabitCheckinWritePayload(
+        buildRequest({
+          notes: "Completed review",
+        }),
+      ),
+    ).rejects.toThrow("Habit check-in date is required.");
   });
 });

@@ -19,12 +19,24 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Goal, GoalHorizon, ItemStatus, Subgoal, Task, UserProfile } from "@/lib/domain/types";
+import type {
+  Goal,
+  GoalHorizon,
+  Habit,
+  HabitCadence,
+  HabitCheckin,
+  ItemStatus,
+  Subgoal,
+  Task,
+  UserProfile,
+} from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { GoalTypeTag } from "@/components/ui/tags";
+
+const GOAL_HORIZON_FILTER_STORAGE_KEY = "pdp.goalHorizonFilter";
 
 type RepositorySnapshot = {
   profile: UserProfile | null;
@@ -61,7 +73,18 @@ export function MigrationDataPreview({
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [goalType, setGoalType] = useState<"professional" | "personal">("professional");
   const [goalHorizon, setGoalHorizon] = useState<GoalHorizon>("short_term");
-  const [goalHorizonFilter, setGoalHorizonFilter] = useState<GoalHorizon | "all">("short_term");
+  const [goalHorizonFilter, setGoalHorizonFilter] = useState<GoalHorizon | "all">(() => {
+    if (typeof window === "undefined") {
+      return "short_term";
+    }
+
+    const stored = window.localStorage.getItem(GOAL_HORIZON_FILTER_STORAGE_KEY);
+    if (stored === "short_term" || stored === "medium_term" || stored === "long_term" || stored === "all") {
+      return stored;
+    }
+
+    return "short_term";
+  });
   const [goalTitle, setGoalTitle] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
   const [goalStartDate, setGoalStartDate] = useState("");
@@ -86,6 +109,16 @@ export function MigrationDataPreview({
   const [selectedSubgoalId, setSelectedSubgoalId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"goals" | "subgoals" | "tasks">("goals");
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [habitCheckinsByHabitId, setHabitCheckinsByHabitId] = useState<Record<string, HabitCheckin[]>>({});
+  const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
+  const [habitTitle, setHabitTitle] = useState("");
+  const [habitCadence, setHabitCadence] = useState<HabitCadence>("daily");
+  const [habitTargetCount, setHabitTargetCount] = useState("1");
+  const [isSavingHabit, setIsSavingHabit] = useState(false);
+  const [habitSaveError, setHabitSaveError] = useState<string | null>(null);
+  const [isSavingHabitCheckin, setIsSavingHabitCheckin] = useState(false);
+  const [habitCheckinError, setHabitCheckinError] = useState<string | null>(null);
 
   const allGoals = useMemo(
     () => [
@@ -197,6 +230,10 @@ export function MigrationDataPreview({
     () => tasksForSelectedSubgoal.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasksForSelectedSubgoal],
   );
+  const selectedHabitCheckins = useMemo(
+    () => (selectedHabitId ? habitCheckinsByHabitId[selectedHabitId] ?? [] : []),
+    [habitCheckinsByHabitId, selectedHabitId],
+  );
   const dndSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
@@ -208,6 +245,14 @@ export function MigrationDataPreview({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(GOAL_HORIZON_FILTER_STORAGE_KEY, goalHorizonFilter);
+  }, [goalHorizonFilter]);
 
   useEffect(() => {
     if (!enableDataHydration || !user) {
@@ -222,10 +267,11 @@ export function MigrationDataPreview({
       setLoadError(null);
 
       try {
-        const [profile, professionalGoals, personalGoals] = await Promise.all([
+        const [profile, professionalGoals, personalGoals, loadedHabits] = await Promise.all([
           dataRepository.getUserProfile(currentUser.id),
           dataRepository.listGoals(currentUser.id, "professional", { includeDeleted: true }),
           dataRepository.listGoals(currentUser.id, "personal", { includeDeleted: true }),
+          dataRepository.listHabits(currentUser.id),
         ]);
 
         const combinedGoals = [...professionalGoals, ...personalGoals];
@@ -257,6 +303,17 @@ export function MigrationDataPreview({
           tasksBySubgoalId[subgoalId] = tasks;
         }
 
+        const checkinEntries = await Promise.all(
+          loadedHabits.map(async (habit) => {
+            const checkins = await dataRepository.listHabitCheckins(currentUser.id, habit.id);
+            return [habit.id, checkins] as const;
+          }),
+        );
+        const checkinsByHabitId: Record<string, HabitCheckin[]> = {};
+        for (const [habitId, checkins] of checkinEntries) {
+          checkinsByHabitId[habitId] = checkins;
+        }
+
         const rolledSubgoalsByGoalId = buildSubgoalRollups(subgoalsByGoalId, tasksBySubgoalId);
         const rolledProfessionalGoals = professionalGoals.map((goal) =>
           applyGoalRollup(goal, rolledSubgoalsByGoalId[goal.id] ?? []),
@@ -266,6 +323,8 @@ export function MigrationDataPreview({
         );
 
         if (!isCancelled) {
+          setHabits(loadedHabits.filter((habit) => habit.deletedAt === null));
+          setHabitCheckinsByHabitId(checkinsByHabitId);
           setSnapshot({
             profile,
             professionalGoals: rolledProfessionalGoals,
@@ -291,6 +350,21 @@ export function MigrationDataPreview({
       isCancelled = true;
     };
   }, [enableDataHydration, refreshKey, user]);
+
+  useEffect(() => {
+    if (habits.length === 0) {
+      queueMicrotask(() => {
+        setSelectedHabitId(null);
+      });
+      return;
+    }
+
+    if (!selectedHabitId || !habits.some((habit) => habit.id === selectedHabitId)) {
+      queueMicrotask(() => {
+        setSelectedHabitId(habits[0].id);
+      });
+    }
+  }, [habits, selectedHabitId]);
 
   useEffect(() => {
     if (!pendingOpenItem || snapshot === null) {
@@ -927,6 +1001,58 @@ export function MigrationDataPreview({
     setIsTaskModalOpen(true);
   }
 
+  async function handleHabitSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user) {
+      return;
+    }
+
+    setIsSavingHabit(true);
+    setHabitSaveError(null);
+
+    try {
+      await dataRepository.saveHabit({
+        ownerUid: user.id,
+        title: habitTitle,
+        cadence: habitCadence,
+        targetCount: Number(habitTargetCount),
+      });
+
+      setHabitTitle("");
+      setHabitCadence("daily");
+      setHabitTargetCount("1");
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setHabitSaveError(getErrorMessage(repositoryError, "We could not save the habit."));
+    } finally {
+      setIsSavingHabit(false);
+    }
+  }
+
+  async function handleHabitCheckin(habitId: string) {
+    if (!user) {
+      return;
+    }
+
+    setIsSavingHabitCheckin(true);
+    setHabitCheckinError(null);
+
+    try {
+      await dataRepository.saveHabitCheckin({
+        ownerUid: user.id,
+        habitId,
+        checkInDate: new Date().toISOString().slice(0, 10),
+        notes: null,
+      });
+
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setHabitCheckinError(getErrorMessage(repositoryError, "We could not save the habit check-in."));
+    } finally {
+      setIsSavingHabitCheckin(false);
+    }
+  }
+
   return (
     <>
       {showWorkspaceShell ? (
@@ -1335,6 +1461,111 @@ export function MigrationDataPreview({
           </ul>
         </article>
       </div>
+
+      <article className="pdp-panel-muted mt-5">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Habits</h3>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+            {habits.length} total
+          </span>
+        </div>
+
+        <form className="mt-3 grid gap-2 md:grid-cols-4" onSubmit={handleHabitSubmit}>
+          <input
+            value={habitTitle}
+            onChange={(event) => setHabitTitle(event.target.value)}
+            className="pdp-control rounded-xl"
+            placeholder="Habit title"
+            aria-label="Habit title"
+          />
+          <select
+            value={habitCadence}
+            onChange={(event) => setHabitCadence(event.target.value as HabitCadence)}
+            className="pdp-control rounded-xl"
+            aria-label="Habit cadence"
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+          <input
+            type="number"
+            min={1}
+            value={habitTargetCount}
+            onChange={(event) => setHabitTargetCount(event.target.value)}
+            className="pdp-control rounded-xl"
+            placeholder="Target count"
+            aria-label="Habit target count"
+          />
+          <button
+            type="submit"
+            disabled={isSavingHabit}
+            className="rounded-full bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            {isSavingHabit ? "Saving..." : "Create habit"}
+          </button>
+        </form>
+        {habitSaveError ? <p className="mt-2 text-sm text-red-700">{habitSaveError}</p> : null}
+
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <ul className="space-y-2">
+            {habits.length === 0 ? (
+              <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+                No habits yet.
+              </li>
+            ) : (
+              habits.map((habit) => {
+                const isSelected = selectedHabitId === habit.id;
+                const checkinCount = habitCheckinsByHabitId[habit.id]?.length ?? 0;
+                return (
+                  <li key={habit.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedHabitId(habit.id)}
+                      className="w-full text-left"
+                    >
+                      <p className={`font-medium ${isSelected ? "text-slate-900" : "text-slate-700"}`}>{habit.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {habit.cadence === "daily" ? "Daily" : "Weekly"} | Target {habit.targetCount} | {checkinCount} check-ins
+                      </p>
+                    </button>
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleHabitCheckin(habit.id)}
+                        disabled={isSavingHabitCheckin}
+                        className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Check in today
+                      </button>
+                    </div>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent check-ins</p>
+            {selectedHabitId ? (
+              <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                {selectedHabitCheckins.length === 0 ? (
+                  <li className="text-xs text-slate-500">No check-ins yet.</li>
+                ) : (
+                  selectedHabitCheckins.slice(0, 5).map((checkin) => (
+                    <li key={checkin.id} className="rounded-md bg-slate-50 px-2 py-1">
+                      <span className="font-medium">{checkin.checkInDate}</span>
+                      {checkin.notes ? <span className="text-slate-500"> - {checkin.notes}</span> : null}
+                    </li>
+                  ))
+                )}
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">Select a habit to view check-ins.</p>
+            )}
+            {habitCheckinError ? <p className="mt-2 text-sm text-red-700">{habitCheckinError}</p> : null}
+          </div>
+        </div>
+      </article>
 
       {showArchivedGoals && hasAnyArchived ? (
         <article className="pdp-panel-muted mt-5">

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { Goal, ItemStatus, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, Habit, HabitCheckin, ItemStatus, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
 import { validateStatusUpdate } from "@/lib/data/validation";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { resolveInstantRouteError } from "@/lib/server/instant-error-response";
@@ -175,6 +175,77 @@ export async function findOwnedJournalEntry(ownerUid: string, journalEntryId: st
   }
 
   return entry;
+}
+
+export async function findOwnedHabit(ownerUid: string, habitId: string) {
+  const instantAdmin = getInstantAdmin();
+  const { habits = [] } = await instantAdmin.query({
+    habits: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  const scopedHabit = (habits as Habit[]).find((entry) => entry.id === habitId);
+  if (scopedHabit && scopedHabit.ownerUid === ownerUid) {
+    return scopedHabit;
+  }
+
+  const { habits: habitById = [] } = await instantAdmin.query({
+    habits: {
+      $: {
+        where: {
+          id: habitId,
+        },
+      },
+    },
+  });
+
+  const habit = habitById[0] as Habit | undefined;
+  if (!habit || habit.ownerUid !== ownerUid) {
+    throw new InstantRouteNotFoundError("Habit was not found for this user.");
+  }
+
+  return habit;
+}
+
+export async function findOwnedHabitCheckin(ownerUid: string, habitId: string, checkinId: string) {
+  const instantAdmin = getInstantAdmin();
+  const { habitCheckins = [] } = await instantAdmin.query({
+    habitCheckins: {
+      $: {
+        where: {
+          ownerUid,
+          habitId,
+        },
+      },
+    },
+  });
+
+  const scopedCheckin = (habitCheckins as HabitCheckin[]).find((entry) => entry.id === checkinId);
+  if (scopedCheckin && scopedCheckin.ownerUid === ownerUid && scopedCheckin.habitId === habitId) {
+    return scopedCheckin;
+  }
+
+  const { habitCheckins: checkinById = [] } = await instantAdmin.query({
+    habitCheckins: {
+      $: {
+        where: {
+          id: checkinId,
+        },
+      },
+    },
+  });
+
+  const checkin = checkinById[0] as HabitCheckin | undefined;
+  if (!checkin || checkin.ownerUid !== ownerUid || checkin.habitId !== habitId) {
+    throw new InstantRouteNotFoundError("Habit check-in was not found for this user.");
+  }
+
+  return checkin;
 }
 
 export function instantRouteErrorResponse(

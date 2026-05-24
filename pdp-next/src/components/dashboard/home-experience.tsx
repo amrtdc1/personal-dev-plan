@@ -448,6 +448,7 @@ function SignedInShell() {
     id: string,
   ) {
     setPendingOpenItem({ kind, id });
+    setActiveSection("goals");
   }
 
   return (
@@ -594,7 +595,10 @@ function SignedInShell() {
       {activeSection === "dashboard" ? (
         <>
           <OfflineSyncStatus />
-          <DashboardInsights onOpenItem={handleOpenItemFromDashboard} />
+          <DashboardInsights
+            onOpenItem={handleOpenItemFromDashboard}
+            onOpenGoalsWorkspace={() => navigateToSection("goals")}
+          />
         </>
       ) : null}
 
