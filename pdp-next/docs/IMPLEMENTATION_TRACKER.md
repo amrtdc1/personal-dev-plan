@@ -4,6 +4,7 @@
 - Phase 1 foundation complete; core parity closure and security hardening in progress
 - College theming track is now implemented end-to-end (palette/CWM/college source, logo rendering, profile persistence)
 - Protected owner-scoped API foundation is in place for goals/subgoals/tasks read and write paths, with profile writes now routed server-side
+- Release-readiness execution board is tracked in `docs/RELEASE_READINESS_TASK_BOARD.md`
 
 ## Milestones
 - [x] Scaffold Next.js app in-repo (`pdp-next`)
