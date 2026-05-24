@@ -173,7 +173,7 @@ export function DashboardInsights() {
 
   if (isLoading || isRefreshing) {
     return (
-      <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+      <section className="pdp-panel">
         <h2 className="text-lg font-semibold text-slate-900">Dashboard Insights</h2>
         <p className="mt-3 text-sm text-slate-700">Loading insights...</p>
       </section>
@@ -182,7 +182,7 @@ export function DashboardInsights() {
 
   if (error) {
     return (
-      <section className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
+      <section className="pdp-panel rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-red-700">Dashboard Insights</h2>
         <p className="mt-2 text-sm text-red-700">{error.message}</p>
       </section>
@@ -191,7 +191,7 @@ export function DashboardInsights() {
 
   if (!user) {
     return (
-      <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+      <section className="pdp-panel">
         <h2 className="text-lg font-semibold text-slate-900">Dashboard Insights</h2>
         <p className="mt-3 text-sm text-slate-700">Sign in to see focus and risk insights.</p>
       </section>
@@ -199,7 +199,7 @@ export function DashboardInsights() {
   }
 
   return (
-    <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+    <section className="pdp-panel">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-slate-900">Dashboard Insights</h2>
         <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-700">
@@ -210,14 +210,14 @@ export function DashboardInsights() {
       {loadError ? <p className="mt-3 text-sm text-red-700">{loadError}</p> : null}
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <article className="rounded-xl border border-slate-200 p-4">
+        <article className="pdp-panel-muted">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Current Focus</h3>
           {currentFocusGoals.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">No active focus goal yet.</p>
           ) : (
             <ul className="mt-3 space-y-2 text-sm text-slate-700">
               {currentFocusGoals.map((goal) => (
-                <li key={goal.id} className="rounded-lg bg-slate-50 px-3 py-2">
+                <li key={goal.id} className="pdp-card rounded-lg px-3 py-2">
                   <p className="font-medium text-slate-900">{goal.title}</p>
                   <p className="mt-1 text-xs uppercase tracking-wide text-slate-600">{formatStatus(goal.status)}</p>
                 </li>
@@ -226,7 +226,7 @@ export function DashboardInsights() {
           )}
         </article>
 
-        <article className="rounded-xl border border-slate-200 p-4">
+        <article className="pdp-panel-muted">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Tasks Due Soon</h3>
           {tasksDueSoon.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">No upcoming tasks in the next week.</p>
@@ -235,7 +235,7 @@ export function DashboardInsights() {
               {tasksDueSoon.map((task) => {
                 const parentSubgoal = subgoalMap.get(task.subgoalId);
                 return (
-                  <li key={task.id} className="rounded-lg bg-slate-50 px-3 py-2">
+                  <li key={task.id} className="pdp-card rounded-lg px-3 py-2">
                     <p className="font-medium text-slate-900">{task.title}</p>
                     <p className="mt-1 text-xs text-slate-600">
                       Due {formatDateLabel(task.dueDate)}
@@ -248,14 +248,14 @@ export function DashboardInsights() {
           )}
         </article>
 
-        <article className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+        <article className="pdp-panel-muted rounded-xl border border-amber-200 bg-amber-50/40 p-4">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-700">At Risk</h3>
           {atRiskItems.length === 0 ? (
             <p className="mt-3 text-sm text-amber-800">No goals or subgoals at risk in the next week.</p>
           ) : (
             <ul className="mt-3 space-y-2 text-sm text-amber-900">
               {atRiskItems.map((item) => (
-                <li key={`${item.kind}-${item.id}`} className="rounded-lg bg-white/70 px-3 py-2">
+                <li key={`${item.kind}-${item.id}`} className="pdp-card rounded-lg px-3 py-2">
                   <p className="font-medium">{item.title}</p>
                   <p className="mt-1 text-xs uppercase tracking-wide text-amber-700">
                     {item.kind === "goal" ? "Goal" : "Subgoal"} | Due {formatDateLabel(item.dueDate)}
@@ -266,14 +266,14 @@ export function DashboardInsights() {
           )}
         </article>
 
-        <article className="rounded-xl border border-slate-200 p-4">
+        <article className="pdp-panel-muted">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Recently Updated</h3>
           {recentlyUpdated.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">No recent updates yet.</p>
           ) : (
             <ul className="mt-3 space-y-2 text-sm text-slate-700">
               {recentlyUpdated.map((item) => (
-                <li key={`${item.kind}-${item.id}`} className="rounded-lg bg-slate-50 px-3 py-2">
+                <li key={`${item.kind}-${item.id}`} className="pdp-card rounded-lg px-3 py-2">
                   <p className="font-medium text-slate-900">{item.title}</p>
                   <p className="mt-1 text-xs text-slate-600">
                     {formatKind(item.kind)} | {formatStatus(item.status)} | Updated {formatDateTimeLabel(item.updatedAt)}

@@ -90,3 +90,50 @@
 - Current gap is expected: offline queueing, calendar export, and deployment smoke-testing are still pending by design and have not been skipped.
 - No current work has diverged from the agreed architecture of Next.js + InstantDB + incremental in-place migration.
 - College athletics theming is now explicitly in-plan as a post-parity enhancement track, so it will not get lost while migration-critical work continues.
+
+## Visual Parity Checklist (Signed-In Pages)
+- Scope: Dashboard, Goals, Calendar, Journal, Profile & Theme.
+- Theme modes: verify light, dark, and system (CWM) via top quick-toggle and Profile display mode selector.
+- Theme sources: verify palette, CWM, and college-team selections from Profile.
+- Container parity: confirm panel layering is visually consistent across all five sections (shell panel -> muted panel -> inner cards).
+- Control parity: confirm text inputs, selects, textareas, and secondary/primary action buttons share the same tokenized backgrounds, text, and borders.
+- Dark select legibility: verify closed and opened select dropdown text/background remain readable in dark mode.
+- Calendar parity: verify event colors and status chips are token-driven and remain distinguishable across palette/CWM/college themes.
+- Persistence parity: verify quick-toggle changes and Profile saves persist after refresh and do not conflict with one another.
+
+## Styling Guide (Signed-In UI)
+
+### Source of truth
+- Primary style source for signed-in pages is theme tokens in [pdp-next/src/app/globals.css](pdp-next/src/app/globals.css).
+- Theme state resolution and token application are handled in [pdp-next/src/components/dashboard/home-experience.tsx](pdp-next/src/components/dashboard/home-experience.tsx).
+- Prefer semantic classes below over repeating long Tailwind color/border strings.
+
+### Semantic class contract
+- `pdp-panel`: top-level section container.
+- `pdp-panel-muted`: secondary panel region inside a section.
+- `pdp-card`: nested card/list item surface.
+- `pdp-control`: text input, select, textarea base styling.
+- `pdp-btn-primary`: primary action button base styling.
+- `pdp-btn-secondary`: secondary/neutral action button base styling.
+- `pdp-status-chip` + status modifiers: status display (`pdp-status-not-started`, `pdp-status-progress`, `pdp-status-done`).
+
+### Token contract
+- Base shell tokens: `--pdp-surface`, `--pdp-muted-surface`, `--pdp-border`, `--pdp-text-strong`, `--pdp-text`, `--pdp-text-muted`.
+- Accent tokens: `--pdp-theme-primary`, `--pdp-theme-soft`.
+- Status tokens: `--pdp-status-*` background/text pairs.
+- Calendar event tokens: `--pdp-event-*` background/border pairs.
+- New theme work should extend tokens first, then semantic classes if needed, then component markup.
+
+### Usage rules
+- Do use semantic classes as the base and add only spacing/layout modifiers in component markup.
+- Do keep one visual hierarchy across signed-in pages: `pdp-panel` -> `pdp-panel-muted` -> `pdp-card`.
+- Do keep quick toggle and Profile save behavior aligned through the shared theme flow in [pdp-next/src/components/dashboard/home-experience.tsx](pdp-next/src/components/dashboard/home-experience.tsx).
+- Do verify select legibility in dark mode whenever control styling changes.
+- Do not hardcode color classes (for example `bg-blue-*`, `text-slate-*`, `border-slate-*`) when a semantic class already applies that role.
+- Do not introduce per-component token math unless it is globally reusable; prefer centralized token updates in [pdp-next/src/components/dashboard/home-experience.tsx](pdp-next/src/components/dashboard/home-experience.tsx).
+
+### Change checklist for future UI edits
+- Confirm the edited surface uses the semantic class hierarchy.
+- Confirm new controls use `pdp-control` and actions use `pdp-btn-primary`/`pdp-btn-secondary`.
+- Confirm no hardcoded color utilities reintroduced where semantic classes already cover styling.
+- Run lint/build and perform a quick manual pass in light, dark, and system modes.

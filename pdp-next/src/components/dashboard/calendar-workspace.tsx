@@ -77,6 +77,7 @@ export function CalendarWorkspace() {
 
   const goalMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
   const subgoalMap = useMemo(() => new Map(subgoals.map((subgoal) => [subgoal.id, subgoal])), [subgoals]);
+  const eventColors = getCalendarEventColors();
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -187,8 +188,9 @@ export function CalendarWorkspace() {
         allDay: true,
         editable: true,
         durationEditable: true,
-        backgroundColor: goal.type === "professional" ? "#2563eb" : "#db2777",
-        borderColor: goal.type === "professional" ? "#1d4ed8" : "#be185d",
+        backgroundColor:
+          goal.type === "professional" ? eventColors.goalProfessionalBackground : eventColors.goalPersonalBackground,
+        borderColor: goal.type === "professional" ? eventColors.goalProfessionalBorder : eventColors.goalPersonalBorder,
         extendedProps: {
           kind: "goal" as CalendarItemKind,
           hierarchy: `${goal.type === "professional" ? "Professional" : "Personal"} goal`,
@@ -220,8 +222,8 @@ export function CalendarWorkspace() {
         allDay: true,
         editable: true,
         durationEditable: true,
-        backgroundColor: "#f59e0b",
-        borderColor: "#d97706",
+        backgroundColor: eventColors.subgoalBackground,
+        borderColor: eventColors.subgoalBorder,
         extendedProps: {
           kind: "subgoal" as CalendarItemKind,
           hierarchy: parentGoal ? `${parentGoal.title} -> ${subgoal.title}` : "Subgoal",
@@ -258,8 +260,8 @@ export function CalendarWorkspace() {
         allDay: true,
         editable: true,
         durationEditable: false,
-        backgroundColor: "#059669",
-        borderColor: "#047857",
+        backgroundColor: eventColors.taskBackground,
+        borderColor: eventColors.taskBorder,
         extendedProps: {
           kind: "task" as CalendarItemKind,
           hierarchy: hierarchyBits.length > 0 ? hierarchyBits.join(" | ") : "Task",
@@ -279,6 +281,7 @@ export function CalendarWorkspace() {
     statusFilter,
     subgoalMap,
     subgoals,
+    eventColors,
     tasks,
   ]);
 
@@ -767,15 +770,15 @@ export function CalendarWorkspace() {
       };
 
   const primaryActionClass = isTouchFriendly
-    ? "mt-4 w-full rounded-full bg-blue-700 px-4 py-3 text-base font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
-    : "mt-4 w-full rounded-full bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400";
+    ? "pdp-btn-primary mt-4 w-full px-4 py-3 text-base font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+    : "pdp-btn-primary mt-4 w-full px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50";
 
   const secondaryActionClass = isTouchFriendly
     ? "mt-4 w-full rounded-full bg-slate-900 px-4 py-3 text-base font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
     : "mt-4 w-full rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400";
 
   return (
-    <section className={`rounded-2xl border border-slate-300 bg-white p-5 shadow-sm ${isTouchFriendly ? "pdp-touch-mode" : ""}`}>
+    <section className={`pdp-panel ${isTouchFriendly ? "pdp-touch-mode" : ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Calendar workspace</h2>
@@ -819,7 +822,7 @@ export function CalendarWorkspace() {
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-900"
+                className="pdp-control mt-1 px-2 py-2 text-xs"
               >
                 <option value="all">All statuses</option>
                 <option value="not_started">Not started</option>
@@ -833,7 +836,7 @@ export function CalendarWorkspace() {
               <select
                 value={scopeGoalType}
                 onChange={(event) => setScopeGoalType(event.target.value as "all" | GoalType)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-900"
+                className="pdp-control mt-1 px-2 py-2 text-xs"
               >
                 <option value="all">All goals</option>
                 <option value="professional">Professional only</option>
@@ -846,7 +849,7 @@ export function CalendarWorkspace() {
               <button
                 type="button"
                 onClick={() => setIsTouchFriendly((current) => !current)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs font-medium text-slate-900"
+                className="pdp-btn-secondary mt-1 w-full rounded-lg px-2 py-2 text-xs font-medium"
               >
                 {isTouchFriendly ? "Comfortable taps enabled" : "Compact controls"}
               </button>
@@ -915,7 +918,7 @@ export function CalendarWorkspace() {
         </div>
 
         <aside className="order-2 space-y-4 lg:order-2">
-          <form className="rounded-xl border border-slate-200 bg-slate-50 p-4" onSubmit={handleCreateSubmit}>
+          <form className="pdp-panel-muted" onSubmit={handleCreateSubmit}>
             <h3 className="text-sm font-semibold text-slate-900">Create from selected dates</h3>
             <p className="mt-1 text-xs text-slate-600">
               Selection: {selection.startDate} to {selection.endDate}
@@ -926,7 +929,7 @@ export function CalendarWorkspace() {
               <select
                 value={createType}
                 onChange={(event) => setCreateType(event.target.value as CreateType)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1"
               >
                 <option value="goal">Goal</option>
                 <option value="subgoal">Subgoal</option>
@@ -940,7 +943,7 @@ export function CalendarWorkspace() {
                 <select
                   value={goalType}
                   onChange={(event) => setGoalType(event.target.value as GoalType)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  className="pdp-control mt-1"
                 >
                   <option value="professional">Professional</option>
                   <option value="personal">Personal</option>
@@ -954,7 +957,7 @@ export function CalendarWorkspace() {
                 <select
                   value={draftGoalId}
                   onChange={(event) => setDraftGoalId(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  className="pdp-control mt-1"
                 >
                   <option value="">Select goal</option>
                   {goals.map((goal) => (
@@ -972,7 +975,7 @@ export function CalendarWorkspace() {
                 <select
                   value={draftSubgoalId}
                   onChange={(event) => setDraftSubgoalId(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  className="pdp-control mt-1"
                 >
                   <option value="">Select subgoal</option>
                   {subgoals.map((subgoal) => (
@@ -989,7 +992,7 @@ export function CalendarWorkspace() {
               <input
                 value={draftTitle}
                 onChange={(event) => setDraftTitle(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1"
                 placeholder="Add item title"
               />
             </label>
@@ -999,7 +1002,7 @@ export function CalendarWorkspace() {
               <textarea
                 value={draftDetails}
                 onChange={(event) => setDraftDetails(event.target.value)}
-                className="mt-1 min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1 min-h-20"
               />
             </label>
 
@@ -1012,7 +1015,7 @@ export function CalendarWorkspace() {
             </button>
           </form>
 
-          <form className="rounded-xl border border-slate-200 bg-slate-50 p-4" onSubmit={handleEditSubmit}>
+          <form className="pdp-panel-muted" onSubmit={handleEditSubmit}>
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-900">Edit selected event</h3>
               {selectedEventRef ? (
@@ -1035,7 +1038,7 @@ export function CalendarWorkspace() {
                   <input
                     value={editTitle}
                     onChange={(event) => setEditTitle(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    className="pdp-control mt-1"
                   />
                 </label>
 
@@ -1044,7 +1047,7 @@ export function CalendarWorkspace() {
                   <textarea
                     value={editDetails}
                     onChange={(event) => setEditDetails(event.target.value)}
-                    className="mt-1 min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    className="pdp-control mt-1 min-h-20"
                   />
                 </label>
 
@@ -1053,7 +1056,7 @@ export function CalendarWorkspace() {
                   <select
                     value={editStatus}
                     onChange={(event) => setEditStatus(event.target.value as ItemStatus)}
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    className="pdp-control mt-1"
                   >
                     <option value="not_started">Not started</option>
                     <option value="in_progress">In progress</option>
@@ -1067,7 +1070,7 @@ export function CalendarWorkspace() {
                     <select
                       value={editGoalType}
                       onChange={(event) => setEditGoalType(event.target.value as GoalType)}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      className="pdp-control mt-1"
                     >
                       <option value="professional">Professional</option>
                       <option value="personal">Personal</option>
@@ -1081,7 +1084,7 @@ export function CalendarWorkspace() {
                     <select
                       value={editParentGoalId}
                       onChange={(event) => setEditParentGoalId(event.target.value)}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      className="pdp-control mt-1"
                     >
                       <option value="">Select goal</option>
                       {goals.map((goal) => (
@@ -1099,7 +1102,7 @@ export function CalendarWorkspace() {
                     <select
                       value={editParentSubgoalId}
                       onChange={(event) => setEditParentSubgoalId(event.target.value)}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      className="pdp-control mt-1"
                     >
                       <option value="">Select subgoal</option>
                       {subgoals.map((subgoal) => (
@@ -1207,4 +1210,36 @@ function agendaLabel(kind: CalendarItemKind) {
   }
 
   return "T";
+}
+
+function getCalendarEventColors() {
+  if (typeof document === "undefined") {
+    return {
+      goalProfessionalBackground: "#2563eb",
+      goalProfessionalBorder: "#1d4ed8",
+      goalPersonalBackground: "#db2777",
+      goalPersonalBorder: "#be185d",
+      subgoalBackground: "#f59e0b",
+      subgoalBorder: "#d97706",
+      taskBackground: "#059669",
+      taskBorder: "#047857",
+    };
+  }
+
+  const computed = window.getComputedStyle(document.documentElement);
+  return {
+    goalProfessionalBackground: readCssColor(computed, "--pdp-event-goal-professional-bg", "#2563eb"),
+    goalProfessionalBorder: readCssColor(computed, "--pdp-event-goal-professional-border", "#1d4ed8"),
+    goalPersonalBackground: readCssColor(computed, "--pdp-event-goal-personal-bg", "#db2777"),
+    goalPersonalBorder: readCssColor(computed, "--pdp-event-goal-personal-border", "#be185d"),
+    subgoalBackground: readCssColor(computed, "--pdp-event-subgoal-bg", "#f59e0b"),
+    subgoalBorder: readCssColor(computed, "--pdp-event-subgoal-border", "#d97706"),
+    taskBackground: readCssColor(computed, "--pdp-event-task-bg", "#059669"),
+    taskBorder: readCssColor(computed, "--pdp-event-task-border", "#047857"),
+  };
+}
+
+function readCssColor(computed: CSSStyleDeclaration, propertyName: string, fallback: string) {
+  const value = computed.getPropertyValue(propertyName).trim();
+  return value.length > 0 ? value : fallback;
 }

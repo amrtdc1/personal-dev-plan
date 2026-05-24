@@ -45,7 +45,7 @@ function SignedInPanel() {
           userProfiles: {
             $: {
               where: {
-                id: user.id,
+                uid: user.id,
               },
             },
           },

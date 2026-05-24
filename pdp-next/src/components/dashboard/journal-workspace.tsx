@@ -92,7 +92,7 @@ export function JournalWorkspace() {
 
   if (isLoading || isRefreshing) {
     return (
-      <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+      <section className="pdp-panel">
         <h2 className="text-lg font-semibold text-slate-900">Journal Workspace</h2>
         <p className="mt-3 text-sm text-slate-700">Loading journal entries...</p>
       </section>
@@ -101,7 +101,7 @@ export function JournalWorkspace() {
 
   if (error) {
     return (
-      <section className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
+      <section className="pdp-panel rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-red-700">Journal Workspace</h2>
         <p className="mt-2 text-sm text-red-700">{error.message}</p>
       </section>
@@ -110,7 +110,7 @@ export function JournalWorkspace() {
 
   if (!user) {
     return (
-      <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+      <section className="pdp-panel">
         <h2 className="text-lg font-semibold text-slate-900">Journal Workspace</h2>
         <p className="mt-3 text-sm text-slate-700">Sign in to create and manage journal entries.</p>
       </section>
@@ -197,7 +197,7 @@ export function JournalWorkspace() {
   }
 
   return (
-    <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+    <section className="pdp-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-slate-900">Journal Workspace</h2>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
@@ -212,7 +212,7 @@ export function JournalWorkspace() {
       {loadError ? <p className="mt-3 text-sm text-red-700">{loadError}</p> : null}
       {actionError ? <p className="mt-3 text-sm text-red-700">{actionError}</p> : null}
 
-      <form onSubmit={handleSubmit} className="mt-4 grid gap-3 rounded-xl border border-slate-200 p-4">
+      <form onSubmit={handleSubmit} className="pdp-panel-muted mt-4 grid gap-3">
         <p className="text-sm font-semibold text-slate-900">{editingEntry ? "Edit Entry" : "New Entry"}</p>
 
         <label className="text-sm font-medium text-slate-700" htmlFor="journal-title">
@@ -223,7 +223,7 @@ export function JournalWorkspace() {
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Weekly reflection"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+          className="pdp-control rounded-lg"
           required
         />
 
@@ -236,7 +236,7 @@ export function JournalWorkspace() {
           onChange={(event) => setContent(event.target.value)}
           rows={6}
           placeholder="# What worked this week?"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+          className="pdp-control rounded-lg"
         />
 
         <div className="grid gap-3 md:grid-cols-3">
@@ -248,7 +248,7 @@ export function JournalWorkspace() {
               id="journal-mood"
               value={mood}
               onChange={(event) => setMood(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              className="pdp-control mt-1"
             >
               <option value="">No mood</option>
               {MOOD_OPTIONS.map((option) => (
@@ -267,7 +267,7 @@ export function JournalWorkspace() {
               id="journal-goal"
               value={relatedGoalId}
               onChange={(event) => setRelatedGoalId(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              className="pdp-control mt-1"
             >
               <option value="">No goal</option>
               {goals.map((goal) => (
@@ -287,7 +287,7 @@ export function JournalWorkspace() {
               value={tagsInput}
               onChange={(event) => setTagsInput(event.target.value)}
               placeholder="focus, planning, wins"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              className="pdp-control mt-1"
             />
           </div>
         </div>
@@ -296,7 +296,7 @@ export function JournalWorkspace() {
           <button
             type="submit"
             disabled={isSaving}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            className="pdp-btn-primary rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? "Saving..." : editingEntry ? "Update Entry" : "Save Entry"}
           </button>
@@ -305,7 +305,7 @@ export function JournalWorkspace() {
             <button
               type="button"
               onClick={resetForm}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              className="pdp-btn-secondary rounded-lg px-4 py-2 text-sm font-semibold"
             >
               Cancel Edit
             </button>
@@ -313,14 +313,14 @@ export function JournalWorkspace() {
         </div>
       </form>
 
-      <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-4">
+      <div className="pdp-panel-muted mt-4 grid gap-3 md:grid-cols-4">
         <label className="text-sm font-medium text-slate-700" htmlFor="journal-filter-mood">
           Mood Filter
           <select
             id="journal-filter-mood"
             value={moodFilter}
             onChange={(event) => setMoodFilter(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="pdp-control mt-1"
           >
             <option value="all">All moods</option>
             {MOOD_OPTIONS.map((option) => (
@@ -337,7 +337,7 @@ export function JournalWorkspace() {
             id="journal-filter-goal"
             value={goalFilter}
             onChange={(event) => setGoalFilter(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="pdp-control mt-1"
           >
             <option value="all">All goals</option>
             {goals.map((goal) => (
@@ -355,7 +355,7 @@ export function JournalWorkspace() {
             value={tagFilter}
             onChange={(event) => setTagFilter(event.target.value)}
             placeholder="Search tag"
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="pdp-control mt-1"
           />
         </label>
 
@@ -376,7 +376,7 @@ export function JournalWorkspace() {
           filteredEntries.map((entry) => (
             <article
               key={entry.id}
-              className={`rounded-xl border p-4 ${entry.deletedAt ? "border-amber-200 bg-amber-50/40" : "border-slate-200 bg-white"}`}
+              className={`pdp-card rounded-xl border p-4 ${entry.deletedAt ? "border-amber-200 bg-amber-50/40" : "border-slate-200 bg-white"}`}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -394,7 +394,7 @@ export function JournalWorkspace() {
                     <button
                       type="button"
                       onClick={() => handleEdit(entry)}
-                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      className="pdp-btn-secondary rounded-lg px-3 py-1.5 text-xs font-semibold"
                     >
                       Edit
                     </button>
@@ -402,7 +402,7 @@ export function JournalWorkspace() {
                   <button
                     type="button"
                     onClick={() => void handleArchiveToggle(entry)}
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    className="pdp-btn-secondary rounded-lg px-3 py-1.5 text-xs font-semibold"
                   >
                     {entry.deletedAt ? "Restore" : "Archive"}
                   </button>
@@ -423,7 +423,7 @@ export function JournalWorkspace() {
               ) : null}
 
               <div
-                className="journal-markdown mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800"
+                className="journal-markdown pdp-panel-muted mt-3 rounded-lg text-sm text-slate-800"
                 dangerouslySetInnerHTML={{ __html: renderStrictMarkdownToHtml(entry.content) }}
               />
             </article>

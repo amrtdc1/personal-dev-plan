@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { MagicCodeAuth } from "@/components/auth/magic-code-auth";
 import { CalendarWorkspace } from "@/components/dashboard/calendar-workspace";
 import { DashboardInsights } from "@/components/dashboard/dashboard-insights";
@@ -19,6 +19,25 @@ import type { UserProfile } from "@/lib/domain/types";
 type AppSection = "dashboard" | "goals" | "calendar" | "journal" | "profile";
 type ThemeChoice = "light" | "dark" | "system";
 type ThemeSource = "palette" | "cwm" | "college";
+type ThemeBrandSnapshot = {
+  themeSource: ThemeSource;
+  theme: "light" | "dark" | "cwm";
+  palette: UserProfile["palette"];
+  collegeTeamId: string | null;
+  collegeTeamName: string | null;
+  collegeLogoUrl: string | null;
+};
+
+type BrandVisual = {
+  label: string;
+  logoUrl: string | null;
+  watermarkUrl: string | null;
+  watermarkOpacity: number;
+  watermarkScale: number;
+};
+
+const THEME_STORAGE_KEY = "pdp:theme";
+const PALETTE_STORAGE_KEY = "pdp:palette";
 
 const PALETTE_OPTIONS: UserProfile["palette"][] = [
   "ocean",
@@ -47,6 +66,12 @@ type AllowlistTeam = {
   displayName: string;
   abbreviation: string;
   subdivision: "FBS" | "FCS";
+  logoUrl?: string | null;
+  darkLogoUrl?: string | null;
+  colors?: {
+    primary?: string | null;
+    secondary?: string | null;
+  };
 };
 
 const COLLEGE_TEAMS = ((allowlistData as { teams?: AllowlistTeam[] }).teams ?? [])
@@ -164,7 +189,10 @@ function SignedInShell() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isThemeSaving, setIsThemeSaving] = useState(false);
   const [themeError, setThemeError] = useState<string | null>(null);
-  const [themeOverride, setThemeOverride] = useState<"light" | "dark" | "cwm" | null>(null);
+  const [savedThemeSnapshot, setSavedThemeSnapshot] = useState<ThemeBrandSnapshot | null>(null);
+  const [previewThemeSnapshot, setPreviewThemeSnapshot] = useState<ThemeBrandSnapshot | null>(null);
+  const [cachedTheme] = useState<"light" | "dark" | "cwm" | null>(() => readCachedTheme());
+  const [cachedPalette] = useState<UserProfile["palette"] | null>(() => readCachedPalette());
   const { data, isLoading: isProfileLoading } = db.useQuery(
     user
       ? {
@@ -190,13 +218,28 @@ function SignedInShell() {
   );
 
   const profile = data?.userProfiles?.[0] ?? null;
-  const storedTheme = themeOverride ?? normalizeStoredTheme(profile?.theme);
+  const effectiveThemeSnapshot = previewThemeSnapshot ?? savedThemeSnapshot;
+  const resolvedCollegeTeamId = effectiveThemeSnapshot?.collegeTeamId ?? profile?.collegeTeamId ?? null;
+  const resolvedCollegeTeamName = effectiveThemeSnapshot?.collegeTeamName ?? profile?.collegeTeamName ?? null;
+  const resolvedCollegeLogoUrl = effectiveThemeSnapshot?.collegeLogoUrl ?? profile?.collegeLogoUrl ?? null;
+  const resolvedPalette = effectiveThemeSnapshot?.palette ?? profile?.palette ?? cachedPalette ?? "ocean";
+  const storedTheme = normalizeStoredTheme(effectiveThemeSnapshot?.theme ?? profile?.theme ?? cachedTheme);
   const themeChoice = toThemeChoice(storedTheme);
-  const themeSource = normalizeThemeSource(profile?.themeMode, profile?.collegeTeamId ?? null);
+  const themeSource =
+    effectiveThemeSnapshot?.themeSource ?? normalizeThemeSource(profile?.themeMode, resolvedCollegeTeamId);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(THEME_STORAGE_KEY, storedTheme);
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, resolvedPalette);
+  }, [resolvedPalette, storedTheme]);
 
   useEffect(() => {
     applyThemeToDocument(storedTheme);
-    applyProfileThemeTokens(themeSource, profile?.palette ?? "ocean");
+    applyProfileThemeTokens(themeSource, resolvedPalette, resolvedCollegeTeamId);
 
     if (storedTheme !== "cwm" || typeof window === "undefined") {
       return;
@@ -220,7 +263,18 @@ function SignedInShell() {
         mediaQuery.removeListener(handleSystemChange);
       }
     };
-  }, [storedTheme, themeSource, profile?.palette]);
+  }, [resolvedCollegeTeamId, resolvedPalette, storedTheme, themeSource]);
+
+  const handleThemeProfileSaved = useCallback((snapshot: ThemeBrandSnapshot) => {
+    setSavedThemeSnapshot(snapshot);
+    setPreviewThemeSnapshot(null);
+  }, []);
+
+  const handleThemeProfilePreview = useCallback((snapshot: ThemeBrandSnapshot | null) => {
+    setPreviewThemeSnapshot((current) => (
+      areThemeSnapshotsEqual(current, snapshot) ? current : snapshot
+    ));
+  }, []);
 
   if (!user) {
     return null;
@@ -236,7 +290,7 @@ function SignedInShell() {
   if (isProfileLoading) {
     return (
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-5 py-6 md:px-8 md:py-8">
-        <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+        <section className="pdp-panel">
           <h2 className="text-lg font-semibold text-slate-900">Loading your workspace...</h2>
         </section>
       </main>
@@ -253,50 +307,102 @@ function SignedInShell() {
   const selectedCollegeTeam =
     themeSource === "college"
       ? getCollegeTeamSelection(
-          profile.collegeTeamId ?? null,
-          profile.collegeTeamName ?? null,
-          profile.collegeLogoUrl ?? null,
+          resolvedCollegeTeamId,
+          resolvedCollegeTeamName,
+          resolvedCollegeLogoUrl,
         )
       : null;
+  const effectiveBrandSource: ThemeSource = themeSource;
+  const brandVisual = getBrandVisual(effectiveBrandSource, selectedCollegeTeam, storedTheme);
+  const welcomeFirstName = getWelcomeFirstName(profile?.firstName ?? null, profile?.displayName ?? null, currentUser.email ?? null);
 
   async function handleQuickThemeChange(nextChoice: ThemeChoice) {
     const mappedTheme = nextChoice === "system" ? "cwm" : nextChoice;
     setThemeError(null);
-    setThemeOverride(mappedTheme);
+    const previousTheme = storedTheme;
     applyThemeToDocument(mappedTheme);
     setIsThemeSaving(true);
 
     try {
-      await db.transact(
-        db.tx.userProfiles[currentUser.id].update({
-          theme: mappedTheme,
-          updatedAt: new Date().toISOString(),
-        }),
-      );
+      await saveUserProfileToServer({
+        theme: mappedTheme,
+      });
+      setSavedThemeSnapshot((current) => ({
+        themeSource: current?.themeSource ?? themeSource,
+        theme: mappedTheme,
+        palette: current?.palette ?? resolvedPalette,
+        collegeTeamId: current?.collegeTeamId ?? resolvedCollegeTeamId,
+        collegeTeamName: current?.collegeTeamName ?? resolvedCollegeTeamName,
+        collegeLogoUrl: current?.collegeLogoUrl ?? resolvedCollegeLogoUrl,
+      }));
     } catch (updateError) {
-      setThemeOverride(null);
-      applyThemeToDocument(normalizeStoredTheme(profile?.theme));
-      setThemeError(getErrorMessage(updateError, "We could not update your display mode."));
+      applyThemeToDocument(previousTheme);
+      setSavedThemeSnapshot((current) => (current ? { ...current, theme: previousTheme } : current));
+      setThemeError(getFriendlyProfileSaveError(updateError, "We could not update your display mode."));
     } finally {
       setIsThemeSaving(false);
     }
   }
 
+  function navigateToSection(section: AppSection) {
+    if (section !== "profile") {
+      setPreviewThemeSnapshot(null);
+    }
+
+    setActiveSection(section);
+  }
+
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 pb-24 pt-4 md:px-8 md:pb-8 md:pt-8">
-      <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+    <main className="pdp-shell relative isolate mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 pb-24 pt-4 md:px-8 md:pb-8 md:pt-8">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        {brandVisual.watermarkUrl ? (
+          <Image
+            src={brandVisual.watermarkUrl}
+            alt=""
+            width={860}
+            height={860}
+            className="absolute left-1/2 top-[6rem] h-auto w-[min(44rem,92vw)] select-none object-contain"
+            style={{ opacity: brandVisual.watermarkOpacity, transform: `translateX(-50%) scale(${brandVisual.watermarkScale})` }}
+            aria-hidden="true"
+            loading="eager"
+            fetchPriority="high"
+          />
+        ) : null}
+      </div>
+
+      <section className="pdp-panel">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
           <div>
-            <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "var(--pdp-theme-primary)" }}>
-              PDP Workspace
+            <div className="mb-2 flex items-center gap-2">
+              {brandVisual.logoUrl ? (
+                <span className="inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <Image
+                    src={brandVisual.logoUrl}
+                    alt={brandVisual.label}
+                    width={48}
+                    height={48}
+                    className="h-full w-full object-contain p-1"
+                    loading="eager"
+                    fetchPriority="high"
+                  />
+                </span>
+              ) : null}
+              <p className="text-sm font-medium uppercase tracking-wide" style={{ color: "var(--pdp-theme-primary)" }}>
+                Personal Development Plan
+              </p>
+            </div>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">
+              Welcome back, {welcomeFirstName}
+            </h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Align your professional growth, personal life, and spiritual walk.
             </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">Welcome back</h1>
             <p className="mt-2 text-sm text-slate-600">Signed in as {currentUser.email}</p>
             {selectedCollegeTeam ? (
               <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
-                {selectedCollegeTeam.logoUrl ? (
+                {brandVisual.logoUrl ? (
                   <Image
-                    src={selectedCollegeTeam.logoUrl}
+                    src={brandVisual.logoUrl}
                     alt={`${selectedCollegeTeam.displayName} logo`}
                     width={18}
                     height={18}
@@ -366,7 +472,7 @@ function SignedInShell() {
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveSection("profile");
+                      navigateToSection("profile");
                       setIsProfileMenuOpen(false);
                     }}
                     className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
@@ -395,7 +501,7 @@ function SignedInShell() {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setActiveSection(item.id)}
+                onClick={() => navigateToSection(item.id)}
                 className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                   isActive
                     ? "text-white"
@@ -420,7 +526,9 @@ function SignedInShell() {
       {activeSection === "goals" ? <MigrationDataPreview /> : null}
       {activeSection === "calendar" ? <CalendarWorkspace /> : null}
       {activeSection === "journal" ? <JournalWorkspace /> : null}
-      {activeSection === "profile" ? <ProfileSettings /> : null}
+      {activeSection === "profile" ? (
+        <ProfileSettings onThemeSaved={handleThemeProfileSaved} onThemePreview={handleThemeProfilePreview} />
+      ) : null}
 
       <nav
         className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur sm:hidden"
@@ -433,7 +541,7 @@ function SignedInShell() {
               <button
                 key={`mobile-${item.id}`}
                 type="button"
-                onClick={() => setActiveSection(item.id)}
+                onClick={() => navigateToSection(item.id)}
                 className={`flex flex-col items-center gap-1 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 text-[11px] font-medium transition ${
                   isActive ? "text-slate-900" : "text-slate-500"
                 }`}
@@ -458,7 +566,13 @@ function SignedInShell() {
   );
 }
 
-function ProfileSettings() {
+function ProfileSettings({
+  onThemeSaved,
+  onThemePreview,
+}: {
+  onThemeSaved?: (snapshot: ThemeBrandSnapshot) => void;
+  onThemePreview?: (snapshot: ThemeBrandSnapshot | null) => void;
+}) {
   const { user, isLoading } = db.useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -470,6 +584,8 @@ function ProfileSettings() {
   const [teamSearchQuery, setTeamSearchQuery] = useState("");
   const [teamSubdivisionFilter, setTeamSubdivisionFilter] = useState<"all" | "FBS" | "FCS">("all");
   const [selectedCollegeTeamIdInput, setSelectedCollegeTeamIdInput] = useState<string | null>(null);
+  const [displayModeInput, setDisplayModeInput] = useState<ThemeChoice | null>(null);
+  const [paletteInput, setPaletteInput] = useState<UserProfile["palette"] | null>(null);
   const [pendingSyncCount, setPendingSyncCount] = useState(() => dataRepository.getOfflineMutationCount());
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -541,12 +657,66 @@ function ProfileSettings() {
   const profile = data?.userProfiles?.[0] ?? null;
   const timezoneOptions = useMemo(() => getTimezoneOptions(profile?.timezone), [profile?.timezone]);
   const themeSource = themeSourceInput ?? normalizeThemeSource(profile?.themeMode, profile?.collegeTeamId ?? null);
+  const currentDisplayMode: ThemeChoice =
+    displayModeInput ?? ((profile?.theme === "cwm" ? "system" : profile?.theme) as ThemeChoice | undefined) ?? "system";
+  const currentPalette: UserProfile["palette"] = paletteInput ?? profile?.palette ?? "ocean";
   const availableCollegeTeams = liveCollegeTeams?.length ? liveCollegeTeams : FALLBACK_COLLEGE_THEME_TEAMS;
   const availableCollegeTeamsById = useMemo(
     () => new Map(availableCollegeTeams.map((team) => [team.id, team])),
     [availableCollegeTeams],
   );
   const selectedCollegeTeamId = selectedCollegeTeamIdInput ?? (profile?.collegeTeamId ?? "");
+
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+
+    const previewTheme = currentDisplayMode === "system" ? "cwm" : currentDisplayMode;
+    const previewSource = themeSource;
+    const previewPalette = previewSource === "palette" ? currentPalette : profile.palette;
+    const previewCollegeTeamId = previewSource === "college" ? selectedCollegeTeamId || null : null;
+    const previewCollegeTeam =
+      previewSource === "college" && previewCollegeTeamId
+        ? availableCollegeTeamsById.get(previewCollegeTeamId) ?? null
+        : null;
+    const previewCollegeLogoUrl =
+      previewSource === "college"
+        ? previewCollegeTeam
+          ? getCollegeTeamLogoUrl(previewCollegeTeam.id)
+          : nullableValue(profile.collegeLogoUrl ?? null)
+        : null;
+    const previewCollegeTeamName =
+      previewSource === "college"
+        ? previewCollegeTeam?.displayName ?? nullableValue(profile.collegeTeamName ?? null)
+        : null;
+
+    applyThemeToDocument(previewTheme);
+    applyProfileThemeTokens(previewSource, previewPalette, previewCollegeTeamId);
+
+    onThemePreview?.({
+      themeSource: previewSource,
+      theme: previewTheme,
+      palette: previewPalette,
+      collegeTeamId: previewCollegeTeamId,
+      collegeTeamName: previewCollegeTeamName,
+      collegeLogoUrl: previewCollegeLogoUrl,
+    });
+  }, [
+    availableCollegeTeamsById,
+    currentDisplayMode,
+    currentPalette,
+    onThemePreview,
+    profile,
+    selectedCollegeTeamId,
+    themeSource,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      onThemePreview?.(null);
+    };
+  }, [onThemePreview]);
 
   const filteredCollegeTeams = useMemo(() => {
     const query = teamSearchQuery.trim().toLowerCase();
@@ -567,7 +737,7 @@ function ProfileSettings() {
 
   if (isLoading || isProfileLoading) {
     return (
-      <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+      <section className="pdp-panel">
         <h2 className="text-lg font-semibold text-slate-900">Profile & Theme</h2>
         <p className="mt-3 text-sm text-slate-700">Loading your profile settings...</p>
       </section>
@@ -576,7 +746,7 @@ function ProfileSettings() {
 
   if (error || !user || !profile) {
     return (
-      <section className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
+      <section className="pdp-panel rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-red-700">Profile & Theme</h2>
         <p className="mt-2 text-sm text-red-700">
           {error?.message ?? "Profile settings could not be loaded yet. Sign out and in again to retry."}
@@ -587,8 +757,20 @@ function ProfileSettings() {
 
   const currentUser = user;
   const currentProfile = profile;
-  const defaultThemeChoice: ThemeChoice = currentProfile.theme === "cwm" ? "system" : currentProfile.theme;
   const selectedCollegeTeam = selectedCollegeTeamId ? availableCollegeTeamsById.get(selectedCollegeTeamId) : null;
+  const previewThemeValue: "light" | "dark" | "cwm" = currentDisplayMode === "system" ? "cwm" : currentDisplayMode;
+  const previewCollegeTeam =
+    themeSource === "college"
+      ? getCollegeTeamSelection(
+          selectedCollegeTeam?.id ?? null,
+          selectedCollegeTeam?.displayName ?? null,
+          selectedCollegeTeam
+            ? getCollegeTeamLogoUrl(selectedCollegeTeam.id)
+            : nullableValue(currentProfile.collegeLogoUrl ?? null),
+        )
+      : null;
+  const previewBrandSource: ThemeSource = themeSource;
+  const previewBrandVisual = getBrandVisual(previewBrandSource, previewCollegeTeam, previewThemeValue);
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -598,12 +780,12 @@ function ProfileSettings() {
 
     try {
       const formData = new FormData(event.currentTarget);
-      const displayMode = String(formData.get("displayMode") ?? "system") as ThemeChoice;
+      const displayMode = currentDisplayMode;
       const mappedTheme = displayMode === "system" ? "cwm" : displayMode;
       const selectedThemeSource = themeSource;
       const selectedPalette =
         selectedThemeSource === "palette"
-          ? ((formData.get("palette") as UserProfile["palette"]) ?? currentProfile.palette)
+          ? currentPalette
           : currentProfile.palette;
       const selectedCollegeLogoUrl =
         selectedThemeSource === "college"
@@ -630,28 +812,33 @@ function ProfileSettings() {
         updatedAt: new Date().toISOString(),
       });
 
-      await db.transact(
-        db.tx.userProfiles[currentUser.id].update({
-          uid: updatedProfile.uid,
-          email: updatedProfile.email,
-          firstName: updatedProfile.firstName ?? null,
-          lastName: updatedProfile.lastName ?? null,
-          displayName: updatedProfile.displayName,
-          themeMode: updatedProfile.themeMode,
-          theme: updatedProfile.theme,
-          palette: updatedProfile.palette,
-          collegeTeamId: updatedProfile.collegeTeamId ?? null,
-          collegeTeamName: updatedProfile.collegeTeamName ?? null,
-          collegeLogoUrl: updatedProfile.collegeLogoUrl ?? null,
-          timezone: updatedProfile.timezone,
-          retentionDays: updatedProfile.retentionDays,
-          updatedAt: updatedProfile.updatedAt,
-        }),
-      );
+      await saveUserProfileToServer({
+        firstName: updatedProfile.firstName ?? null,
+        lastName: updatedProfile.lastName ?? null,
+        displayName: updatedProfile.displayName,
+        themeMode: updatedProfile.themeMode,
+        theme: updatedProfile.theme,
+        palette: updatedProfile.palette,
+        collegeTeamId: updatedProfile.collegeTeamId ?? null,
+        collegeTeamName: updatedProfile.collegeTeamName ?? null,
+        collegeLogoUrl: updatedProfile.collegeLogoUrl ?? null,
+        timezone: updatedProfile.timezone,
+        retentionDays: updatedProfile.retentionDays,
+        createdAt: updatedProfile.createdAt,
+      });
+
+      onThemeSaved?.({
+        themeSource: normalizeThemeSource(updatedProfile.themeMode, updatedProfile.collegeTeamId ?? null),
+        theme: updatedProfile.theme,
+        palette: updatedProfile.palette,
+        collegeTeamId: updatedProfile.collegeTeamId ?? null,
+        collegeTeamName: updatedProfile.collegeTeamName ?? null,
+        collegeLogoUrl: updatedProfile.collegeLogoUrl ?? null,
+      });
 
       setSaveMessage("Profile preferences saved.");
     } catch (updateError) {
-      setSaveError(getErrorMessage(updateError, "We could not save your profile updates."));
+      setSaveError(getFriendlyProfileSaveError(updateError, "We could not save your profile updates."));
     } finally {
       setIsSaving(false);
     }
@@ -678,12 +865,12 @@ function ProfileSettings() {
   }
 
   return (
-    <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+    <section className="pdp-panel">
       <h2 className="text-lg font-semibold text-slate-900">Profile & Theme</h2>
       <p className="mt-2 text-sm text-slate-600">Manage identity details separately from visual theme configuration.</p>
 
       <form className="mt-4 grid gap-3" onSubmit={handleSave}>
-        <section className="grid gap-3">
+        <section className="pdp-panel-muted grid gap-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Profile</h3>
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -692,7 +879,7 @@ function ProfileSettings() {
               <input
                 name="firstName"
                 defaultValue={currentProfile.firstName ?? ""}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1"
               />
             </label>
 
@@ -701,7 +888,7 @@ function ProfileSettings() {
               <input
                 name="lastName"
                 defaultValue={currentProfile.lastName ?? ""}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1"
               />
             </label>
           </div>
@@ -711,7 +898,7 @@ function ProfileSettings() {
             <input
               name="displayName"
               defaultValue={currentProfile.displayName ?? ""}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              className="pdp-control mt-1"
             />
           </label>
 
@@ -721,7 +908,7 @@ function ProfileSettings() {
               <select
                 name="timezone"
                 defaultValue={currentProfile.timezone}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1"
               >
                 {timezoneOptions.map((timezoneValue) => (
                   <option key={timezoneValue} value={timezoneValue}>
@@ -738,7 +925,7 @@ function ProfileSettings() {
                 type="number"
                 min={1}
                 defaultValue={currentProfile.retentionDays}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1"
               />
             </label>
           </div>
@@ -747,8 +934,9 @@ function ProfileSettings() {
             Display mode
             <select
               name="displayMode"
-              defaultValue={defaultThemeChoice}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              value={currentDisplayMode}
+              onChange={(event) => setDisplayModeInput(event.target.value as ThemeChoice)}
+              className="pdp-control mt-1"
             >
               <option value="light">Light</option>
               <option value="dark">Dark</option>
@@ -759,12 +947,39 @@ function ProfileSettings() {
 
         <hr className="my-1 border-slate-200" />
 
-        <section className="grid gap-3">
+        <section className="pdp-panel-muted grid gap-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Theme</h3>
+
+          <div className="pdp-card rounded-xl p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Theme branding preview</p>
+            {previewBrandVisual.logoUrl ? (
+              <div className="mt-2 flex items-center gap-3">
+                <span className="inline-flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <Image
+                    src={previewBrandVisual.logoUrl}
+                    alt={previewBrandVisual.label}
+                    width={56}
+                    height={56}
+                    className="h-full w-full object-contain p-1"
+                  />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{previewBrandVisual.label}</p>
+                  <p className="text-xs text-slate-600">
+                    This is the logo shown in the header after saving your theme settings.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-slate-600">
+                No theme logo is active for this selection. Choose CWM or select a college team to show branding.
+              </p>
+            )}
+          </div>
 
           <div>
             <p className="text-sm font-medium text-slate-700">Theme base</p>
-            <div className="mt-1 inline-flex rounded-lg border border-slate-300 p-1">
+            <div className="mt-1 inline-flex rounded-lg border border-slate-300 bg-white p-1">
               {([
                 { value: "palette" as const, label: "Palette" },
                 { value: "cwm" as const, label: "CWM" },
@@ -789,8 +1004,9 @@ function ProfileSettings() {
               Palette
               <select
                 name="palette"
-                defaultValue={currentProfile.palette}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                value={currentPalette}
+                onChange={(event) => setPaletteInput(event.target.value as UserProfile["palette"])}
+                className="pdp-control mt-1"
               >
                 {PALETTE_OPTIONS.map((palette) => (
                   <option key={palette} value={palette}>
@@ -802,8 +1018,19 @@ function ProfileSettings() {
           ) : null}
 
           {themeSource === "cwm" ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              CWM uses the default app visual settings and does not require additional theme options.
+            <div className="pdp-panel-muted text-sm text-slate-700">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <Image
+                    src="/cwm-logo.png"
+                    alt="CWM logo"
+                    width={36}
+                    height={36}
+                    className="h-full w-full object-contain p-1"
+                  />
+                </span>
+                <p>CWM uses the default app visual settings and does not require additional theme options.</p>
+              </div>
             </div>
           ) : null}
 
@@ -812,7 +1039,7 @@ function ProfileSettings() {
               <div className="grid gap-3 md:grid-cols-3">
                 <div>
                   <p className="text-sm font-medium text-slate-700">Team filter</p>
-                  <div className="mt-1 inline-flex rounded-lg border border-slate-300 p-1">
+                  <div className="pdp-card mt-1 inline-flex rounded-lg p-1">
                     {(["all", "FBS", "FCS"] as const).map((value) => (
                       <button
                         key={value}
@@ -836,24 +1063,33 @@ function ProfileSettings() {
                     value={teamSearchQuery}
                     onChange={(event) => setTeamSearchQuery(event.target.value)}
                     placeholder="Search school or abbreviation"
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    className="pdp-control mt-1"
                   />
                 </label>
 
                 <label className="text-sm font-medium text-slate-700">
-                  College logo URL override (optional)
+                  <span className="flex items-center gap-1">
+                    <span>College logo URL override (optional)</span>
+                    <span
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-bold text-slate-600"
+                      title="Use this only when you need a custom logo URL. By default, the app derives logos from the selected college team."
+                      aria-label="Use this only when you need a custom logo URL. By default, the app derives logos from the selected college team."
+                    >
+                      i
+                    </span>
+                  </span>
                   <input
                     name="collegeLogoUrl"
                     defaultValue={currentProfile.collegeLogoUrl ?? ""}
                     placeholder="https://a.espncdn.com/..."
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    className="pdp-control mt-1"
                   />
                 </label>
               </div>
 
               <input type="hidden" name="collegeTeamId" value={selectedCollegeTeamId} />
 
-              <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+              <section className="pdp-panel-muted">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-slate-800">College team picker</h3>
                   <p className="text-xs text-slate-500">Showing {filteredCollegeTeams.length} team(s)</p>
@@ -865,7 +1101,7 @@ function ProfileSettings() {
                 {liveCollegeTeamsError ? <p className="mt-2 text-xs text-amber-700">{liveCollegeTeamsError}</p> : null}
 
                 {selectedCollegeTeam ? (
-                  <div className="mt-3 rounded-lg border border-slate-300 bg-white p-2">
+                  <div className="pdp-card mt-3 rounded-lg p-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected</p>
                     <div className="mt-2 flex items-center gap-2">
                       <Image
@@ -981,6 +1217,7 @@ function FirstLoginOnboarding({
         timezone?: string;
         retentionDays?: number;
         createdAt?: string;
+        id?: string;
       }
     | null;
 }) {
@@ -1037,25 +1274,20 @@ function FirstLoginOnboarding({
         updatedAt: nowIso,
       });
 
-      await db.transact(
-        db.tx.userProfiles[user.id].update({
-          uid: validatedProfile.uid,
-          email: validatedProfile.email,
-          firstName: validatedProfile.firstName ?? null,
-          lastName: validatedProfile.lastName ?? null,
-          displayName: validatedProfile.displayName,
-          themeMode: validatedProfile.themeMode,
-          theme: validatedProfile.theme,
-          palette: validatedProfile.palette,
-          collegeTeamId: validatedProfile.collegeTeamId ?? null,
-          collegeTeamName: validatedProfile.collegeTeamName ?? null,
-          collegeLogoUrl: validatedProfile.collegeLogoUrl ?? null,
-          timezone: validatedProfile.timezone,
-          retentionDays: validatedProfile.retentionDays,
-          createdAt: validatedProfile.createdAt,
-          updatedAt: validatedProfile.updatedAt,
-        }),
-      );
+      await saveUserProfileToServer({
+        firstName: validatedProfile.firstName ?? null,
+        lastName: validatedProfile.lastName ?? null,
+        displayName: validatedProfile.displayName,
+        themeMode: validatedProfile.themeMode,
+        theme: validatedProfile.theme,
+        palette: validatedProfile.palette,
+        collegeTeamId: validatedProfile.collegeTeamId ?? null,
+        collegeTeamName: validatedProfile.collegeTeamName ?? null,
+        collegeLogoUrl: validatedProfile.collegeLogoUrl ?? null,
+        timezone: validatedProfile.timezone,
+        retentionDays: validatedProfile.retentionDays,
+        createdAt: validatedProfile.createdAt,
+      });
     } catch (saveError) {
       setError(getErrorMessage(saveError, "We could not save your onboarding details."));
     } finally {
@@ -1273,12 +1505,59 @@ function getCollegeTeamSelection(
   }
 
   const allowlistTeam = collegeTeamId ? COLLEGE_TEAMS_BY_ID.get(collegeTeamId) : null;
-  const fallbackLogoUrl = allowlistTeam ? getCollegeTeamLogoUrl(allowlistTeam.id) : null;
+  const fallbackLogoUrl = allowlistTeam
+    ? allowlistTeam.logoUrl ?? getCollegeTeamLogoUrl(allowlistTeam.id)
+    : null;
 
   return {
     id: allowlistTeam?.id ?? collegeTeamId ?? "",
     displayName: allowlistTeam?.displayName ?? collegeTeamName ?? "College Team",
     logoUrl: collegeLogoUrl ?? fallbackLogoUrl,
+    darkLogoUrl: allowlistTeam?.darkLogoUrl ?? allowlistTeam?.logoUrl ?? fallbackLogoUrl,
+  };
+}
+
+function getBrandVisual(
+  themeSource: ThemeSource,
+  selectedCollegeTeam:
+    | {
+        id: string;
+        displayName: string;
+        logoUrl: string | null;
+        darkLogoUrl?: string | null;
+      }
+    | null,
+  theme: "light" | "dark" | "cwm",
+): BrandVisual {
+  if (themeSource === "cwm") {
+    return {
+      label: "CWM brand mark",
+      logoUrl: "/cwm-logo.png",
+      watermarkUrl: "/cwm-logo.png",
+      watermarkOpacity: 0.1,
+      watermarkScale: 1,
+    };
+  }
+
+  if (themeSource === "college" && selectedCollegeTeam) {
+    const isDark = theme === "dark";
+    const brandLogoUrl = isDark ? selectedCollegeTeam.darkLogoUrl ?? selectedCollegeTeam.logoUrl : selectedCollegeTeam.logoUrl;
+
+    return {
+      label: `${selectedCollegeTeam.displayName} brand mark`,
+      logoUrl: brandLogoUrl ?? selectedCollegeTeam.logoUrl,
+      watermarkUrl: brandLogoUrl ?? selectedCollegeTeam.logoUrl,
+      watermarkOpacity: isDark ? 0.08 : 0.06,
+      watermarkScale: isDark ? 1.04 : 1,
+    };
+  }
+
+  return {
+    label: "PDP brand mark",
+    logoUrl: null,
+    watermarkUrl: null,
+    watermarkOpacity: 0,
+    watermarkScale: 1,
   };
 }
 
@@ -1306,8 +1585,74 @@ function normalizeStoredTheme(theme: string | null | undefined): "light" | "dark
   return "cwm";
 }
 
+function normalizeStoredPalette(palette: string | null | undefined): UserProfile["palette"] {
+  return PALETTE_OPTIONS.includes(palette as UserProfile["palette"])
+    ? (palette as UserProfile["palette"])
+    : "ocean";
+}
+
+function readCachedTheme(): "light" | "dark" | "cwm" | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const cachedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+  return cachedTheme === "light" || cachedTheme === "dark" || cachedTheme === "cwm" ? cachedTheme : null;
+}
+
+function readCachedPalette(): UserProfile["palette"] | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const cachedPalette = window.localStorage.getItem(PALETTE_STORAGE_KEY);
+  return cachedPalette ? normalizeStoredPalette(cachedPalette) : null;
+}
+
 function toThemeChoice(theme: "light" | "dark" | "cwm"): ThemeChoice {
   return theme === "cwm" ? "system" : theme;
+}
+
+type UserProfileServerPatch = {
+  displayName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  themeMode?: ThemeSource | null;
+  theme?: "light" | "dark" | "cwm";
+  palette?: UserProfile["palette"];
+  collegeTeamId?: string | null;
+  collegeTeamName?: string | null;
+  collegeLogoUrl?: string | null;
+  timezone?: string;
+  retentionDays?: number;
+  createdAt?: string;
+};
+
+async function saveUserProfileToServer(patch: UserProfileServerPatch) {
+  const response = await fetch("/api/profile", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(patch),
+  });
+
+  if (response.ok) {
+    return;
+  }
+
+  let errorMessage = "We could not save your profile updates.";
+
+  try {
+    const payload = (await response.json()) as { error?: string };
+    if (payload.error) {
+      errorMessage = payload.error;
+    }
+  } catch {
+    // Keep default fallback message when server response is not JSON.
+  }
+
+  throw new Error(errorMessage);
 }
 
 function getUserInitials(firstName: string | null, lastName: string | null, email: string | null) {
@@ -1324,6 +1669,50 @@ function getUserInitials(firstName: string | null, lastName: string | null, emai
   return "U";
 }
 
+function getWelcomeFirstName(firstName: string | null, displayName: string | null, email: string | null) {
+  const fromFirstName = (firstName ?? "").trim();
+  if (fromFirstName.length > 0) {
+    return fromFirstName;
+  }
+
+  const fromDisplayName = (displayName ?? "").trim();
+  if (fromDisplayName.length > 0) {
+    return fromDisplayName.split(/\s+/)[0] ?? "there";
+  }
+
+  const fromEmail = (email ?? "").trim();
+  if (fromEmail.length > 0) {
+    const localPart = fromEmail.split("@")[0] ?? "";
+    if (localPart.length > 0) {
+      return capitalize(localPart);
+    }
+  }
+
+  return "there";
+}
+
+function areThemeSnapshotsEqual(
+  current: ThemeBrandSnapshot | null,
+  next: ThemeBrandSnapshot | null,
+) {
+  if (current === next) {
+    return true;
+  }
+
+  if (!current || !next) {
+    return false;
+  }
+
+  return (
+    current.themeSource === next.themeSource &&
+    current.theme === next.theme &&
+    current.palette === next.palette &&
+    current.collegeTeamId === next.collegeTeamId &&
+    current.collegeTeamName === next.collegeTeamName &&
+    current.collegeLogoUrl === next.collegeLogoUrl
+  );
+}
+
 function applyThemeToDocument(theme: "light" | "dark" | "cwm") {
   if (typeof document === "undefined") {
     return;
@@ -1331,8 +1720,9 @@ function applyThemeToDocument(theme: "light" | "dark" | "cwm") {
 
   const root = document.documentElement;
   if (theme === "cwm") {
-    const prefersDark =
-      typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const prefersDark = typeof window !== "undefined"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+      : false;
     root.dataset.theme = prefersDark ? "dark" : "light";
     return;
   }
@@ -1340,22 +1730,189 @@ function applyThemeToDocument(theme: "light" | "dark" | "cwm") {
   root.dataset.theme = theme;
 }
 
-function applyProfileThemeTokens(themeSource: ThemeSource, palette: UserProfile["palette"]) {
+function applyProfileThemeTokens(
+  themeSource: ThemeSource,
+  palette: UserProfile["palette"],
+  collegeTeamId: string | null,
+) {
   if (typeof document === "undefined") {
     return;
   }
 
   const root = document.documentElement;
+  const isDark = root.dataset.theme === "dark";
+  root.dataset.themeSource = themeSource;
+
+  const neutral = themeSource === "cwm"
+    ? {
+        surface: "#2d2c25",
+        mutedSurface: "#182c28",
+        border: "rgba(229, 225, 214, 0.4)",
+        background: "#2d2c25",
+        foreground: "#f5f2e8",
+        textStrong: "#f5f2e8",
+        text: "#e5e1d6",
+        textMuted: "#b4afa0",
+      }
+    : isDark
+      ? {
+          surface: "#171717",
+          mutedSurface: "#202020",
+          border: "#3f3f46",
+          background: "#111111",
+          foreground: "#fafafa",
+          textStrong: "#fafafa",
+          text: "#e5e5e5",
+          textMuted: "#a3a3a3",
+        }
+      : {
+          surface: "#ffffff",
+          mutedSurface: "#f8fafc",
+          border: "#cbd5e1",
+          background: "#ffffff",
+          foreground: "#171717",
+          textStrong: "#0f172a",
+          text: "#334155",
+          textMuted: "#64748b",
+        };
+
+  let primary = "#0f172a";
+  let soft = isDark ? "#1e293b" : "#e2e8f0";
 
   if (themeSource === "palette") {
     const tokens = PALETTE_THEME_TOKENS[palette] ?? PALETTE_THEME_TOKENS.ocean;
-    root.style.setProperty("--pdp-theme-primary", tokens.primary);
-    root.style.setProperty("--pdp-theme-soft", tokens.soft);
-    return;
+    primary = tokens.primary;
+    soft = tokens.soft;
   }
 
-  root.style.setProperty("--pdp-theme-primary", "#0f172a");
-  root.style.setProperty("--pdp-theme-soft", "#e2e8f0");
+  if (themeSource === "college" && collegeTeamId) {
+    const selectedTeam = COLLEGE_TEAMS_BY_ID.get(collegeTeamId);
+    const teamPrimary = normalizeHexColor(selectedTeam?.colors?.primary);
+    const teamSecondary = normalizeHexColor(selectedTeam?.colors?.secondary);
+
+    primary = teamPrimary ?? primary;
+    soft = teamSecondary ?? (isDark ? blendHex(primary, "#202020", 0.28) : blendHex(primary, "#ffffff", 0.26));
+  }
+
+  if (themeSource === "cwm") {
+    primary = "#ffd400";
+    soft = "#1e4741";
+  }
+
+  const tintedBorder =
+    themeSource === "cwm"
+      ? neutral.border
+      : isDark
+        ? blendHex(primary, neutral.border, 0.4)
+        : blendHex(primary, neutral.border, 0.74);
+  const tintedMutedSurface =
+    themeSource === "cwm"
+      ? neutral.mutedSurface
+      : themeSource === "college"
+        ? isDark
+          ? blendHex(soft, neutral.mutedSurface, 0.18)
+          : blendHex(soft, neutral.mutedSurface, 0.28)
+        : isDark
+          ? blendHex(soft, neutral.mutedSurface, 0.14)
+          : blendHex(soft, neutral.mutedSurface, 0.22);
+
+  const eventGoalProfessionalBackground =
+    themeSource === "cwm" ? "#1e4741" : blendHex(primary, isDark ? "#2563eb" : "#2563eb", 0.5);
+  const eventGoalProfessionalBorder = blendHex(eventGoalProfessionalBackground, neutral.border, 0.68);
+  const eventGoalPersonalBackground =
+    themeSource === "cwm" ? "#1e4741" : blendHex(primary, isDark ? "#db2777" : "#db2777", 0.42);
+  const eventGoalPersonalBorder = blendHex(eventGoalPersonalBackground, neutral.border, 0.68);
+  const eventSubgoalBackground =
+    themeSource === "cwm" ? "#ffd400" : blendHex(primary, isDark ? "#f59e0b" : "#f59e0b", 0.38);
+  const eventSubgoalBorder = blendHex(eventSubgoalBackground, neutral.border, 0.68);
+  const eventTaskBackground =
+    themeSource === "cwm" ? "#1e4741" : blendHex(primary, isDark ? "#059669" : "#059669", 0.38);
+  const eventTaskBorder = blendHex(eventTaskBackground, neutral.border, 0.68);
+
+  const statusNotStartedBackground = themeSource === "cwm" ? "#23221c" : blendHex(neutral.mutedSurface, primary, isDark ? 0.2 : 0.16);
+  const statusNotStartedText = neutral.text;
+  const statusProgressBackground = themeSource === "cwm" ? "#1e4741" : blendHex(eventGoalProfessionalBackground, neutral.mutedSurface, isDark ? 0.34 : 0.26);
+  const statusProgressText = isDark ? "#dbeafe" : "#1e40af";
+  const statusDoneBackground = themeSource === "cwm" ? "#182c28" : blendHex(eventTaskBackground, neutral.mutedSurface, isDark ? 0.34 : 0.26);
+  const statusDoneText = isDark ? "#dcfce7" : "#166534";
+
+  root.style.setProperty("--background", neutral.background);
+  root.style.setProperty("--foreground", neutral.foreground);
+  root.style.setProperty("--pdp-theme-primary", primary);
+  root.style.setProperty("--pdp-theme-soft", soft);
+  root.style.setProperty("--pdp-surface", neutral.surface);
+  root.style.setProperty("--pdp-muted-surface", tintedMutedSurface);
+  root.style.setProperty("--pdp-border", tintedBorder);
+  root.style.setProperty("--pdp-text-strong", neutral.textStrong);
+  root.style.setProperty("--pdp-text", neutral.text);
+  root.style.setProperty("--pdp-text-muted", neutral.textMuted);
+  root.style.setProperty("--pdp-event-goal-professional-bg", eventGoalProfessionalBackground);
+  root.style.setProperty("--pdp-event-goal-professional-border", eventGoalProfessionalBorder);
+  root.style.setProperty("--pdp-event-goal-personal-bg", eventGoalPersonalBackground);
+  root.style.setProperty("--pdp-event-goal-personal-border", eventGoalPersonalBorder);
+  root.style.setProperty("--pdp-event-subgoal-bg", eventSubgoalBackground);
+  root.style.setProperty("--pdp-event-subgoal-border", eventSubgoalBorder);
+  root.style.setProperty("--pdp-event-task-bg", eventTaskBackground);
+  root.style.setProperty("--pdp-event-task-border", eventTaskBorder);
+  root.style.setProperty("--pdp-status-not-started-bg", statusNotStartedBackground);
+  root.style.setProperty("--pdp-status-not-started-text", statusNotStartedText);
+  root.style.setProperty("--pdp-status-progress-bg", statusProgressBackground);
+  root.style.setProperty("--pdp-status-progress-text", statusProgressText);
+  root.style.setProperty("--pdp-status-done-bg", statusDoneBackground);
+  root.style.setProperty("--pdp-status-done-text", statusDoneText);
+}
+
+function getFriendlyProfileSaveError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : "";
+
+  if (message.includes("not perms-pass")) {
+    return "We could not save that change because the workspace permissions rejected it. Please refresh and try again.";
+  }
+
+  return getErrorMessage(error, fallback);
+}
+
+function normalizeHexColor(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const cleaned = value.replace(/^#/, "").trim();
+  return /^[0-9a-fA-F]{6}$/.test(cleaned) ? `#${cleaned.toLowerCase()}` : null;
+}
+
+function blendHex(foreground: string, background: string, foregroundWeight: number): string {
+  const fg = hexToRgb(foreground);
+  const bg = hexToRgb(background);
+
+  if (!fg || !bg) {
+    return background;
+  }
+
+  const weight = Math.min(Math.max(foregroundWeight, 0), 1);
+  const inverse = 1 - weight;
+
+  const mix = (a: number, b: number) => Math.round(a * weight + b * inverse);
+
+  return rgbToHex(mix(fg.r, bg.r), mix(fg.g, bg.g), mix(fg.b, bg.b));
+}
+
+function hexToRgb(value: string): { r: number; g: number; b: number } | null {
+  const normalized = normalizeHexColor(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const hex = normalized.slice(1);
+  const r = Number.parseInt(hex.slice(0, 2), 16);
+  const g = Number.parseInt(hex.slice(2, 4), 16);
+  const b = Number.parseInt(hex.slice(4, 6), 16);
+  return { r, g, b };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const toHex = (channel: number) => channel.toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 function SunIcon({ className }: { className?: string }) {

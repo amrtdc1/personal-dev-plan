@@ -395,7 +395,7 @@ export function MigrationDataPreview() {
   }
 
   return (
-    <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+    <section className="pdp-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Goals Workspace</h2>
@@ -424,7 +424,7 @@ export function MigrationDataPreview() {
       </div>
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <article className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+        <article className="pdp-panel-muted md:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-slate-900">Goal editor</h3>
@@ -449,7 +449,7 @@ export function MigrationDataPreview() {
               <select
                 value={goalType}
                 onChange={(event) => setGoalType(event.target.value as "professional" | "personal")}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1 rounded-xl"
               >
                 <option value="professional">Professional</option>
                 <option value="personal">Personal</option>
@@ -461,7 +461,7 @@ export function MigrationDataPreview() {
               <input
                 value={goalTitle}
                 onChange={(event) => setGoalTitle(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1 rounded-xl"
                 placeholder="Improve leadership communication"
               />
             </label>
@@ -471,7 +471,7 @@ export function MigrationDataPreview() {
               <textarea
                 value={goalDescription}
                 onChange={(event) => setGoalDescription(event.target.value)}
-                className="mt-1 min-h-24 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1 min-h-24 rounded-xl"
                 placeholder="Capture the business outcome and why this goal matters."
               />
             </label>
@@ -482,7 +482,7 @@ export function MigrationDataPreview() {
                 type="date"
                 value={goalStartDate}
                 onChange={(event) => setGoalStartDate(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1 rounded-xl"
               />
             </label>
 
@@ -492,7 +492,7 @@ export function MigrationDataPreview() {
                 type="date"
                 value={goalEndDate}
                 onChange={(event) => setGoalEndDate(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1 rounded-xl"
               />
             </label>
 
@@ -501,7 +501,7 @@ export function MigrationDataPreview() {
               <input
                 value={goalTimeframeLabel}
                 onChange={(event) => setGoalTimeframeLabel(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="pdp-control mt-1 rounded-xl"
                 placeholder="Q3 2026"
               />
             </label>
@@ -533,7 +533,7 @@ export function MigrationDataPreview() {
           </form>
         </article>
 
-        <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <article className="pdp-panel-muted">
           <h3 className="text-sm font-semibold text-slate-900">Goal snapshot</h3>
           <GoalList
             title="Professional"
@@ -553,7 +553,7 @@ export function MigrationDataPreview() {
           />
         </article>
 
-        <article className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+        <article className="pdp-panel-muted md:col-span-2">
           <h3 className="text-sm font-semibold text-slate-900">Subgoals and tasks</h3>
           {snapshot?.sampleGoalId ? (
             <>
@@ -694,7 +694,7 @@ export function MigrationDataPreview() {
                     <input
                       value={subgoalTitle}
                       onChange={(event) => setSubgoalTitle(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      className="pdp-control mt-1 rounded-xl"
                       placeholder="Break goal into measurable outcomes"
                     />
                   </label>
@@ -703,7 +703,7 @@ export function MigrationDataPreview() {
                     <textarea
                       value={subgoalDescription}
                       onChange={(event) => setSubgoalDescription(event.target.value)}
-                      className="mt-1 min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      className="pdp-control mt-1 min-h-20 rounded-xl"
                     />
                   </label>
                   <label className="mt-2 block text-sm text-slate-700">
@@ -711,7 +711,7 @@ export function MigrationDataPreview() {
                     <input
                       value={subgoalTimeframeLabel}
                       onChange={(event) => setSubgoalTimeframeLabel(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      className="pdp-control mt-1 rounded-xl"
                       placeholder="Q4 2026"
                     />
                   </label>
@@ -732,7 +732,7 @@ export function MigrationDataPreview() {
                     <input
                       value={taskTitle}
                       onChange={(event) => setTaskTitle(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      className="pdp-control mt-1 rounded-xl"
                       placeholder="Define milestone and owner"
                     />
                   </label>
@@ -741,7 +741,7 @@ export function MigrationDataPreview() {
                     <textarea
                       value={taskNotes}
                       onChange={(event) => setTaskNotes(event.target.value)}
-                      className="mt-1 min-h-20 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      className="pdp-control mt-1 min-h-20 rounded-xl"
                     />
                   </label>
                   <label className="mt-2 block text-sm text-slate-700">
@@ -750,7 +750,7 @@ export function MigrationDataPreview() {
                       type="date"
                       value={taskDueDate}
                       onChange={(event) => setTaskDueDate(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      className="pdp-control mt-1 rounded-xl"
                     />
                   </label>
                   {taskSaveError ? <p className="mt-2 text-sm text-red-700">{taskSaveError}</p> : null}
@@ -777,7 +777,7 @@ export function MigrationDataPreview() {
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <div className="pdp-panel-muted">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
     </div>
