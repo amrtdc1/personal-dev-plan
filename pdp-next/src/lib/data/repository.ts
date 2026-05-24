@@ -10,6 +10,7 @@ import {
   getOfflineMutationCount as getOfflineMutationCountFromQueue,
   subscribeOfflineMutationCount as subscribeOfflineMutationCountFromQueue,
   type OfflineMutation,
+  type OfflineFlushResult,
 } from "@/lib/offline/write-queue";
 import {
   assertOwnedGoal,
@@ -84,6 +85,62 @@ export type SaveJournalEntryInput = {
   existingJournalEntry?: JournalEntry;
 };
 
+type GoalStatusUpdateInput = {
+  ownerUid: string;
+  goalId: string;
+  status: ItemStatus;
+};
+
+type SubgoalStatusUpdateInput = {
+  ownerUid: string;
+  subgoalId: string;
+  status: ItemStatus;
+};
+
+type TaskStatusUpdateInput = {
+  ownerUid: string;
+  taskId: string;
+  status: ItemStatus;
+};
+
+type GoalReorderInput = {
+  ownerUid: string;
+  type: GoalType;
+  orderedGoalIds: string[];
+};
+
+type SubgoalReorderInput = {
+  ownerUid: string;
+  goalId: string;
+  orderedSubgoalIds: string[];
+};
+
+type TaskReorderInput = {
+  ownerUid: string;
+  subgoalId: string;
+  orderedTaskIds: string[];
+};
+
+type GoalArchiveInput = {
+  ownerUid: string;
+  goalId: string;
+};
+
+type SubgoalArchiveInput = {
+  ownerUid: string;
+  subgoalId: string;
+};
+
+type TaskArchiveInput = {
+  ownerUid: string;
+  taskId: string;
+};
+
+type JournalArchiveInput = {
+  ownerUid: string;
+  journalEntryId: string;
+};
+
 export type DataRepository = {
   listGoals: (ownerUid: string, type: GoalType, options?: ListOptions) => Promise<Goal[]>;
   saveGoal: (input: SaveGoalInput) => Promise<Goal>;
@@ -115,7 +172,7 @@ export type DataRepository = {
   restoreJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<JournalEntry>;
   getOfflineMutationCount: () => number;
   subscribeOfflineMutationCount: (listener: (count: number) => void) => () => void;
-  flushOfflineMutations: () => Promise<{ processed: number; failed: number; remaining: number }>;
+  flushOfflineMutations: () => Promise<OfflineFlushResult>;
   getUserProfile: (ownerUid: string) => Promise<UserProfile | null>;
 };
 
@@ -228,12 +285,18 @@ export const dataRepository: DataRepository = {
     const now = new Date().toISOString();
     const percentComplete = statusToPercent(status);
 
-    await db.transact(
-      db.tx.goals[goalId].update({
-        status,
-        percentComplete,
-        updatedAt: now,
-      }),
+    await commitOrQueueMutation(
+      "updateGoalStatus",
+      { ownerUid, goalId, status } as GoalStatusUpdateInput,
+      async () => {
+        await db.transact(
+          db.tx.goals[goalId].update({
+            status,
+            percentComplete,
+            updatedAt: now,
+          }),
+        );
+      },
     );
 
     return {
@@ -249,7 +312,7 @@ export const dataRepository: DataRepository = {
     const goals = await dataRepository.listGoals(ownerUid, type);
     validateReorderIds(goals, orderedGoalIds, "goal");
 
-    return reorderEntities({
+    const reordered = buildReorderedEntities({
       entities: goals,
       orderedIds: orderedGoalIds,
       updateMutation: (goalId, orderIndex, updatedAt) =>
@@ -258,6 +321,16 @@ export const dataRepository: DataRepository = {
           updatedAt,
         }),
     });
+
+    await commitOrQueueMutation(
+      "reorderGoals",
+      { ownerUid, type, orderedGoalIds } as GoalReorderInput,
+      async () => {
+        await db.transact(reordered.mutations);
+      },
+    );
+
+    return reordered.entities;
   },
   async softDeleteGoal(ownerUid, goalId) {
     ensureClientMutationSupport();
@@ -309,7 +382,13 @@ export const dataRepository: DataRepository = {
         }),
       );
 
-    await db.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
+    await commitOrQueueMutation(
+      "softDeleteGoal",
+      { ownerUid, goalId } as GoalArchiveInput,
+      async () => {
+        await db.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
+      },
+    );
 
     return {
       ...goal,
@@ -375,7 +454,13 @@ export const dataRepository: DataRepository = {
         }),
       );
 
-    await db.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
+    await commitOrQueueMutation(
+      "restoreGoal",
+      { ownerUid, goalId } as GoalArchiveInput,
+      async () => {
+        await db.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
+      },
+    );
 
     return {
       ...goal,
@@ -482,12 +567,18 @@ export const dataRepository: DataRepository = {
     const now = new Date().toISOString();
     const percentComplete = statusToPercent(status);
 
-    await db.transact(
-      db.tx.subgoals[subgoalId].update({
-        status,
-        percentComplete,
-        updatedAt: now,
-      }),
+    await commitOrQueueMutation(
+      "updateSubgoalStatus",
+      { ownerUid, subgoalId, status } as SubgoalStatusUpdateInput,
+      async () => {
+        await db.transact(
+          db.tx.subgoals[subgoalId].update({
+            status,
+            percentComplete,
+            updatedAt: now,
+          }),
+        );
+      },
     );
 
     return {
@@ -503,7 +594,7 @@ export const dataRepository: DataRepository = {
     const subgoals = await dataRepository.listSubgoals(ownerUid, goalId);
     validateReorderIds(subgoals, orderedSubgoalIds, "subgoal");
 
-    return reorderEntities({
+    const reordered = buildReorderedEntities({
       entities: subgoals,
       orderedIds: orderedSubgoalIds,
       updateMutation: (subgoalId, orderIndex, updatedAt) =>
@@ -512,6 +603,16 @@ export const dataRepository: DataRepository = {
           updatedAt,
         }),
     });
+
+    await commitOrQueueMutation(
+      "reorderSubgoals",
+      { ownerUid, goalId, orderedSubgoalIds } as SubgoalReorderInput,
+      async () => {
+        await db.transact(reordered.mutations);
+      },
+    );
+
+    return reordered.entities;
   },
   async softDeleteSubgoal(ownerUid, subgoalId) {
     ensureClientMutationSupport();
@@ -546,7 +647,13 @@ export const dataRepository: DataRepository = {
         }),
       );
 
-    await db.transact([subgoalMutation, ...taskMutations]);
+    await commitOrQueueMutation(
+      "softDeleteSubgoal",
+      { ownerUid, subgoalId } as SubgoalArchiveInput,
+      async () => {
+        await db.transact([subgoalMutation, ...taskMutations]);
+      },
+    );
 
     return {
       ...subgoal,
@@ -592,7 +699,13 @@ export const dataRepository: DataRepository = {
         }),
       );
 
-    await db.transact([subgoalMutation, ...taskMutations]);
+    await commitOrQueueMutation(
+      "restoreSubgoal",
+      { ownerUid, subgoalId } as SubgoalArchiveInput,
+      async () => {
+        await db.transact([subgoalMutation, ...taskMutations]);
+      },
+    );
 
     return {
       ...subgoal,
@@ -687,12 +800,18 @@ export const dataRepository: DataRepository = {
     const now = new Date().toISOString();
     const percentComplete = statusToPercent(status);
 
-    await db.transact(
-      db.tx.tasks[taskId].update({
-        status,
-        percentComplete,
-        updatedAt: now,
-      }),
+    await commitOrQueueMutation(
+      "updateTaskStatus",
+      { ownerUid, taskId, status } as TaskStatusUpdateInput,
+      async () => {
+        await db.transact(
+          db.tx.tasks[taskId].update({
+            status,
+            percentComplete,
+            updatedAt: now,
+          }),
+        );
+      },
     );
 
     return {
@@ -708,7 +827,7 @@ export const dataRepository: DataRepository = {
     const tasks = await dataRepository.listTasks(ownerUid, subgoalId);
     validateReorderIds(tasks, orderedTaskIds, "task");
 
-    return reorderEntities({
+    const reordered = buildReorderedEntities({
       entities: tasks,
       orderedIds: orderedTaskIds,
       updateMutation: (taskId, orderIndex, updatedAt) =>
@@ -717,6 +836,16 @@ export const dataRepository: DataRepository = {
           updatedAt,
         }),
     });
+
+    await commitOrQueueMutation(
+      "reorderTasks",
+      { ownerUid, subgoalId, orderedTaskIds } as TaskReorderInput,
+      async () => {
+        await db.transact(reordered.mutations);
+      },
+    );
+
+    return reordered.entities;
   },
   async softDeleteTask(ownerUid, taskId) {
     ensureClientMutationSupport();
@@ -730,14 +859,20 @@ export const dataRepository: DataRepository = {
     const now = new Date().toISOString();
     const lifecycle = buildSoftDeleteLifecycle(now);
 
-    await db.transact(
-      db.tx.tasks[taskId].update({
-        deletedAt: now,
-        deletedBy: ownerUid,
-        restoreUntil: lifecycle.restoreUntil,
-        purgeAt: lifecycle.purgeAt,
-        updatedAt: now,
-      }),
+    await commitOrQueueMutation(
+      "softDeleteTask",
+      { ownerUid, taskId } as TaskArchiveInput,
+      async () => {
+        await db.transact(
+          db.tx.tasks[taskId].update({
+            deletedAt: now,
+            deletedBy: ownerUid,
+            restoreUntil: lifecycle.restoreUntil,
+            purgeAt: lifecycle.purgeAt,
+            updatedAt: now,
+          }),
+        );
+      },
     );
 
     return {
@@ -762,14 +897,20 @@ export const dataRepository: DataRepository = {
 
     const now = new Date().toISOString();
 
-    await db.transact(
-      db.tx.tasks[taskId].update({
-        deletedAt: null,
-        deletedBy: null,
-        restoreUntil: null,
-        purgeAt: null,
-        updatedAt: now,
-      }),
+    await commitOrQueueMutation(
+      "restoreTask",
+      { ownerUid, taskId } as TaskArchiveInput,
+      async () => {
+        await db.transact(
+          db.tx.tasks[taskId].update({
+            deletedAt: null,
+            deletedBy: null,
+            restoreUntil: null,
+            purgeAt: null,
+            updatedAt: now,
+          }),
+        );
+      },
     );
 
     return {
@@ -914,14 +1055,20 @@ export const dataRepository: DataRepository = {
     const now = new Date().toISOString();
     const lifecycle = buildSoftDeleteLifecycle(now);
 
-    await db.transact(
-      db.tx.journalEntries[journalEntryId].update({
-        deletedAt: now,
-        deletedBy: ownerUid,
-        restoreUntil: lifecycle.restoreUntil,
-        purgeAt: lifecycle.purgeAt,
-        updatedAt: now,
-      }),
+    await commitOrQueueMutation(
+      "softDeleteJournalEntry",
+      { ownerUid, journalEntryId } as JournalArchiveInput,
+      async () => {
+        await db.transact(
+          db.tx.journalEntries[journalEntryId].update({
+            deletedAt: now,
+            deletedBy: ownerUid,
+            restoreUntil: lifecycle.restoreUntil,
+            purgeAt: lifecycle.purgeAt,
+            updatedAt: now,
+          }),
+        );
+      },
     );
 
     return {
@@ -946,14 +1093,20 @@ export const dataRepository: DataRepository = {
 
     const now = new Date().toISOString();
 
-    await db.transact(
-      db.tx.journalEntries[journalEntryId].update({
-        deletedAt: null,
-        deletedBy: null,
-        restoreUntil: null,
-        purgeAt: null,
-        updatedAt: now,
-      }),
+    await commitOrQueueMutation(
+      "restoreJournalEntry",
+      { ownerUid, journalEntryId } as JournalArchiveInput,
+      async () => {
+        await db.transact(
+          db.tx.journalEntries[journalEntryId].update({
+            deletedAt: null,
+            deletedBy: null,
+            restoreUntil: null,
+            purgeAt: null,
+            updatedAt: now,
+          }),
+        );
+      },
     );
 
     return {
@@ -977,6 +1130,8 @@ export const dataRepository: DataRepository = {
         processed: 0,
         failed: 0,
         remaining: getOfflineMutationCountFromQueue(),
+        failedOperation: null,
+        failedError: null,
       };
     }
 
@@ -1170,7 +1325,7 @@ async function listAllTasksForOwner(ownerUid: string) {
   return data.tasks ?? [];
 }
 
-async function reorderEntities<TEntity extends { id: string; orderIndex: number; updatedAt: string }>(input: {
+function buildReorderedEntities<TEntity extends { id: string; orderIndex: number; updatedAt: string }>(input: {
   entities: TEntity[];
   orderedIds: string[];
   updateMutation: (entityId: string, orderIndex: number, updatedAt: string) => TransactionMutation;
@@ -1195,9 +1350,10 @@ async function reorderEntities<TEntity extends { id: string; orderIndex: number;
     input.updateMutation(entity.id, entity.orderIndex, entity.updatedAt),
   );
 
-  await db.transact(mutations);
-
-  return reordered;
+  return {
+    entities: reordered,
+    mutations,
+  };
 }
 
 async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {
@@ -1316,15 +1472,85 @@ async function replayOfflineMutation(mutation: OfflineMutation) {
     case "saveGoal":
       await dataRepository.saveGoal(mutation.payload as SaveGoalInput);
       return;
+    case "updateGoalStatus": {
+      const payload = mutation.payload as GoalStatusUpdateInput;
+      await dataRepository.updateGoalStatus(payload.ownerUid, payload.goalId, payload.status);
+      return;
+    }
+    case "reorderGoals": {
+      const payload = mutation.payload as GoalReorderInput;
+      await dataRepository.reorderGoals(payload.ownerUid, payload.type, payload.orderedGoalIds);
+      return;
+    }
+    case "softDeleteGoal": {
+      const payload = mutation.payload as GoalArchiveInput;
+      await dataRepository.softDeleteGoal(payload.ownerUid, payload.goalId);
+      return;
+    }
+    case "restoreGoal": {
+      const payload = mutation.payload as GoalArchiveInput;
+      await dataRepository.restoreGoal(payload.ownerUid, payload.goalId);
+      return;
+    }
     case "saveSubgoal":
       await dataRepository.saveSubgoal(mutation.payload as SaveSubgoalInput);
       return;
+    case "updateSubgoalStatus": {
+      const payload = mutation.payload as SubgoalStatusUpdateInput;
+      await dataRepository.updateSubgoalStatus(payload.ownerUid, payload.subgoalId, payload.status);
+      return;
+    }
+    case "reorderSubgoals": {
+      const payload = mutation.payload as SubgoalReorderInput;
+      await dataRepository.reorderSubgoals(payload.ownerUid, payload.goalId, payload.orderedSubgoalIds);
+      return;
+    }
+    case "softDeleteSubgoal": {
+      const payload = mutation.payload as SubgoalArchiveInput;
+      await dataRepository.softDeleteSubgoal(payload.ownerUid, payload.subgoalId);
+      return;
+    }
+    case "restoreSubgoal": {
+      const payload = mutation.payload as SubgoalArchiveInput;
+      await dataRepository.restoreSubgoal(payload.ownerUid, payload.subgoalId);
+      return;
+    }
     case "saveTask":
       await dataRepository.saveTask(mutation.payload as SaveTaskInput);
       return;
+    case "updateTaskStatus": {
+      const payload = mutation.payload as TaskStatusUpdateInput;
+      await dataRepository.updateTaskStatus(payload.ownerUid, payload.taskId, payload.status);
+      return;
+    }
+    case "reorderTasks": {
+      const payload = mutation.payload as TaskReorderInput;
+      await dataRepository.reorderTasks(payload.ownerUid, payload.subgoalId, payload.orderedTaskIds);
+      return;
+    }
+    case "softDeleteTask": {
+      const payload = mutation.payload as TaskArchiveInput;
+      await dataRepository.softDeleteTask(payload.ownerUid, payload.taskId);
+      return;
+    }
+    case "restoreTask": {
+      const payload = mutation.payload as TaskArchiveInput;
+      await dataRepository.restoreTask(payload.ownerUid, payload.taskId);
+      return;
+    }
     case "saveJournalEntry":
       await dataRepository.saveJournalEntry(mutation.payload as SaveJournalEntryInput);
       return;
+    case "softDeleteJournalEntry": {
+      const payload = mutation.payload as JournalArchiveInput;
+      await dataRepository.softDeleteJournalEntry(payload.ownerUid, payload.journalEntryId);
+      return;
+    }
+    case "restoreJournalEntry": {
+      const payload = mutation.payload as JournalArchiveInput;
+      await dataRepository.restoreJournalEntry(payload.ownerUid, payload.journalEntryId);
+      return;
+    }
     default:
       throw new Error(`Unsupported offline mutation operation: ${mutation.operation}`);
   }

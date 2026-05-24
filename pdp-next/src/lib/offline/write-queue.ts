@@ -5,6 +5,14 @@ export type OfflineMutation = {
   createdAt: string;
 };
 
+export type OfflineFlushResult = {
+  processed: number;
+  failed: number;
+  remaining: number;
+  failedOperation: string | null;
+  failedError: string | null;
+};
+
 const STORAGE_KEY = "pdp.offline.writeQueue";
 const QUEUE_EVENT = "pdp-offline-queue-changed";
 
@@ -80,18 +88,22 @@ export function subscribeOfflineMutationCount(listener: (count: number) => void)
 
 export async function flushOfflineMutationQueue(
   processor: (mutation: OfflineMutation) => Promise<void>,
-): Promise<{ processed: number; failed: number; remaining: number }> {
+): Promise<OfflineFlushResult> {
   if (!hasStorage()) {
     return {
       processed: 0,
       failed: 0,
       remaining: 0,
+      failedOperation: null,
+      failedError: null,
     };
   }
 
   const queue = getOfflineMutationQueue();
   let processed = 0;
   let failed = 0;
+  let failedOperation: string | null = null;
+  let failedError: string | null = null;
 
   while (queue.length > 0) {
     const next = queue[0];
@@ -101,8 +113,10 @@ export async function flushOfflineMutationQueue(
       queue.shift();
       processed += 1;
       persistQueue(queue);
-    } catch {
+    } catch (error) {
       failed += 1;
+      failedOperation = next.operation;
+      failedError = error instanceof Error ? error.message : "Unknown offline replay error.";
       break;
     }
   }
@@ -111,6 +125,8 @@ export async function flushOfflineMutationQueue(
     processed,
     failed,
     remaining: queue.length,
+    failedOperation,
+    failedError,
   };
 }
 

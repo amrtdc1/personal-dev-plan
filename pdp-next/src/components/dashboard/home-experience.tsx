@@ -851,7 +851,9 @@ function ProfileSettings({
     try {
       const result = await dataRepository.flushOfflineMutations();
       if (result.failed > 0) {
-        setSyncMessage(`Sync paused. ${result.remaining} change(s) remain queued.`);
+        const failedLabel = formatOfflineOperationLabel(result.failedOperation);
+        const reason = result.failedError ? ` (${result.failedError})` : "";
+        setSyncMessage(`Sync paused on ${failedLabel}. ${result.remaining} change(s) remain queued${reason}`);
       } else if (result.processed > 0) {
         setSyncMessage(`Synced ${result.processed} queued change(s).`);
       } else {
@@ -1877,6 +1879,20 @@ function getFriendlyProfileSaveError(error: unknown, fallback: string) {
   }
 
   return getErrorMessage(error, fallback);
+}
+
+function formatOfflineOperationLabel(operation: string | null) {
+  if (!operation) {
+    return "an offline change";
+  }
+
+  const normalized = operation
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .trim()
+    .toLowerCase();
+
+  return normalized.length > 0 ? normalized : "an offline change";
 }
 
 function normalizeHexColor(value: string | null | undefined): string | null {

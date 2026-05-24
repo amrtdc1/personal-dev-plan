@@ -714,3 +714,160 @@ describe("dataRepository soft-delete cascade", () => {
     );
   });
 });
+
+describe("dataRepository offline queue expansion", () => {
+  const storageState = new Map<string, string>();
+
+  function installOfflineCapableWindow() {
+    const localStorage = {
+      getItem(key: string) {
+        return storageState.has(key) ? storageState.get(key)! : null;
+      },
+      setItem(key: string, value: string) {
+        storageState.set(key, value);
+      },
+      removeItem(key: string) {
+        storageState.delete(key);
+      },
+    };
+
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        localStorage,
+        dispatchEvent: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+      configurable: true,
+      writable: true,
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(NOW_ISO));
+    queryOnceMock.mockReset();
+    transactMock.mockReset();
+    transactMock.mockResolvedValue(undefined);
+    storageState.clear();
+    installOfflineCapableWindow();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("queues status updates while offline", async () => {
+    Object.defineProperty(globalThis, "navigator", {
+      value: { onLine: false },
+      configurable: true,
+      writable: true,
+    });
+
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        goals: [buildGoal({ id: "goal-offline-status" })],
+      },
+    });
+
+    const result = await dataRepository.updateGoalStatus("user-1", "goal-offline-status", "done");
+
+    expect(result.status).toBe("done");
+    expect(transactMock).not.toHaveBeenCalled();
+
+    const rawQueue = storageState.get("pdp.offline.writeQueue") ?? "[]";
+    const queue = JSON.parse(rawQueue) as Array<{ operation: string; payload: { goalId?: string; status?: string } }>;
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toEqual(
+      expect.objectContaining({
+        operation: "updateGoalStatus",
+        payload: expect.objectContaining({ goalId: "goal-offline-status", status: "done" }),
+      }),
+    );
+  });
+
+  it("queues reorder mutations while offline", async () => {
+    Object.defineProperty(globalThis, "navigator", {
+      value: { onLine: false },
+      configurable: true,
+      writable: true,
+    });
+
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        goals: [
+          buildGoal({ id: "goal-a", orderIndex: 0 }),
+          buildGoal({ id: "goal-b", orderIndex: 1 }),
+        ],
+      },
+    });
+
+    const reordered = await dataRepository.reorderGoals("user-1", "professional", ["goal-b", "goal-a"]);
+
+    expect(reordered.map((goal) => goal.id)).toEqual(["goal-b", "goal-a"]);
+    expect(transactMock).not.toHaveBeenCalled();
+
+    const rawQueue = storageState.get("pdp.offline.writeQueue") ?? "[]";
+    const queue = JSON.parse(rawQueue) as Array<{ operation: string; payload: { orderedGoalIds?: string[] } }>;
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toEqual(
+      expect.objectContaining({
+        operation: "reorderGoals",
+        payload: expect.objectContaining({ orderedGoalIds: ["goal-b", "goal-a"] }),
+      }),
+    );
+  });
+
+  it("queues archive mutations while offline and replays them when online", async () => {
+    Object.defineProperty(globalThis, "navigator", {
+      value: { onLine: false },
+      configurable: true,
+      writable: true,
+    });
+
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        tasks: [buildTask({ id: "task-archive" })],
+      },
+    });
+
+    const archived = await dataRepository.softDeleteTask("user-1", "task-archive");
+    expect(archived.deletedAt).toBe(NOW_ISO);
+    expect(transactMock).not.toHaveBeenCalled();
+
+    Object.defineProperty(globalThis, "navigator", {
+      value: { onLine: true },
+      configurable: true,
+      writable: true,
+    });
+
+    queryOnceMock.mockResolvedValueOnce({
+      data: {
+        tasks: [buildTask({ id: "task-archive" })],
+      },
+    });
+
+    const flushSummary = await dataRepository.flushOfflineMutations();
+
+    expect(flushSummary).toEqual(
+      expect.objectContaining({
+        processed: 1,
+        failed: 0,
+        remaining: 0,
+        failedOperation: null,
+        failedError: null,
+      }),
+    );
+
+    expect(transactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: "tasks",
+        entityId: "task-archive",
+        payload: expect.objectContaining({
+          deletedAt: NOW_ISO,
+          deletedBy: "user-1",
+        }),
+      }),
+    );
+  });
+});
