@@ -27,6 +27,14 @@ type TaskWritePayload = {
   dueDate?: string | null;
 };
 
+type JournalWritePayload = {
+  title?: string;
+  content?: string;
+  mood?: string | null;
+  tags?: string[];
+  relatedGoalId?: string | null;
+};
+
 export type ParsedGoalWritePayload = {
   type: GoalType;
   title: string;
@@ -51,6 +59,14 @@ export type ParsedTaskWritePayload = {
   title: string;
   notes: string;
   dueDate: string | null;
+};
+
+export type ParsedJournalWritePayload = {
+  title: string;
+  content: string;
+  mood: string | null;
+  tags: string[];
+  relatedGoalId: string | null;
 };
 
 export async function parseGoalWritePayload(request: Request): Promise<ParsedGoalWritePayload> {
@@ -128,6 +144,32 @@ export async function parseTaskWritePayload(request: Request): Promise<ParsedTas
     title: payload.title,
     notes: payload.notes,
     dueDate: parseOptionalString(payload.dueDate),
+  };
+}
+
+export async function parseJournalWritePayload(request: Request): Promise<ParsedJournalWritePayload> {
+  const payload = await parseJsonPayload<JournalWritePayload>(request);
+
+  if (typeof payload.title !== "string") {
+    throw new InstantRouteBadRequestError("Journal title is required.");
+  }
+
+  if (typeof payload.content !== "string") {
+    throw new InstantRouteBadRequestError("Journal content is required.");
+  }
+
+  if (payload.tags !== undefined) {
+    if (!Array.isArray(payload.tags) || payload.tags.some((tag) => typeof tag !== "string")) {
+      throw new InstantRouteBadRequestError("Journal tags must be an array of strings.");
+    }
+  }
+
+  return {
+    title: payload.title,
+    content: payload.content,
+    mood: parseOptionalString(payload.mood),
+    tags: payload.tags ?? [],
+    relatedGoalId: parseOptionalString(payload.relatedGoalId),
   };
 }
 

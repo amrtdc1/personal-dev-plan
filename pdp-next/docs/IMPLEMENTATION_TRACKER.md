@@ -2,6 +2,7 @@
 
 ## Current Phase
 - Phase 1 foundation complete; core parity closure and security hardening in progress
+- Phase 0 PWA install/push foundation is now in implementation (banner UX, subscription API, schema/perms, SW handlers)
 - College theming track is now implemented end-to-end (palette/CWM/college source, logo rendering, profile persistence)
 - Protected owner-scoped API foundation is in place for goals/subgoals/tasks read and write paths, with profile writes now routed server-side
 - Release-readiness execution board is tracked in `docs/RELEASE_READINESS_TASK_BOARD.md`
@@ -64,6 +65,38 @@
 - [x] Add live branding preview parity (header/watermark) while editing Profile & Theme before save
 - [x] Retheme calendar toolbar controls (prev/next/today/view toggles) with shared app tokens
 - [x] Set returning-user landing behavior to Dashboard while preserving first-login onboarding
+- [x] Add install + push opt-in banner scaffold for signed-in shell
+- [x] Add owner-scoped push subscription persistence model + API endpoints
+- [x] Add service worker push display and notification click handling
+- [x] Add VAPID key placeholders to env template
+- [x] Add authenticated push test trigger route + server delivery utility
+- [x] Add in-app "Send test" notification action for subscribed users
+- [x] Add reminder template builder for daily agenda, weekly review, and due-task pushes
+- [x] Add reminder send + scheduler-run endpoint scaffold for push cadence integration
+- [x] Add in-app reminder-type controls for notification management
+- [x] Add InstantDB notification preference and delivery-log entities for reminder backend evolution
+- [x] Add authenticated API routes to read/update notification preferences
+- [x] Add dashboard surface for reminder schedule, quiet hours, and reminder-type toggles
+- [x] Enforce scheduler runtime checks for reminder toggles, preferred hour, weekly cadence, and quiet hours
+- [x] Add notification delivery history API and in-app activity panel
+- [x] Add reminder-type cooldown policy controls for scheduler over-send protection
+- [x] Add delivery history filters + load-more pagination in notification activity panel
+- [x] Add scheduler operations summary endpoint for reminder delivery observability
+- [x] Add activity time-window filtering and quick status counts in notification history panel
+- [x] Add scheduler health card in dashboard via authenticated server-side summary proxy
+- [x] Add CSV export for filtered notification delivery activity
+- [x] Add stable notification route-core test harness utilities for endpoint logic coverage
+- [x] Add signed token issuer and tokenized ICS calendar feed scaffold routes
+- [x] Add signed-in Profile UI for copy/open/refresh of tokenized calendar feed URL
+- [x] Add calendar feed token rotation semantics (refresh invalidates older URLs)
+- [x] Add explicit revoke confirmation UX for calendar feed URL rotation
+- [x] Add route-level regression tests for feed token issue/rotate and stale-token rejection
+- [x] Add explicit auth failure and missing-profile edge-case tests for calendar feed routes
+- [x] Add UI interaction test for calendar feed revoke confirmation flow
+- [x] Move scheduler health monitoring surface from Dashboard to Profile & Theme
+- [x] Add permanent delete cascade workflow with explicit archived-item confirmation UX
+- [x] Add permanent delete action for archived journal entries with explicit confirmation
+- [x] Align journal CRUD/archive/restore/delete flows to protected server API routes
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).

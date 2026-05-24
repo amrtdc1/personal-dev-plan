@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "smoke:preview": "node scripts/vercel-preview-smoke.mjs",
     "generate:d1-allowlist": "node scripts/generate-d1-allowlist.mjs",
+    "push:generate:vapid": "npx web-push generate-vapid-keys --json",
     "instant:push:schema": "npx instant-cli@latest push schema",
     "instant:push:perms": "npx instant-cli@latest push perms"
   },
@@ -26,15 +27,20 @@
     "@instantdb/react": "^1.0.38",
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "jsdom": "^29.1.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.7"

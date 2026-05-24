@@ -25,7 +25,7 @@ This board is the source of truth for final readiness work before new initiative
 ## Now
 | ID | Task | Status | Owner | Notes |
 | --- | --- | --- | --- | --- |
-| R10 | Verify soft-delete retention, restore-window, and purge behavior end-to-end | In Progress | Copilot + User | Automated evidence captured in `docs/SOFT_DELETE_LIFECYCLE_VERIFICATION.md`; staging signoff checklist pending |
+
 
 ## Next
 | ID | Task | Status | Owner | Notes |
@@ -39,6 +39,7 @@ This board is the source of truth for final readiness work before new initiative
 ## Done
 | ID | Task | Completed On | Notes |
 | --- | --- | --- | --- |
+| R10 | Verify soft-delete retention, restore-window, and purge behavior end-to-end | 2026-05-24 | User confirmed staging lifecycle validation complete; see `docs/SOFT_DELETE_LIFECYCLE_VERIFICATION.md` |
 | D1 | Extend offline queue operation coverage and replay metadata plumbing | 2026-05-23 | Added queued status/reorder/archive/restore replay support and failure metadata |
 | D2 | Surface sync failures in UI with retry action | 2026-05-23 | Added shared sync failure state and offline status diagnostics |
 | D3 | Add sync failure state unit tests and friendly failure copy mapping | 2026-05-23 | Added `sync-status` tests and user-friendly reason mapping |

@@ -1,5 +1,4 @@
-import { vi } from "vitest";
-
+// Keep mocks in vi.hoisted so they are initialized before hoisted vi.mock factories run.
 const { queryMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
 }));

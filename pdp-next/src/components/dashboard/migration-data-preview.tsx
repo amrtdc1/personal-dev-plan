@@ -478,6 +478,93 @@ export function MigrationDataPreview({
     }
   }
 
+  async function handleGoalPermanentDelete(goal: Goal) {
+    if (!user || !goal.deletedAt) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Permanently delete "${goal.title}"? This also permanently deletes all archived sub-goals and tasks under it. This cannot be undone.`,
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await dataRepository.permanentlyDeleteGoal(user.id, goal.id);
+
+      if (editingGoalId === goal.id) {
+        resetGoalForm();
+      }
+      if (editingSubgoal && editingSubgoal.goalId === goal.id) {
+        resetSubgoalForm();
+      }
+      if (editingTask) {
+        resetTaskForm();
+      }
+
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not permanently delete the goal."));
+    }
+  }
+
+  async function handleSubgoalPermanentDelete(subgoal: Subgoal) {
+    if (!user || !subgoal.deletedAt) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Permanently delete "${subgoal.title}"? This also permanently deletes all archived tasks under it. This cannot be undone.`,
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await dataRepository.permanentlyDeleteSubgoal(user.id, subgoal.id);
+
+      if (editingSubgoalId === subgoal.id) {
+        resetSubgoalForm();
+      }
+      if (editingTask && editingTask.subgoalId === subgoal.id) {
+        resetTaskForm();
+      }
+
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not permanently delete the sub-goal."));
+    }
+  }
+
+  async function handleTaskPermanentDelete(task: Task) {
+    if (!user || !task.deletedAt) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Permanently delete "${task.title}"? This cannot be undone.`,
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await dataRepository.permanentlyDeleteTask(user.id, task.id);
+
+      if (editingTaskId === task.id) {
+        resetTaskForm();
+      }
+
+      setRefreshKey((value) => value + 1);
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not permanently delete the task."));
+    }
+  }
+
   async function handleGoalStatusChange(goal: Goal, status: ItemStatus) {
     if (!user || goal.deletedAt) {
       return;
@@ -1193,13 +1280,22 @@ export function MigrationDataPreview({
                           {goal.type === "professional" ? "Professional" : "Personal"}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleGoalArchiveToggle(goal)}
-                        className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                      >
-                        Restore
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleGoalArchiveToggle(goal)}
+                          className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                        >
+                          Restore
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleGoalPermanentDelete(goal)}
+                          className="rounded-full border border-red-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-red-700 transition hover:border-red-400 hover:bg-red-50"
+                        >
+                          Delete permanently
+                        </button>
+                      </div>
                     </div>
                   </li>
                 ))}
@@ -1224,13 +1320,22 @@ export function MigrationDataPreview({
                             Under: {parentGoal?.title ?? "Unknown goal"}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleSubgoalArchiveToggle(subgoal)}
-                          className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                        >
-                          Restore
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSubgoalArchiveToggle(subgoal)}
+                            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                          >
+                            Restore
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleSubgoalPermanentDelete(subgoal)}
+                            className="rounded-full border border-red-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-red-700 transition hover:border-red-400 hover:bg-red-50"
+                          >
+                            Delete permanently
+                          </button>
+                        </div>
                       </div>
                     </li>
                   );
@@ -1256,13 +1361,22 @@ export function MigrationDataPreview({
                             Under: {parentSubgoal?.title ?? "Unknown sub-goal"}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleTaskArchiveToggle(task)}
-                          className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                        >
-                          Restore
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleTaskArchiveToggle(task)}
+                            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                          >
+                            Restore
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleTaskPermanentDelete(task)}
+                            className="rounded-full border border-red-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-red-700 transition hover:border-red-400 hover:bg-red-50"
+                          >
+                            Delete permanently
+                          </button>
+                        </div>
                       </div>
                     </li>
                   );

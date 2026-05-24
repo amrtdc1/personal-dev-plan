@@ -1,4 +1,4 @@
-import type { Goal, GoalType, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, GoalType, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 export {
   parseGoalType,
@@ -62,6 +62,22 @@ export async function listOwnedTasks(ownerUid: string, input: { includeDeleted: 
   return filteredTasks.sort(compareByOrderIndexThenUpdatedAtDesc);
 }
 
+export async function listOwnedJournalEntries(ownerUid: string, input: { includeDeleted: boolean }) {
+  const instantAdmin = getInstantAdmin();
+  const { journalEntries = [] } = await instantAdmin.query({
+    journalEntries: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  const filteredEntries = filterDeleted(journalEntries as JournalEntry[], input.includeDeleted);
+  return filteredEntries.sort(compareByUpdatedAtDesc);
+}
+
 function filterDeleted<TEntity extends { deletedAt: string | null }>(entities: TEntity[], includeDeleted: boolean) {
   if (includeDeleted) {
     return entities;
@@ -79,4 +95,8 @@ function compareByOrderIndexThenUpdatedAtDesc<TEntity extends { orderIndex: numb
   }
 
   return right.updatedAt.localeCompare(left.updatedAt);
+}
+
+function compareByUpdatedAtDesc<TEntity extends { updatedAt: string; createdAt: string }>(left: TEntity, right: TEntity) {
+  return right.updatedAt.localeCompare(left.updatedAt) || right.createdAt.localeCompare(left.createdAt);
 }

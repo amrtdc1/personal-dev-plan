@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { Goal, ItemStatus, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, ItemStatus, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
 import { validateStatusUpdate } from "@/lib/data/validation";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { resolveInstantRouteError } from "@/lib/server/instant-error-response";
@@ -140,6 +140,41 @@ export async function findOwnedTask(ownerUid: string, taskId: string) {
   }
 
   return task;
+}
+
+export async function findOwnedJournalEntry(ownerUid: string, journalEntryId: string) {
+  const instantAdmin = getInstantAdmin();
+  const { journalEntries = [] } = await instantAdmin.query({
+    journalEntries: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  const scopedEntry = (journalEntries as JournalEntry[]).find((entry) => entry.id === journalEntryId);
+  if (scopedEntry && scopedEntry.ownerUid === ownerUid) {
+    return scopedEntry;
+  }
+
+  const { journalEntries: entryById = [] } = await instantAdmin.query({
+    journalEntries: {
+      $: {
+        where: {
+          id: journalEntryId,
+        },
+      },
+    },
+  });
+
+  const entry = entryById[0] as JournalEntry | undefined;
+  if (!entry || entry.ownerUid !== ownerUid) {
+    throw new InstantRouteNotFoundError("Journal entry was not found for this user.");
+  }
+
+  return entry;
 }
 
 export function instantRouteErrorResponse(

@@ -22,6 +22,9 @@ const rules = {
   subgoals: ownerScopedRules,
   tasks: ownerScopedRules,
   journalEntries: ownerScopedRules,
+  pushSubscriptions: ownerScopedRules,
+  notificationPreferences: ownerScopedRules,
+  notificationDeliveries: ownerScopedRules,
   $default: {
     allow: {
       $default: "false",

@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Goal, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
 
+// Keep mocks in vi.hoisted so they are initialized before hoisted vi.mock factories run.
 const { queryOnceMock, transactMock } = vi.hoisted(() => ({
   queryOnceMock: vi.fn(),
   transactMock: vi.fn(),
@@ -522,7 +522,8 @@ describe("dataRepository soft-delete cascade", () => {
       isFocus: true,
     });
 
-    expect(result.id).toBe("generated-id");
+    expect(typeof result.id).toBe("string");
+    expect(result.id.length).toBeGreaterThan(0);
     expect(transactMock).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/goals",

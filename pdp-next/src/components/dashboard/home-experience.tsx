@@ -8,6 +8,9 @@ import { DashboardInsights } from "@/components/dashboard/dashboard-insights";
 import { JournalWorkspace } from "@/components/dashboard/journal-workspace";
 import { MigrationDataPreview as GoalsWorkspace } from "@/components/dashboard/migration-data-preview";
 import { OfflineSyncStatus } from "@/components/dashboard/offline-sync-status";
+import { CalendarFeedRotationControl } from "@/components/dashboard/calendar-feed-rotation-control";
+import { SchedulerHealthCard } from "@/components/dashboard/scheduler-health-card";
+import { InstallAndNotifyBanner } from "@/components/pwa/install-and-notify-banner";
 import { dataRepository } from "@/lib/data/repository";
 import { validateUserProfileWrite } from "@/lib/data/validation";
 import {
@@ -449,6 +452,7 @@ function SignedInShell() {
 
   return (
     <main className="pdp-shell relative isolate mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 pb-24 pt-4 md:px-8 md:pb-8 md:pt-8">
+      <InstallAndNotifyBanner />
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         {brandVisual.watermarkUrl ? (
           <Image
@@ -665,6 +669,15 @@ function ProfileSettings({
   const [pendingSyncCount, setPendingSyncCount] = useState(() => dataRepository.getOfflineMutationCount());
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [calendarFeedUrl, setCalendarFeedUrl] = useState<string | null>(null);
+  const [calendarFeedExpiresAt, setCalendarFeedExpiresAt] = useState<string | null>(null);
+  const [isCalendarFeedLoading, setIsCalendarFeedLoading] = useState(false);
+  const [isCalendarFeedChecking, setIsCalendarFeedChecking] = useState(false);
+  const [calendarFeedError, setCalendarFeedError] = useState<string | null>(null);
+  const [calendarFeedCopyMessage, setCalendarFeedCopyMessage] = useState<string | null>(null);
+  const [calendarFeedRotateMessage, setCalendarFeedRotateMessage] = useState<string | null>(null);
+  const [calendarFeedSetupMessage, setCalendarFeedSetupMessage] = useState<string | null>(null);
+  const [calendarFeedCheckMessage, setCalendarFeedCheckMessage] = useState<string | null>(null);
 
   useEffect(() => {
     return dataRepository.subscribeOfflineMutationCount((count) => {
@@ -715,6 +728,55 @@ function ProfileSettings({
       isCancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function loadCalendarFeed() {
+      setIsCalendarFeedLoading(true);
+      setCalendarFeedError(null);
+
+      try {
+        const response = await fetch("/api/calendar/feed/token", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const payload = (await response.json().catch(() => null)) as
+          | { feedUrl?: string; expiresAt?: string; error?: string }
+          | null;
+
+        if (!response.ok) {
+          throw new Error(payload?.error || "Could not load calendar feed URL.");
+        }
+
+        if (!isCancelled) {
+          setCalendarFeedUrl(payload?.feedUrl ?? null);
+          setCalendarFeedExpiresAt(payload?.expiresAt ?? null);
+        }
+      } catch (loadError) {
+        if (!isCancelled) {
+          setCalendarFeedUrl(null);
+          setCalendarFeedExpiresAt(null);
+          setCalendarFeedError(loadError instanceof Error ? loadError.message : "Could not load calendar feed URL.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsCalendarFeedLoading(false);
+        }
+      }
+    }
+
+    void loadCalendarFeed();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user]);
 
   const { data, isLoading: isProfileLoading, error } = db.useQuery(
     user
@@ -847,6 +909,7 @@ function ProfileSettings({
       : null;
   const previewBrandSource: ThemeSource = themeSource;
   const previewBrandVisual = getBrandVisual(previewBrandSource, previewCollegeTeam, previewThemeValue);
+  const calendarFeedWebcalUrl = useMemo(() => toWebcalUrl(calendarFeedUrl), [calendarFeedUrl]);
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -942,6 +1005,107 @@ function ProfileSettings({
       setSyncMessage("Manual sync failed. Try again when your connection is stable.");
     } finally {
       setIsSyncing(false);
+    }
+  }
+
+  async function handleRotateCalendarFeed() {
+    setCalendarFeedCopyMessage(null);
+    setCalendarFeedSetupMessage(null);
+    setCalendarFeedCheckMessage(null);
+    setCalendarFeedRotateMessage(null);
+    setIsCalendarFeedLoading(true);
+    setCalendarFeedError(null);
+
+    try {
+      const response = await fetch("/api/calendar/feed/token", {
+        method: "POST",
+        cache: "no-store",
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { feedUrl?: string; expiresAt?: string; error?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not rotate calendar feed URL.");
+      }
+
+      setCalendarFeedUrl(payload?.feedUrl ?? null);
+      setCalendarFeedExpiresAt(payload?.expiresAt ?? null);
+      setCalendarFeedRotateMessage("Feed URL revoked and rotated. Previously shared links are now invalid.");
+      return true;
+    } catch (refreshError) {
+      setCalendarFeedError(refreshError instanceof Error ? refreshError.message : "Could not rotate calendar feed URL.");
+      return false;
+    } finally {
+      setIsCalendarFeedLoading(false);
+    }
+  }
+
+  async function handleCopyCalendarFeed() {
+    if (!calendarFeedUrl) {
+      return;
+    }
+
+    setCalendarFeedCopyMessage(null);
+    setCalendarFeedSetupMessage(null);
+    setCalendarFeedCheckMessage(null);
+
+    try {
+      await navigator.clipboard.writeText(calendarFeedUrl);
+      setCalendarFeedCopyMessage("Feed URL copied.");
+    } catch {
+      setCalendarFeedCopyMessage("Copy failed. Select and copy the URL manually.");
+    }
+  }
+
+  async function handleCopyCalendarSetupLink(link: string, label: string) {
+    setCalendarFeedCopyMessage(null);
+    setCalendarFeedSetupMessage(null);
+    setCalendarFeedCheckMessage(null);
+
+    try {
+      await navigator.clipboard.writeText(link);
+      setCalendarFeedSetupMessage(`${label} copied.`);
+    } catch {
+      setCalendarFeedSetupMessage(`Could not copy ${label.toLowerCase()}. Copy from the feed field above.`);
+    }
+  }
+
+  async function handleCheckCalendarFeed() {
+    if (!calendarFeedUrl) {
+      return;
+    }
+
+    setCalendarFeedCopyMessage(null);
+    setCalendarFeedSetupMessage(null);
+    setCalendarFeedRotateMessage(null);
+    setCalendarFeedCheckMessage(null);
+    setCalendarFeedError(null);
+    setIsCalendarFeedChecking(true);
+
+    try {
+      const response = await fetch(calendarFeedUrl, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || `Feed check failed (${response.status}).`);
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      const body = await response.text();
+      if (!contentType.includes("text/calendar") || !body.includes("BEGIN:VCALENDAR")) {
+        throw new Error("Feed URL responded, but did not return valid ICS content.");
+      }
+
+      setCalendarFeedCheckMessage("Feed check passed. Subscription URL is reachable and returns calendar data.");
+    } catch (checkError) {
+      setCalendarFeedError(checkError instanceof Error ? checkError.message : "Feed check failed.");
+    } finally {
+      setIsCalendarFeedChecking(false);
     }
   }
 
@@ -1273,6 +1437,113 @@ function ProfileSettings({
           </div>
           {syncMessage ? <p className="mt-2 text-sm text-slate-600">{syncMessage}</p> : null}
         </div>
+
+        <section className="pdp-panel-muted grid gap-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Calendar Subscription Feed</h3>
+          <p className="text-sm text-slate-600">
+            Use this private ICS URL in Apple Calendar, Outlook, or Google Calendar subscriptions. Anyone with this URL
+            can read your calendar events, so treat it like a password.
+          </p>
+
+          {isCalendarFeedLoading ? <p className="text-sm text-slate-600">Loading feed URL...</p> : null}
+          {calendarFeedError ? <p className="text-sm text-red-700">{calendarFeedError}</p> : null}
+
+          {calendarFeedUrl ? (
+            <>
+              <label className="text-sm font-medium text-slate-700">
+                Feed URL
+                <input
+                  readOnly
+                  value={calendarFeedUrl}
+                  className="pdp-control mt-1"
+                />
+              </label>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyCalendarFeed()}
+                  className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+                >
+                  Copy URL
+                </button>
+                <a
+                  href={calendarFeedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+                >
+                  Open Feed
+                </a>
+                <button
+                  type="button"
+                  onClick={() => void handleCheckCalendarFeed()}
+                  disabled={isCalendarFeedLoading || isCalendarFeedChecking}
+                  className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isCalendarFeedChecking ? "Checking..." : "Validate Feed"}
+                </button>
+                <CalendarFeedRotationControl
+                  isLoading={isCalendarFeedLoading}
+                  onPrepareRotate={() => {
+                    setCalendarFeedRotateMessage(null);
+                    setCalendarFeedError(null);
+                  }}
+                  onRotate={handleRotateCalendarFeed}
+                />
+              </div>
+
+              {calendarFeedExpiresAt ? (
+                <p className="text-xs text-slate-500">Token expires: {new Date(calendarFeedExpiresAt).toLocaleString()}</p>
+              ) : null}
+
+              <div className="rounded-xl border border-slate-200 bg-white/70 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Calendar client setup</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyCalendarSetupLink(calendarFeedUrl, "HTTPS URL")}
+                      className="rounded-full border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Copy HTTPS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => (calendarFeedWebcalUrl ? void handleCopyCalendarSetupLink(calendarFeedWebcalUrl, "webcal URL") : undefined)}
+                      disabled={!calendarFeedWebcalUrl}
+                      className="rounded-full border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Copy webcal
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-2 grid gap-2 md:grid-cols-3">
+                  <article className="rounded-lg border border-slate-200 bg-white p-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Apple Calendar</p>
+                    <p className="mt-1 text-xs text-slate-600">File &gt; New Calendar Subscription, then paste webcal (or HTTPS).</p>
+                  </article>
+                  <article className="rounded-lg border border-slate-200 bg-white p-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Google Calendar</p>
+                    <p className="mt-1 text-xs text-slate-600">Settings &gt; Add calendar &gt; From URL, then paste the HTTPS URL.</p>
+                  </article>
+                  <article className="rounded-lg border border-slate-200 bg-white p-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Outlook</p>
+                    <p className="mt-1 text-xs text-slate-600">Add calendar &gt; Subscribe from web, then paste HTTPS or webcal URL.</p>
+                  </article>
+                </div>
+              </div>
+
+              {calendarFeedCopyMessage ? <p className="text-xs text-slate-600">{calendarFeedCopyMessage}</p> : null}
+              {calendarFeedSetupMessage ? <p className="text-xs text-slate-600">{calendarFeedSetupMessage}</p> : null}
+              {calendarFeedCheckMessage ? <p className="text-xs text-emerald-700">{calendarFeedCheckMessage}</p> : null}
+              {calendarFeedRotateMessage ? <p className="text-xs text-emerald-700">{calendarFeedRotateMessage}</p> : null}
+            </>
+          ) : null}
+        </section>
+
+        <SchedulerHealthCard />
       </form>
     </section>
   );
@@ -1670,6 +1941,24 @@ function normalizeStoredPalette(palette: string | null | undefined): UserProfile
   return PALETTE_OPTIONS.includes(palette as UserProfile["palette"])
     ? (palette as UserProfile["palette"])
     : "ocean";
+}
+
+
+function toWebcalUrl(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+
+    return `webcal://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
 }
 
 function readCachedTheme(): "light" | "dark" | "cwm" | null {

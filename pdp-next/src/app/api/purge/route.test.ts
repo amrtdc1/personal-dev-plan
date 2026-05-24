@@ -1,5 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
+// Keep mocks in vi.hoisted so they are initialized before hoisted vi.mock factories run.
 const { requireInstantUserMock, purgeExpiredOwnedDataMock, instantRouteErrorResponseMock } = vi.hoisted(() => ({
   requireInstantUserMock: vi.fn(),
   purgeExpiredOwnedDataMock: vi.fn(),

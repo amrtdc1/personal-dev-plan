@@ -1,5 +1,3 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
 type Listener = (event: Event) => void;
 
 function installWindowMock() {

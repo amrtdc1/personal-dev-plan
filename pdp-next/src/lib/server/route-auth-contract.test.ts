@@ -1,11 +1,11 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { describe, expect, it } from "vitest";
 
 const API_ROOT = join(process.cwd(), "src", "app", "api");
 const PUBLIC_ROUTE_FILES = new Set([
   join("instant", "route.ts"),
   join("themes", "college-teams", "route.ts"),
+  join("calendar", "feed", "[token]", "route.ts"),
 ]);
 
 describe("protected API auth contract", () => {
@@ -21,10 +21,11 @@ describe("protected API auth contract", () => {
 
       const source = readFileSync(filePath, "utf8");
       const hasAuthGuard = source.includes("requireInstantUser(");
+      const hasCronSecretGuard = source.includes("x-pdp-cron-secret") || source.includes("NOTIFICATION_CRON_SECRET");
 
       expect(
-        hasAuthGuard,
-        `Expected auth guard in API route: src/app/api/${relativePath.replace(/\\/g, "/")}`,
+        hasAuthGuard || hasCronSecretGuard,
+        `Expected auth guard or cron-secret guard in API route: src/app/api/${relativePath.replace(/\\/g, "/")}`,
       ).toBe(true);
     }
   });

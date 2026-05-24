@@ -1,0 +1,1059 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { db } from "@/lib/instantdb/client";
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+type PushSubscriptionPayload = {
+  endpoint: string;
+  expirationTime: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+};
+
+type ReminderType = "daily_agenda" | "weekly_review" | "due_tasks";
+
+type NotificationPreferences = {
+  dailyAgendaEnabled: boolean;
+  weeklyReviewEnabled: boolean;
+  dueTasksEnabled: boolean;
+  preferredHourLocal: number | null;
+  timezone: string | null;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+};
+
+type DeliveryHistoryItem = {
+  id: string;
+  reminderType: string;
+  status: "sent" | "failed" | "skipped";
+  title?: string;
+  message?: string;
+  createdAt: string;
+};
+
+type HistoryStatusFilter = "all" | "sent" | "failed" | "skipped";
+type HistoryTypeFilter = "all" | "daily_agenda" | "weekly_review" | "due_tasks" | "test";
+type HistoryWindowFilter = "24h" | "7d" | "30d" | "all";
+
+const DISMISS_KEY = "pdp.installNotify.dismissedAt";
+const DISMISS_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+
+export function InstallAndNotifyBanner() {
+  const { user } = db.useAuth();
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">(
+    "unsupported",
+  );
+  const [hasPushSubscription, setHasPushSubscription] = useState(false);
+  const [isLoadingAction, setIsLoadingAction] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [isDismissed, setIsDismissed] = useState(false);
+  const [selectedReminderType, setSelectedReminderType] = useState<ReminderType>("daily_agenda");
+  const [preferences, setPreferences] = useState<NotificationPreferences>({
+    dailyAgendaEnabled: true,
+    weeklyReviewEnabled: true,
+    dueTasksEnabled: true,
+    preferredHourLocal: null,
+    timezone: null,
+    quietHoursStart: null,
+    quietHoursEnd: null,
+  });
+  const [isLoadingPreferences, setIsLoadingPreferences] = useState(false);
+  const [deliveryHistory, setDeliveryHistory] = useState<DeliveryHistoryItem[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<HistoryStatusFilter>("all");
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>("all");
+  const [historyWindowFilter, setHistoryWindowFilter] = useState<HistoryWindowFilter>("7d");
+  const [historyNextCursor, setHistoryNextCursor] = useState<string | null>(null);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [isExportingHistory, setIsExportingHistory] = useState(false);
+
+  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const dismissedAtRaw = window.localStorage.getItem(DISMISS_KEY);
+    if (dismissedAtRaw) {
+      const dismissedAt = Number(dismissedAtRaw);
+      if (!Number.isNaN(dismissedAt) && Date.now() - dismissedAt < DISMISS_WINDOW_MS) {
+        setIsDismissed(true);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const checkStandalone = () => {
+      const isIosStandalone =
+        "standalone" in window.navigator && typeof window.navigator.standalone === "boolean"
+          ? Boolean(window.navigator.standalone)
+          : false;
+      const isDisplayStandalone = window.matchMedia("(display-mode: standalone)").matches;
+      setIsStandalone(isIosStandalone || isDisplayStandalone);
+    };
+
+    checkStandalone();
+
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    const onInstalled = () => {
+      setDeferredPrompt(null);
+      checkStandalone();
+    };
+
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      return;
+    }
+
+    setNotificationPermission(window.Notification.permission);
+  }, []);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined") {
+      return;
+    }
+
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      return;
+    }
+
+    const loadSubscription = async () => {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        setHasPushSubscription(Boolean(subscription));
+      } catch {
+        setHasPushSubscription(false);
+      }
+    };
+
+    void loadSubscription();
+  }, []);
+
+  const shouldShowInstallPrompt = useMemo(
+    () => Boolean(user) && !isDismissed && !isStandalone && deferredPrompt !== null,
+    [deferredPrompt, isDismissed, isStandalone, user],
+  );
+
+  const shouldShowNotificationPrompt = useMemo(() => {
+    if (!user || isDismissed || !isStandalone) {
+      return false;
+    }
+
+    if (!vapidPublicKey || notificationPermission === "unsupported") {
+      return false;
+    }
+
+    return notificationPermission !== "granted" || !hasPushSubscription;
+  }, [hasPushSubscription, isDismissed, isStandalone, notificationPermission, user, vapidPublicKey]);
+
+  const shouldShowNotificationManagement = useMemo(() => {
+    if (!user || isDismissed || !isStandalone) {
+      return false;
+    }
+
+    return notificationPermission === "granted" && hasPushSubscription;
+  }, [hasPushSubscription, isDismissed, isStandalone, notificationPermission, user]);
+
+  useEffect(() => {
+    if (!shouldShowNotificationManagement) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadPreferences = async () => {
+      setIsLoadingPreferences(true);
+
+      try {
+        const response = await fetch("/api/notifications/preferences", {
+          method: "GET",
+        });
+
+        const responseBody = (await response.json().catch(() => null)) as
+          | { preferences?: NotificationPreferences; error?: string }
+          | null;
+
+        if (!response.ok) {
+          throw new Error(responseBody?.error || "Could not load notification preferences.");
+        }
+
+        if (!isCancelled && responseBody?.preferences) {
+          setPreferences(responseBody.preferences);
+        }
+      } catch {
+        if (!isCancelled) {
+          setPreferences({
+            dailyAgendaEnabled: true,
+            weeklyReviewEnabled: true,
+            dueTasksEnabled: true,
+            preferredHourLocal: null,
+            timezone: null,
+            quietHoursStart: null,
+            quietHoursEnd: null,
+          });
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingPreferences(false);
+        }
+      }
+    };
+
+    const loadHistory = async () => {
+      setIsLoadingHistory(true);
+
+      try {
+        const query = buildHistoryQuery({
+          status: historyStatusFilter,
+          type: historyTypeFilter,
+          window: historyWindowFilter,
+        });
+        const response = await fetch(`/api/notifications/deliveries?${query}`, {
+          method: "GET",
+        });
+
+        const responseBody = (await response.json().catch(() => null)) as
+          | {
+              deliveries?: DeliveryHistoryItem[];
+              hasMore?: boolean;
+              nextCursor?: string | null;
+              error?: string;
+            }
+          | null;
+
+        if (!response.ok) {
+          throw new Error(responseBody?.error || "Could not load delivery history.");
+        }
+
+        if (!isCancelled) {
+          setDeliveryHistory(responseBody?.deliveries ?? []);
+          setHistoryHasMore(Boolean(responseBody?.hasMore));
+          setHistoryNextCursor(responseBody?.nextCursor ?? null);
+        }
+      } catch {
+        if (!isCancelled) {
+          setDeliveryHistory([]);
+          setHistoryHasMore(false);
+          setHistoryNextCursor(null);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingHistory(false);
+        }
+      }
+    };
+
+    void loadPreferences();
+    void loadHistory();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [historyStatusFilter, historyTypeFilter, historyWindowFilter, shouldShowNotificationManagement]);
+
+  if (!shouldShowInstallPrompt && !shouldShowNotificationPrompt && !shouldShowNotificationManagement) {
+    return null;
+  }
+
+  async function handleInstall() {
+    if (!deferredPrompt) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setIsLoadingAction(true);
+
+    try {
+      await deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice.outcome === "accepted") {
+        setDeferredPrompt(null);
+        setIsStandalone(true);
+      }
+    } catch {
+      setError("Install prompt could not be shown. Try using your browser menu to install the app.");
+    } finally {
+      setIsLoadingAction(false);
+    }
+  }
+
+  async function handleEnableNotifications() {
+    if (!("Notification" in window)) {
+      setError("Notifications are not supported in this browser.");
+      return;
+    }
+
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setError("Push notifications are not supported in this environment.");
+      return;
+    }
+
+    if (!vapidPublicKey) {
+      setError("Push notifications are not configured yet.");
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setIsLoadingAction(true);
+
+    try {
+      let permission = window.Notification.permission;
+      if (permission === "default") {
+        permission = await window.Notification.requestPermission();
+      }
+
+      setNotificationPermission(permission);
+
+      if (permission !== "granted") {
+        setError("Notification permission was not granted.");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: toUint8Array(vapidPublicKey),
+        });
+      }
+
+      const payload = toPayload(subscription);
+      if (!payload) {
+        setError("Could not read push subscription details.");
+        return;
+      }
+
+      const response = await fetch("/api/notifications/subscribe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const responseBody = await response.json().catch(() => null);
+        throw new Error(responseBody?.error || "Subscription failed.");
+      }
+
+      setHasPushSubscription(true);
+      setSuccess("Push notifications enabled. You can send a test notification now.");
+    } catch (subscriptionError) {
+      setError(
+        subscriptionError instanceof Error ? subscriptionError.message : "Could not enable push notifications.",
+      );
+    } finally {
+      setIsLoadingAction(false);
+    }
+  }
+
+  async function handleDisableNotifications() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setIsLoadingAction(true);
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        setHasPushSubscription(false);
+        return;
+      }
+
+      const endpoint = subscription.endpoint;
+      await subscription.unsubscribe();
+
+      await fetch("/api/notifications/unsubscribe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ endpoint }),
+      });
+
+      setHasPushSubscription(false);
+      setSuccess("Push notifications disabled for this device.");
+    } catch {
+      setError("Could not disable push notifications.");
+    } finally {
+      setIsLoadingAction(false);
+    }
+  }
+
+  async function handleSendTestNotification() {
+    setError(null);
+    setSuccess(null);
+    setIsLoadingAction(true);
+
+    try {
+      const response = await fetch("/api/notifications/test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: "PDP Test",
+          body: "If you see this, push delivery is working.",
+          url: "/",
+        }),
+      });
+
+      const responseBody = (await response.json().catch(() => null)) as
+        | { delivered?: number; totalSubscriptions?: number; error?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(responseBody?.error || "Test notification failed.");
+      }
+
+      const delivered = responseBody?.delivered ?? 0;
+      const totalSubscriptions = responseBody?.totalSubscriptions ?? 0;
+
+      if (delivered > 0) {
+        setSuccess("Test notification sent.");
+        void refreshDeliveryHistory();
+      } else if (totalSubscriptions === 0) {
+        setSuccess("No active subscriptions were found for this account yet.");
+      } else {
+        setSuccess("Notification request completed. Delivery may be delayed by the browser.");
+      }
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Could not send test notification.");
+    } finally {
+      setIsLoadingAction(false);
+    }
+  }
+
+  async function handleSendReminderNotification() {
+    setError(null);
+    setSuccess(null);
+    setIsLoadingAction(true);
+
+    try {
+      const response = await fetch("/api/notifications/reminders/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: selectedReminderType,
+        }),
+      });
+
+      const responseBody = (await response.json().catch(() => null)) as
+        | { skipped?: boolean; reason?: string; delivered?: number; error?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(responseBody?.error || "Reminder notification failed.");
+      }
+
+      if (responseBody?.skipped) {
+        setSuccess(responseBody.reason || "Reminder was skipped by current preference settings.");
+        void refreshDeliveryHistory();
+        return;
+      }
+
+      const delivered = responseBody?.delivered ?? 0;
+      if (delivered > 0) {
+        setSuccess("Reminder notification sent.");
+      } else {
+        setSuccess("Reminder processed. Delivery may be delayed by browser policy.");
+      }
+      void refreshDeliveryHistory();
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Could not send reminder notification.");
+    } finally {
+      setIsLoadingAction(false);
+    }
+  }
+
+  async function handleSavePreferences() {
+    setError(null);
+    setSuccess(null);
+    setIsLoadingAction(true);
+
+    try {
+      const response = await fetch("/api/notifications/preferences", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(preferences),
+      });
+
+      const responseBody = (await response.json().catch(() => null)) as
+        | { preferences?: NotificationPreferences; error?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(responseBody?.error || "Could not save notification preferences.");
+      }
+
+      if (responseBody?.preferences) {
+        setPreferences(responseBody.preferences);
+      }
+
+      setSuccess("Notification preferences saved.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save notification preferences.");
+    } finally {
+      setIsLoadingAction(false);
+    }
+  }
+
+  async function refreshDeliveryHistory(cursor?: string) {
+    setIsLoadingHistory(true);
+
+    try {
+      const query = buildHistoryQuery({
+        status: historyStatusFilter,
+        type: historyTypeFilter,
+        window: historyWindowFilter,
+        before: cursor,
+      });
+      const response = await fetch(`/api/notifications/deliveries?${query}`, {
+        method: "GET",
+      });
+
+      const responseBody = (await response.json().catch(() => null)) as
+        | {
+            deliveries?: DeliveryHistoryItem[];
+            hasMore?: boolean;
+            nextCursor?: string | null;
+            error?: string;
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(responseBody?.error || "Could not refresh delivery history.");
+      }
+
+      const incoming = responseBody?.deliveries ?? [];
+      setDeliveryHistory((current) => (cursor ? [...current, ...incoming] : incoming));
+      setHistoryHasMore(Boolean(responseBody?.hasMore));
+      setHistoryNextCursor(responseBody?.nextCursor ?? null);
+    } catch {
+      setDeliveryHistory([]);
+      setHistoryHasMore(false);
+      setHistoryNextCursor(null);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }
+
+  async function handleExportHistoryCsv() {
+    setError(null);
+    setIsExportingHistory(true);
+
+    try {
+      const query = buildHistoryExportQuery({
+        status: historyStatusFilter,
+        type: historyTypeFilter,
+        window: historyWindowFilter,
+      });
+
+      const response = await fetch(`/api/notifications/deliveries/export?${query}`, {
+        method: "GET",
+      });
+
+      if (!response.ok) {
+        const responseBody = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(responseBody?.error || "Could not export delivery activity.");
+      }
+
+      const csv = await response.text();
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "notification-deliveries.csv";
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Could not export delivery activity.");
+    } finally {
+      setIsExportingHistory(false);
+    }
+  }
+
+  function dismissBanner() {
+    setIsDismissed(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(DISMISS_KEY, String(Date.now()));
+    }
+  }
+
+  return (
+    <aside className="fixed inset-x-4 bottom-20 z-40 sm:bottom-6 sm:left-auto sm:right-6 sm:w-[22rem]">
+      <div className="pdp-card p-3 text-sm shadow-lg">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {shouldShowInstallPrompt
+                ? "Install app"
+                : shouldShowNotificationPrompt
+                  ? "Enable notifications"
+                  : "Manage notifications"}
+            </p>
+            <p className="mt-1 text-sm text-slate-700">
+              {shouldShowInstallPrompt
+                ? "Install PDP on your home screen to unlock reminder notifications and a native app feel."
+                : shouldShowNotificationPrompt
+                  ? "Turn on push notifications for daily agenda, weekly review, and habit reminders."
+                  : "Push notifications are enabled. Send a quick test or disable notifications for this device."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissBanner}
+            aria-label="Dismiss"
+            className="rounded-full px-2 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100"
+          >
+            Dismiss
+          </button>
+        </div>
+
+        {error ? <p className="mt-2 text-xs text-red-700">{error}</p> : null}
+        {success ? <p className="mt-2 text-xs text-emerald-700">{success}</p> : null}
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {shouldShowInstallPrompt ? (
+            <button
+              type="button"
+              onClick={() => void handleInstall()}
+              disabled={isLoadingAction}
+              className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {isLoadingAction ? "Opening..." : "Install app"}
+            </button>
+          ) : shouldShowNotificationPrompt ? (
+            <button
+              type="button"
+              onClick={() => void handleEnableNotifications()}
+              disabled={isLoadingAction}
+              className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {isLoadingAction ? "Updating..." : "Enable push"}
+            </button>
+          ) : (
+            <>
+              <div className="w-full rounded-2xl border border-slate-200 p-2">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Reminder preferences
+                </p>
+                <label className="mb-1 flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={preferences.dailyAgendaEnabled}
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    onChange={(event) =>
+                      setPreferences((current) => ({
+                        ...current,
+                        dailyAgendaEnabled: event.target.checked,
+                      }))
+                    }
+                  />
+                  Daily agenda
+                </label>
+                <label className="mb-1 flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={preferences.weeklyReviewEnabled}
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    onChange={(event) =>
+                      setPreferences((current) => ({
+                        ...current,
+                        weeklyReviewEnabled: event.target.checked,
+                      }))
+                    }
+                  />
+                  Weekly review
+                </label>
+                <label className="flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={preferences.dueTasksEnabled}
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    onChange={(event) =>
+                      setPreferences((current) => ({
+                        ...current,
+                        dueTasksEnabled: event.target.checked,
+                      }))
+                    }
+                  />
+                  Due tasks
+                </label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <label className="col-span-2 text-[11px] font-medium text-slate-600">
+                    Preferred hour (local)
+                  </label>
+                  <select
+                    value={preferences.preferredHourLocal === null ? "" : String(preferences.preferredHourLocal)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setPreferences((current) => ({
+                        ...current,
+                        preferredHourLocal: value === "" ? null : Number(value),
+                      }));
+                    }}
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    className="pdp-control col-span-2 rounded-xl px-2 py-1 text-xs"
+                  >
+                    <option value="">Any hour</option>
+                    {Array.from({ length: 24 }, (_, hour) => (
+                      <option key={hour} value={String(hour)}>
+                        {`${String(hour).padStart(2, "0")}:00`}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label className="col-span-2 text-[11px] font-medium text-slate-600">Timezone</label>
+                  <input
+                    type="text"
+                    value={preferences.timezone ?? ""}
+                    onChange={(event) =>
+                      setPreferences((current) => ({
+                        ...current,
+                        timezone: event.target.value,
+                      }))
+                    }
+                    placeholder="America/New_York"
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    className="pdp-control col-span-2 rounded-xl px-2 py-1 text-xs"
+                  />
+
+                  <label className="text-[11px] font-medium text-slate-600">Quiet start</label>
+                  <label className="text-[11px] font-medium text-slate-600">Quiet end</label>
+                  <input
+                    type="time"
+                    value={preferences.quietHoursStart ?? ""}
+                    onChange={(event) =>
+                      setPreferences((current) => ({
+                        ...current,
+                        quietHoursStart: event.target.value || null,
+                      }))
+                    }
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    className="pdp-control rounded-xl px-2 py-1 text-xs"
+                  />
+                  <input
+                    type="time"
+                    value={preferences.quietHoursEnd ?? ""}
+                    onChange={(event) =>
+                      setPreferences((current) => ({
+                        ...current,
+                        quietHoursEnd: event.target.value || null,
+                      }))
+                    }
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    className="pdp-control rounded-xl px-2 py-1 text-xs"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleSavePreferences()}
+                disabled={isLoadingAction || isLoadingPreferences}
+                className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isLoadingAction ? "Saving..." : "Save preferences"}
+              </button>
+              <select
+                value={selectedReminderType}
+                onChange={(event) => setSelectedReminderType(event.target.value as ReminderType)}
+                disabled={isLoadingAction || isLoadingPreferences}
+                className="pdp-control rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-wide"
+                aria-label="Reminder type"
+              >
+                <option value="daily_agenda">Daily agenda</option>
+                <option value="weekly_review">Weekly review</option>
+                <option value="due_tasks">Due tasks</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => void handleSendReminderNotification()}
+                disabled={isLoadingAction}
+                className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {isLoadingAction ? "Sending..." : "Send reminder"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSendTestNotification()}
+                disabled={isLoadingAction}
+                className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {isLoadingAction ? "Sending..." : "Send test"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDisableNotifications()}
+                disabled={isLoadingAction}
+                className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Disable push
+              </button>
+              <div className="w-full rounded-2xl border border-slate-200 p-2">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Recent notification activity
+                </p>
+                <div className="mb-2 grid grid-cols-2 gap-2">
+                  <select
+                    value={historyStatusFilter}
+                    onChange={(event) => setHistoryStatusFilter(event.target.value as HistoryStatusFilter)}
+                    className="pdp-control rounded-xl px-2 py-1 text-xs"
+                    disabled={isLoadingHistory}
+                    aria-label="Activity status filter"
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="sent">Sent</option>
+                    <option value="failed">Failed</option>
+                    <option value="skipped">Skipped</option>
+                  </select>
+                  <select
+                    value={historyTypeFilter}
+                    onChange={(event) => setHistoryTypeFilter(event.target.value as HistoryTypeFilter)}
+                    className="pdp-control rounded-xl px-2 py-1 text-xs"
+                    disabled={isLoadingHistory}
+                    aria-label="Activity type filter"
+                  >
+                    <option value="all">All types</option>
+                    <option value="daily_agenda">Daily agenda</option>
+                    <option value="weekly_review">Weekly review</option>
+                    <option value="due_tasks">Due tasks</option>
+                    <option value="test">Test</option>
+                  </select>
+                </div>
+                <div className="mb-2 grid grid-cols-1 gap-2">
+                  <select
+                    value={historyWindowFilter}
+                    onChange={(event) => setHistoryWindowFilter(event.target.value as HistoryWindowFilter)}
+                    className="pdp-control rounded-xl px-2 py-1 text-xs"
+                    disabled={isLoadingHistory}
+                    aria-label="Activity window filter"
+                  >
+                    <option value="24h">Last 24 hours</option>
+                    <option value="7d">Last 7 days</option>
+                    <option value="30d">Last 30 days</option>
+                    <option value="all">All time</option>
+                  </select>
+                </div>
+                <div className="mb-2 flex flex-wrap gap-1">
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                    Sent {deliveryHistory.filter((entry) => entry.status === "sent").length}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                    Failed {deliveryHistory.filter((entry) => entry.status === "failed").length}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                    Skipped {deliveryHistory.filter((entry) => entry.status === "skipped").length}
+                  </span>
+                </div>
+                {isLoadingHistory ? <p className="text-xs text-slate-500">Loading activity...</p> : null}
+                {!isLoadingHistory && deliveryHistory.length === 0 ? (
+                  <p className="text-xs text-slate-500">No delivery records yet.</p>
+                ) : null}
+                {!isLoadingHistory && deliveryHistory.length > 0
+                  ? deliveryHistory.map((entry) => (
+                      <div key={entry.id} className="mb-1 rounded-lg border border-slate-100 p-2 last:mb-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                          {formatReminderLabel(entry.reminderType)} - {entry.status}
+                        </p>
+                        <p className="text-xs text-slate-700">{entry.message || entry.title || "No message"}</p>
+                        <p className="text-[11px] text-slate-500">{new Date(entry.createdAt).toLocaleString()}</p>
+                      </div>
+                    ))
+                  : null}
+                {historyHasMore ? (
+                  <button
+                    type="button"
+                    onClick={() => void refreshDeliveryHistory(historyNextCursor ?? undefined)}
+                    className="mt-2 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+                    disabled={isLoadingHistory}
+                  >
+                    {isLoadingHistory ? "Loading..." : "Load more"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void handleExportHistoryCsv()}
+                  className="mt-2 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isExportingHistory}
+                >
+                  {isExportingHistory ? "Exporting..." : "Export CSV"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function toPayload(subscription: PushSubscription): PushSubscriptionPayload | null {
+  const json = subscription.toJSON();
+  const p256dh = json.keys?.p256dh;
+  const auth = json.keys?.auth;
+
+  if (!json.endpoint || !p256dh || !auth) {
+    return null;
+  }
+
+  return {
+    endpoint: json.endpoint,
+    expirationTime: json.expirationTime ?? null,
+    keys: {
+      p256dh,
+      auth,
+    },
+  };
+}
+
+function toUint8Array(base64String: string) {
+  const padded = `${base64String}${"=".repeat((4 - (base64String.length % 4)) % 4)}`;
+  const normalized = padded.replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(normalized);
+  const output = new Uint8Array(rawData.length);
+
+  for (let index = 0; index < rawData.length; index += 1) {
+    output[index] = rawData.charCodeAt(index);
+  }
+
+  return output;
+}
+
+function formatReminderLabel(type: string) {
+  if (type === "daily_agenda") {
+    return "Daily agenda";
+  }
+
+  if (type === "weekly_review") {
+    return "Weekly review";
+  }
+
+  if (type === "due_tasks") {
+    return "Due tasks";
+  }
+
+  if (type === "test") {
+    return "Test";
+  }
+
+  return type;
+}
+
+function buildHistoryQuery(params: {
+  status: HistoryStatusFilter;
+  type: HistoryTypeFilter;
+  window: HistoryWindowFilter;
+  before?: string;
+}) {
+  const searchParams = new URLSearchParams();
+  searchParams.set("limit", "6");
+
+  if (params.status !== "all") {
+    searchParams.set("status", params.status);
+  }
+
+  if (params.type !== "all") {
+    searchParams.set("type", params.type);
+  }
+
+  if (params.before) {
+    searchParams.set("before", params.before);
+  } else {
+    const afterIso = toWindowAfterIso(params.window);
+    if (afterIso) {
+      searchParams.set("after", afterIso);
+    }
+  }
+
+  return searchParams.toString();
+}
+
+function buildHistoryExportQuery(params: {
+  status: HistoryStatusFilter;
+  type: HistoryTypeFilter;
+  window: HistoryWindowFilter;
+}) {
+  const searchParams = new URLSearchParams();
+  searchParams.set("limit", "500");
+
+  if (params.status !== "all") {
+    searchParams.set("status", params.status);
+  }
+
+  if (params.type !== "all") {
+    searchParams.set("type", params.type);
+  }
+
+  const afterIso = toWindowAfterIso(params.window);
+  if (afterIso) {
+    searchParams.set("after", afterIso);
+  }
+
+  return searchParams.toString();
+}
+
+function toWindowAfterIso(windowFilter: HistoryWindowFilter) {
+  if (windowFilter === "all") {
+    return null;
+  }
+
+  const now = Date.now();
+  const hourMs = 60 * 60 * 1000;
+  const dayMs = 24 * hourMs;
+
+  if (windowFilter === "24h") {
+    return new Date(now - dayMs).toISOString();
+  }
+
+  if (windowFilter === "7d") {
+    return new Date(now - 7 * dayMs).toISOString();
+  }
+
+  return new Date(now - 30 * dayMs).toISOString();
+}

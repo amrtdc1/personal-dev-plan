@@ -4,6 +4,7 @@ import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {
   findOwnedGoal,
+  findOwnedJournalEntry,
   findOwnedSubgoal,
   findOwnedTask,
 } from "@/lib/server/instant-route";
@@ -295,6 +296,155 @@ export async function restoreTask(ownerUid: string, taskId: string) {
     restoreUntil: null,
     purgeAt: null,
     updatedAt: now,
+  };
+}
+
+export async function archiveJournalEntry(ownerUid: string, journalEntryId: string) {
+  const instantAdmin = getInstantAdmin();
+  const journalEntry = await findOwnedJournalEntry(ownerUid, journalEntryId);
+
+  if (journalEntry.deletedAt) {
+    return journalEntry;
+  }
+
+  const now = new Date().toISOString();
+  const lifecycle = buildSoftDeleteLifecycle(now);
+
+  await instantAdmin.transact(
+    instantAdmin.tx.journalEntries[journalEntryId].update({
+      deletedAt: now,
+      deletedBy: ownerUid,
+      restoreUntil: lifecycle.restoreUntil,
+      purgeAt: lifecycle.purgeAt,
+      updatedAt: now,
+    }),
+  );
+
+  return {
+    ...journalEntry,
+    deletedAt: now,
+    deletedBy: ownerUid,
+    restoreUntil: lifecycle.restoreUntil,
+    purgeAt: lifecycle.purgeAt,
+    updatedAt: now,
+  };
+}
+
+export async function restoreJournalEntry(ownerUid: string, journalEntryId: string) {
+  const instantAdmin = getInstantAdmin();
+  const journalEntry = await findOwnedJournalEntry(ownerUid, journalEntryId);
+
+  if (!journalEntry.deletedAt) {
+    return journalEntry;
+  }
+
+  assertRestoreWindowOpen(journalEntry.restoreUntil, "Journal entry");
+
+  const now = new Date().toISOString();
+
+  await instantAdmin.transact(
+    instantAdmin.tx.journalEntries[journalEntryId].update({
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+      updatedAt: now,
+    }),
+  );
+
+  return {
+    ...journalEntry,
+    deletedAt: null,
+    deletedBy: null,
+    restoreUntil: null,
+    purgeAt: null,
+    updatedAt: now,
+  };
+}
+
+export async function permanentlyDeleteGoal(ownerUid: string, goalId: string) {
+  const instantAdmin = getInstantAdmin();
+  const goal = await findOwnedGoal(ownerUid, goalId);
+
+  if (!goal.deletedAt) {
+    throw new InstantRouteBadRequestError("Goal must be archived before permanent deletion.");
+  }
+
+  const subgoals = await listOwnedSubgoals(ownerUid, goalId);
+  const taskGroups = await Promise.all(
+    subgoals.map((subgoal) => listOwnedTasks(ownerUid, subgoal.id)),
+  );
+  const tasks = taskGroups.flat();
+
+  const deleteMutations = [
+    ...tasks.map((task) => instantAdmin.tx.tasks[task.id].delete()),
+    ...subgoals.map((subgoal) => instantAdmin.tx.subgoals[subgoal.id].delete()),
+    instantAdmin.tx.goals[goalId].delete(),
+  ];
+
+  if (deleteMutations.length > 0) {
+    await instantAdmin.transact(deleteMutations);
+  }
+
+  return {
+    deletedGoalId: goalId,
+    deletedSubgoals: subgoals.length,
+    deletedTasks: tasks.length,
+  };
+}
+
+export async function permanentlyDeleteSubgoal(ownerUid: string, subgoalId: string) {
+  const instantAdmin = getInstantAdmin();
+  const subgoal = await findOwnedSubgoal(ownerUid, subgoalId);
+
+  if (!subgoal.deletedAt) {
+    throw new InstantRouteBadRequestError("Subgoal must be archived before permanent deletion.");
+  }
+
+  const tasks = await listOwnedTasks(ownerUid, subgoalId);
+
+  const deleteMutations = [
+    ...tasks.map((task) => instantAdmin.tx.tasks[task.id].delete()),
+    instantAdmin.tx.subgoals[subgoalId].delete(),
+  ];
+
+  if (deleteMutations.length > 0) {
+    await instantAdmin.transact(deleteMutations);
+  }
+
+  return {
+    deletedSubgoalId: subgoalId,
+    deletedTasks: tasks.length,
+  };
+}
+
+export async function permanentlyDeleteTask(ownerUid: string, taskId: string) {
+  const instantAdmin = getInstantAdmin();
+  const task = await findOwnedTask(ownerUid, taskId);
+
+  if (!task.deletedAt) {
+    throw new InstantRouteBadRequestError("Task must be archived before permanent deletion.");
+  }
+
+  await instantAdmin.transact(instantAdmin.tx.tasks[taskId].delete());
+
+  return {
+    deletedTaskId: taskId,
+  };
+}
+
+export async function permanentlyDeleteJournalEntry(ownerUid: string, journalEntryId: string) {
+  const instantAdmin = getInstantAdmin();
+  const journalEntry = await findOwnedJournalEntry(ownerUid, journalEntryId);
+
+  if (!journalEntry.deletedAt) {
+    throw new InstantRouteBadRequestError("Journal entry must be archived before permanent deletion.");
+  }
+
+  await instantAdmin.transact(instantAdmin.tx.journalEntries[journalEntryId].delete());
+
+  return {
+    deletedJournalEntryId: journalEntryId,
   };
 }
 

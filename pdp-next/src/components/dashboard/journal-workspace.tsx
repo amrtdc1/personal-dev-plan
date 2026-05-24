@@ -209,6 +209,34 @@ export function JournalWorkspace() {
     }
   }
 
+  async function handlePermanentDelete(entry: JournalEntry) {
+    if (!entry.deletedAt) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Permanently delete "${entry.title}"? This cannot be undone.`,
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      await dataRepository.permanentlyDeleteJournalEntry(currentUser.id, entry.id);
+
+      if (editingEntryId === entry.id) {
+        resetForm();
+      }
+
+      await refreshData();
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not permanently delete the journal entry."));
+    }
+  }
+
   function handleEdit(entry: JournalEntry) {
     setEditingEntryId(entry.id);
     setTitle(entry.title);
@@ -481,6 +509,15 @@ export function JournalWorkspace() {
                   >
                     {entry.deletedAt ? "Restore" : "Archive"}
                   </button>
+                  {entry.deletedAt ? (
+                    <button
+                      type="button"
+                      onClick={() => void handlePermanentDelete(entry)}
+                      className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:border-red-400 hover:bg-red-100"
+                    >
+                      Delete permanently
+                    </button>
+                  ) : null}
                 </div>
               </div>
 

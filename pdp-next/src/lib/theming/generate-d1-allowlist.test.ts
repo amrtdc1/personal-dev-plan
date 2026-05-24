@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import { isEligibleCollegeTeam } from "../../../scripts/generate-d1-allowlist.mjs";
 
 describe("generate-d1-allowlist exclusion rules", () => {

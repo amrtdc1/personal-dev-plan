@@ -1,6 +1,7 @@
-import type { Goal, GoalType, ItemStatus, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, GoalType, ItemStatus, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
 import {
   validateGoalWrite,
+  validateJournalEntryWrite,
   validateSubgoalWrite,
   validateTaskWrite,
 } from "@/lib/data/validation";
@@ -8,22 +9,26 @@ import { statusToPercent } from "@/lib/domain/status";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import {
   findOwnedGoal,
+  findOwnedJournalEntry,
   findOwnedSubgoal,
   findOwnedTask,
 } from "@/lib/server/instant-route";
 import {
   parseGoalWritePayload,
+  parseJournalWritePayload,
   parseSubgoalWritePayload,
   parseTaskWritePayload,
 } from "@/lib/server/instant-write-params";
 import type {
   ParsedGoalWritePayload,
+  ParsedJournalWritePayload,
   ParsedSubgoalWritePayload,
   ParsedTaskWritePayload,
 } from "@/lib/server/instant-write-params";
 
 export {
   parseGoalWritePayload,
+  parseJournalWritePayload,
   parseSubgoalWritePayload,
   parseTaskWritePayload,
 };
@@ -384,6 +389,112 @@ export async function updateTask(
   );
 
   return task;
+}
+
+export async function createJournalEntry(ownerUid: string, payload: ParsedJournalWritePayload) {
+  const instantAdmin = getInstantAdmin();
+  const now = new Date().toISOString();
+
+  const {
+    trimmedTitle,
+    trimmedContent,
+    normalizedMood,
+    normalizedTags,
+    normalizedRelatedGoalId,
+  } = validateJournalEntryWrite({
+    ownerUid,
+    title: payload.title,
+    content: payload.content,
+    mood: payload.mood,
+    tags: payload.tags,
+    relatedGoalId: payload.relatedGoalId,
+  });
+
+  const journalEntryId = crypto.randomUUID();
+  const journalEntry: JournalEntry = {
+    id: journalEntryId,
+    ownerUid,
+    title: trimmedTitle,
+    content: trimmedContent,
+    mood: normalizedMood,
+    tags: normalizedTags,
+    relatedGoalId: normalizedRelatedGoalId,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+    deletedBy: null,
+    restoreUntil: null,
+    purgeAt: null,
+  };
+
+  await instantAdmin.transact(
+    instantAdmin.tx.journalEntries[journalEntryId].update({
+      ownerUid: journalEntry.ownerUid,
+      title: journalEntry.title,
+      content: journalEntry.content,
+      mood: journalEntry.mood,
+      tags: journalEntry.tags,
+      relatedGoalId: journalEntry.relatedGoalId,
+      createdAt: journalEntry.createdAt,
+      updatedAt: journalEntry.updatedAt,
+      deletedAt: journalEntry.deletedAt,
+      deletedBy: journalEntry.deletedBy,
+      restoreUntil: journalEntry.restoreUntil,
+      purgeAt: journalEntry.purgeAt,
+    }),
+  );
+
+  return journalEntry;
+}
+
+export async function updateJournalEntry(
+  ownerUid: string,
+  journalEntryId: string,
+  payload: ParsedJournalWritePayload,
+) {
+  const instantAdmin = getInstantAdmin();
+  const existingEntry = await findOwnedJournalEntry(ownerUid, journalEntryId);
+  const now = new Date().toISOString();
+
+  const {
+    trimmedTitle,
+    trimmedContent,
+    normalizedMood,
+    normalizedTags,
+    normalizedRelatedGoalId,
+  } = validateJournalEntryWrite({
+    ownerUid,
+    journalEntryId,
+    title: payload.title,
+    content: payload.content,
+    mood: payload.mood,
+    tags: payload.tags,
+    relatedGoalId: payload.relatedGoalId,
+    existingJournalEntry: existingEntry,
+  });
+
+  const journalEntry: JournalEntry = {
+    ...existingEntry,
+    title: trimmedTitle,
+    content: trimmedContent,
+    mood: normalizedMood,
+    tags: normalizedTags,
+    relatedGoalId: normalizedRelatedGoalId,
+    updatedAt: now,
+  };
+
+  await instantAdmin.transact(
+    instantAdmin.tx.journalEntries[journalEntryId].update({
+      title: journalEntry.title,
+      content: journalEntry.content,
+      mood: journalEntry.mood,
+      tags: journalEntry.tags,
+      relatedGoalId: journalEntry.relatedGoalId,
+      updatedAt: journalEntry.updatedAt,
+    }),
+  );
+
+  return journalEntry;
 }
 
 async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {

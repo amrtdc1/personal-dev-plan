@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import type { Goal, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
 import {
   assertOwnedGoal,

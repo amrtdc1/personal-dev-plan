@@ -138,7 +138,27 @@ type TaskArchiveInput = {
   taskId: string;
 };
 
+type GoalPermanentDeleteInput = {
+  ownerUid: string;
+  goalId: string;
+};
+
+type SubgoalPermanentDeleteInput = {
+  ownerUid: string;
+  subgoalId: string;
+};
+
+type TaskPermanentDeleteInput = {
+  ownerUid: string;
+  taskId: string;
+};
+
 type JournalArchiveInput = {
+  ownerUid: string;
+  journalEntryId: string;
+};
+
+type JournalPermanentDeleteInput = {
   ownerUid: string;
   journalEntryId: string;
 };
@@ -150,18 +170,21 @@ export type DataRepository = {
   reorderGoals: (ownerUid: string, type: GoalType, orderedGoalIds: string[]) => Promise<Goal[]>;
   softDeleteGoal: (ownerUid: string, goalId: string) => Promise<Goal>;
   restoreGoal: (ownerUid: string, goalId: string) => Promise<Goal>;
+  permanentlyDeleteGoal: (ownerUid: string, goalId: string) => Promise<void>;
   listSubgoals: (ownerUid: string, goalId: string, options?: ListOptions) => Promise<Subgoal[]>;
   saveSubgoal: (input: SaveSubgoalInput) => Promise<Subgoal>;
   updateSubgoalStatus: (ownerUid: string, subgoalId: string, status: ItemStatus) => Promise<Subgoal>;
   reorderSubgoals: (ownerUid: string, goalId: string, orderedSubgoalIds: string[]) => Promise<Subgoal[]>;
   softDeleteSubgoal: (ownerUid: string, subgoalId: string) => Promise<Subgoal>;
   restoreSubgoal: (ownerUid: string, subgoalId: string) => Promise<Subgoal>;
+  permanentlyDeleteSubgoal: (ownerUid: string, subgoalId: string) => Promise<void>;
   listTasks: (ownerUid: string, subgoalId: string, options?: ListOptions) => Promise<Task[]>;
   saveTask: (input: SaveTaskInput) => Promise<Task>;
   updateTaskStatus: (ownerUid: string, taskId: string, status: ItemStatus) => Promise<Task>;
   reorderTasks: (ownerUid: string, subgoalId: string, orderedTaskIds: string[]) => Promise<Task[]>;
   softDeleteTask: (ownerUid: string, taskId: string) => Promise<Task>;
   restoreTask: (ownerUid: string, taskId: string) => Promise<Task>;
+  permanentlyDeleteTask: (ownerUid: string, taskId: string) => Promise<void>;
   purgeExpiredDeletedEntities: (ownerUid: string) => Promise<{
     goals: number;
     subgoals: number;
@@ -172,6 +195,7 @@ export type DataRepository = {
   saveJournalEntry: (input: SaveJournalEntryInput) => Promise<JournalEntry>;
   softDeleteJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<JournalEntry>;
   restoreJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<JournalEntry>;
+  permanentlyDeleteJournalEntry: (ownerUid: string, journalEntryId: string) => Promise<void>;
   getOfflineMutationCount: () => number;
   subscribeOfflineMutationCount: (listener: (count: number) => void) => () => void;
   flushOfflineMutations: () => Promise<OfflineFlushResult>;
@@ -504,6 +528,39 @@ export const dataRepository: DataRepository = {
       updatedAt: now,
     };
   },
+  async permanentlyDeleteGoal(ownerUid, goalId) {
+    ensureClientMutationSupport();
+
+    const goal = assertOwnedGoal(await findGoalById(ownerUid, goalId), ownerUid);
+    if (!goal.deletedAt) {
+      throw new Error("Goal must be archived before permanent deletion.");
+    }
+
+    const subgoals = await dataRepository.listSubgoals(ownerUid, goalId, { includeDeleted: true });
+    const taskGroups = await Promise.all(
+      subgoals.map((subgoal) => dataRepository.listTasks(ownerUid, subgoal.id, { includeDeleted: true })),
+    );
+    const tasks = taskGroups.flat();
+
+    const mutations: TransactionMutation[] = [
+      ...tasks.map((task) => db.tx.tasks[task.id].delete()),
+      ...subgoals.map((subgoal) => db.tx.subgoals[subgoal.id].delete()),
+      db.tx.goals[goalId].delete(),
+    ];
+
+    await commitOrQueueMutation(
+      "permanentlyDeleteGoal",
+      { ownerUid, goalId } as GoalPermanentDeleteInput,
+      async () => {
+        if (canUseProtectedApiRoutes()) {
+          await permanentlyDeleteGoalViaApi(goalId);
+          return;
+        }
+
+        await db.transact(mutations);
+      },
+    );
+  },
   async listSubgoals(ownerUid, goalId, options) {
     if (canUseProtectedApiRoutes()) {
       const searchParams = new URLSearchParams({
@@ -780,6 +837,33 @@ export const dataRepository: DataRepository = {
       updatedAt: now,
     };
   },
+  async permanentlyDeleteSubgoal(ownerUid, subgoalId) {
+    ensureClientMutationSupport();
+
+    const subgoal = assertOwnedSubgoal(await findSubgoalById(ownerUid, subgoalId), ownerUid);
+    if (!subgoal.deletedAt) {
+      throw new Error("Subgoal must be archived before permanent deletion.");
+    }
+
+    const tasks = await dataRepository.listTasks(ownerUid, subgoalId, { includeDeleted: true });
+    const mutations: TransactionMutation[] = [
+      ...tasks.map((task) => db.tx.tasks[task.id].delete()),
+      db.tx.subgoals[subgoalId].delete(),
+    ];
+
+    await commitOrQueueMutation(
+      "permanentlyDeleteSubgoal",
+      { ownerUid, subgoalId } as SubgoalPermanentDeleteInput,
+      async () => {
+        if (canUseProtectedApiRoutes()) {
+          await permanentlyDeleteSubgoalViaApi(subgoalId);
+          return;
+        }
+
+        await db.transact(mutations);
+      },
+    );
+  },
   async listTasks(ownerUid, subgoalId, options) {
     if (canUseProtectedApiRoutes()) {
       const searchParams = new URLSearchParams({
@@ -1017,6 +1101,27 @@ export const dataRepository: DataRepository = {
       updatedAt: now,
     };
   },
+  async permanentlyDeleteTask(ownerUid, taskId) {
+    ensureClientMutationSupport();
+
+    const task = assertOwnedTask(await findTaskById(ownerUid, taskId), ownerUid);
+    if (!task.deletedAt) {
+      throw new Error("Task must be archived before permanent deletion.");
+    }
+
+    await commitOrQueueMutation(
+      "permanentlyDeleteTask",
+      { ownerUid, taskId } as TaskPermanentDeleteInput,
+      async () => {
+        if (canUseProtectedApiRoutes()) {
+          await permanentlyDeleteTaskViaApi(taskId);
+          return;
+        }
+
+        await db.transact(db.tx.tasks[taskId].delete());
+      },
+    );
+  },
   async purgeExpiredDeletedEntities(ownerUid) {
     ensureClientMutationSupport();
 
@@ -1072,6 +1177,14 @@ export const dataRepository: DataRepository = {
     };
   },
   async listJournalEntries(ownerUid, options) {
+    if (canUseProtectedApiRoutes()) {
+      const params = new URLSearchParams({
+        includeDeleted: String(Boolean(options?.includeDeleted)),
+      });
+      const response = await invokeProtectedRead<{ journalEntries?: JournalEntry[] }>(`/api/journal?${params.toString()}`);
+      return (response.journalEntries ?? []).sort(compareJournalEntries);
+    }
+
     const data = await runClientQuery<{ journalEntries?: JournalEntry[] }>({
       journalEntries: {
         $: {
@@ -1086,6 +1199,14 @@ export const dataRepository: DataRepository = {
   },
   async saveJournalEntry(input) {
     ensureClientMutationSupport();
+
+    if (canUseProtectedApiRoutes()) {
+      const existingId = input.existingJournalEntry?.id ?? input.journalEntryId ?? null;
+      const journalEntry = existingId
+        ? await updateJournalEntryViaApi(existingId, input)
+        : await createJournalEntryViaApi(input);
+      return journalEntry;
+    }
 
     const now = new Date().toISOString();
     const {
@@ -1141,6 +1262,10 @@ export const dataRepository: DataRepository = {
   async softDeleteJournalEntry(ownerUid, journalEntryId) {
     ensureClientMutationSupport();
 
+    if (canUseProtectedApiRoutes()) {
+      return archiveJournalEntryViaApi(journalEntryId);
+    }
+
     const entry = assertOwnedJournalEntry(await findJournalEntryById(ownerUid, journalEntryId), ownerUid);
 
     if (entry.deletedAt) {
@@ -1178,6 +1303,10 @@ export const dataRepository: DataRepository = {
   async restoreJournalEntry(ownerUid, journalEntryId) {
     ensureClientMutationSupport();
 
+    if (canUseProtectedApiRoutes()) {
+      return restoreJournalEntryViaApi(journalEntryId);
+    }
+
     const entry = assertOwnedJournalEntry(await findJournalEntryById(ownerUid, journalEntryId), ownerUid);
 
     if (!entry.deletedAt) {
@@ -1212,6 +1341,27 @@ export const dataRepository: DataRepository = {
       purgeAt: null,
       updatedAt: now,
     };
+  },
+  async permanentlyDeleteJournalEntry(ownerUid, journalEntryId) {
+    ensureClientMutationSupport();
+
+    if (canUseProtectedApiRoutes()) {
+      await permanentlyDeleteJournalEntryViaApi(journalEntryId);
+      return;
+    }
+
+    const entry = assertOwnedJournalEntry(await findJournalEntryById(ownerUid, journalEntryId), ownerUid);
+    if (!entry.deletedAt) {
+      throw new Error("Journal entry must be archived before permanent deletion.");
+    }
+
+    await commitOrQueueMutation(
+      "permanentlyDeleteJournalEntry",
+      { ownerUid, journalEntryId } as JournalPermanentDeleteInput,
+      async () => {
+        await db.transact(db.tx.journalEntries[journalEntryId].delete());
+      },
+    );
   },
   getOfflineMutationCount() {
     return getOfflineMutationCountFromQueue();
@@ -1383,6 +1533,19 @@ async function findTaskById(ownerUid: string, taskId: string) {
 }
 
 async function findJournalEntryById(ownerUid: string, journalEntryId: string) {
+  if (canUseProtectedApiRoutes()) {
+    try {
+      const response = await invokeProtectedRead<{ journalEntry?: JournalEntry }>(`/api/journal/${journalEntryId}`);
+      return response.journalEntry ?? null;
+    } catch (error) {
+      if (isProtectedNotFoundError(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
   const data = await runClientQuery<{ journalEntries?: JournalEntry[] }>({
     journalEntries: {
       $: {
@@ -1664,12 +1827,44 @@ async function saveTaskViaApi(task: Task, isUpdate: boolean) {
   });
 }
 
+async function createJournalEntryViaApi(input: SaveJournalEntryInput) {
+  const response = await invokeProtectedWriteAndParse<{ journalEntry: JournalEntry }>("/api/journal", "POST", {
+    title: input.title,
+    content: input.content,
+    mood: input.mood,
+    tags: input.tags,
+    relatedGoalId: input.relatedGoalId,
+  });
+
+  return response.journalEntry;
+}
+
+async function updateJournalEntryViaApi(journalEntryId: string, input: SaveJournalEntryInput) {
+  const response = await invokeProtectedWriteAndParse<{ journalEntry: JournalEntry }>(
+    `/api/journal/${journalEntryId}`,
+    "PATCH",
+    {
+      title: input.title,
+      content: input.content,
+      mood: input.mood,
+      tags: input.tags,
+      relatedGoalId: input.relatedGoalId,
+    },
+  );
+
+  return response.journalEntry;
+}
+
 async function archiveGoalViaApi(goalId: string) {
   await invokeProtectedWrite(`/api/goals/${goalId}/archive`, "PATCH", {});
 }
 
 async function restoreGoalViaApi(goalId: string) {
   await invokeProtectedWrite(`/api/goals/${goalId}/restore`, "PATCH", {});
+}
+
+async function permanentlyDeleteGoalViaApi(goalId: string) {
+  await invokeProtectedWrite(`/api/goals/${goalId}`, "DELETE");
 }
 
 async function archiveSubgoalViaApi(subgoalId: string) {
@@ -1680,6 +1875,10 @@ async function restoreSubgoalViaApi(subgoalId: string) {
   await invokeProtectedWrite(`/api/subgoals/${subgoalId}/restore`, "PATCH", {});
 }
 
+async function permanentlyDeleteSubgoalViaApi(subgoalId: string) {
+  await invokeProtectedWrite(`/api/subgoals/${subgoalId}`, "DELETE");
+}
+
 async function archiveTaskViaApi(taskId: string) {
   await invokeProtectedWrite(`/api/tasks/${taskId}/archive`, "PATCH", {});
 }
@@ -1688,14 +1887,45 @@ async function restoreTaskViaApi(taskId: string) {
   await invokeProtectedWrite(`/api/tasks/${taskId}/restore`, "PATCH", {});
 }
 
-async function invokeProtectedWrite(path: string, method: "POST" | "PATCH", payload: unknown) {
+async function permanentlyDeleteTaskViaApi(taskId: string) {
+  await invokeProtectedWrite(`/api/tasks/${taskId}`, "DELETE");
+}
+
+async function archiveJournalEntryViaApi(journalEntryId: string) {
+  const response = await invokeProtectedWriteAndParse<{ journalEntry: JournalEntry }>(
+    `/api/journal/${journalEntryId}/archive`,
+    "PATCH",
+    {},
+  );
+
+  return response.journalEntry;
+}
+
+async function restoreJournalEntryViaApi(journalEntryId: string) {
+  const response = await invokeProtectedWriteAndParse<{ journalEntry: JournalEntry }>(
+    `/api/journal/${journalEntryId}/restore`,
+    "PATCH",
+    {},
+  );
+
+  return response.journalEntry;
+}
+
+async function permanentlyDeleteJournalEntryViaApi(journalEntryId: string) {
+  await invokeProtectedWrite(`/api/journal/${journalEntryId}`, "DELETE");
+}
+
+async function invokeProtectedWrite(path: string, method: "POST" | "PATCH" | "DELETE", payload?: unknown) {
+  const hasBody = typeof payload !== "undefined";
   const response = await fetch(path, {
     method,
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: hasBody
+      ? {
+          "Content-Type": "application/json",
+        }
+      : undefined,
     credentials: "include",
-    body: JSON.stringify(payload),
+    body: hasBody ? JSON.stringify(payload) : undefined,
   });
 
   if (response.ok) {
@@ -1715,6 +1945,42 @@ async function invokeProtectedWrite(path: string, method: "POST" | "PATCH", payl
   }
 
   throw new Error(messageFromBody ?? fallbackMessage);
+}
+
+async function invokeProtectedWriteAndParse<TResponse>(
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  payload?: unknown,
+) {
+  const hasBody = typeof payload !== "undefined";
+  const response = await fetch(path, {
+    method,
+    headers: hasBody
+      ? {
+          "Content-Type": "application/json",
+        }
+      : undefined,
+    credentials: "include",
+    body: hasBody ? JSON.stringify(payload) : undefined,
+  });
+
+  if (!response.ok) {
+    const fallbackMessage = `Protected write failed (${response.status}).`;
+    let messageFromBody: string | null = null;
+
+    try {
+      const body = (await response.json()) as { error?: unknown };
+      if (typeof body.error === "string" && body.error.trim().length > 0) {
+        messageFromBody = body.error;
+      }
+    } catch {
+      // Ignore JSON parse errors and fall back to status-only message.
+    }
+
+    throw new Error(messageFromBody ?? fallbackMessage);
+  }
+
+  return (await response.json()) as TResponse;
 }
 
 async function invokeProtectedRead<TResponse>(path: string) {
@@ -1788,6 +2054,11 @@ async function replayOfflineMutation(mutation: OfflineMutation) {
         await dataRepository.restoreGoal(payload.ownerUid, payload.goalId);
         return;
       }
+      case "permanentlyDeleteGoal": {
+        const payload = mutation.payload as GoalPermanentDeleteInput;
+        await dataRepository.permanentlyDeleteGoal(payload.ownerUid, payload.goalId);
+        return;
+      }
       case "saveSubgoal":
         await dataRepository.saveSubgoal(mutation.payload as SaveSubgoalInput);
         return;
@@ -1809,6 +2080,11 @@ async function replayOfflineMutation(mutation: OfflineMutation) {
       case "restoreSubgoal": {
         const payload = mutation.payload as SubgoalArchiveInput;
         await dataRepository.restoreSubgoal(payload.ownerUid, payload.subgoalId);
+        return;
+      }
+      case "permanentlyDeleteSubgoal": {
+        const payload = mutation.payload as SubgoalPermanentDeleteInput;
+        await dataRepository.permanentlyDeleteSubgoal(payload.ownerUid, payload.subgoalId);
         return;
       }
       case "saveTask":
@@ -1834,6 +2110,11 @@ async function replayOfflineMutation(mutation: OfflineMutation) {
         await dataRepository.restoreTask(payload.ownerUid, payload.taskId);
         return;
       }
+      case "permanentlyDeleteTask": {
+        const payload = mutation.payload as TaskPermanentDeleteInput;
+        await dataRepository.permanentlyDeleteTask(payload.ownerUid, payload.taskId);
+        return;
+      }
       case "saveJournalEntry":
         await dataRepository.saveJournalEntry(mutation.payload as SaveJournalEntryInput);
         return;
@@ -1845,6 +2126,11 @@ async function replayOfflineMutation(mutation: OfflineMutation) {
       case "restoreJournalEntry": {
         const payload = mutation.payload as JournalArchiveInput;
         await dataRepository.restoreJournalEntry(payload.ownerUid, payload.journalEntryId);
+        return;
+      }
+      case "permanentlyDeleteJournalEntry": {
+        const payload = mutation.payload as JournalPermanentDeleteInput;
+        await dataRepository.permanentlyDeleteJournalEntry(payload.ownerUid, payload.journalEntryId);
         return;
       }
       default:
