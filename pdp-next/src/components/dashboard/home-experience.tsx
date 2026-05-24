@@ -1799,6 +1799,13 @@ function applyProfileThemeTokens(
     soft = "#1e4741";
   }
 
+  const resolvedBackground =
+    themeSource === "cwm"
+      ? neutral.background
+      : isDark
+        ? blendHex(primary, "#05070d", 0.17)
+        : neutral.background;
+
   const tintedBorder =
     themeSource === "cwm"
       ? neutral.border
@@ -1836,7 +1843,7 @@ function applyProfileThemeTokens(
   const statusDoneBackground = themeSource === "cwm" ? "#182c28" : blendHex(eventTaskBackground, neutral.mutedSurface, isDark ? 0.34 : 0.26);
   const statusDoneText = isDark ? "#dcfce7" : "#166534";
 
-  root.style.setProperty("--background", neutral.background);
+  root.style.setProperty("--background", resolvedBackground);
   root.style.setProperty("--foreground", neutral.foreground);
   root.style.setProperty("--pdp-theme-primary", primary);
   root.style.setProperty("--pdp-theme-soft", soft);
