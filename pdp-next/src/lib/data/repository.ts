@@ -12,6 +12,7 @@ import {
   type OfflineMutation,
   type OfflineFlushResult,
 } from "@/lib/offline/write-queue";
+import { setOfflineSyncFailureState } from "@/lib/offline/sync-status";
 import {
   assertOwnedGoal,
   assertOwnedJournalEntry,
@@ -1138,9 +1139,20 @@ export const dataRepository: DataRepository = {
     isFlushingOfflineMutations = true;
 
     try {
-      return await flushOfflineMutationQueue(async (mutation) => {
+      const result = await flushOfflineMutationQueue(async (mutation) => {
         await replayOfflineMutation(mutation);
       });
+
+      if (result.failed > 0 && result.failedOperation) {
+        setOfflineSyncFailureState({
+          failedOperation: result.failedOperation,
+          failedError: result.failedError,
+        });
+      } else if (result.remaining === 0) {
+        setOfflineSyncFailureState(null);
+      }
+
+      return result;
     } finally {
       isFlushingOfflineMutations = false;
     }

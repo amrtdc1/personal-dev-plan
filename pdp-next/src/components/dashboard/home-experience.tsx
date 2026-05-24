@@ -10,6 +10,7 @@ import { MigrationDataPreview } from "@/components/dashboard/migration-data-prev
 import { OfflineSyncStatus } from "@/components/dashboard/offline-sync-status";
 import { dataRepository } from "@/lib/data/repository";
 import { validateUserProfileWrite } from "@/lib/data/validation";
+import { formatOfflineOperationLabel } from "@/lib/offline/sync-status";
 import allowlistData from "@/lib/theming/data/espn-d1-allowlist.json";
 import type { CollegeThemeTeam } from "@/lib/theming/providers/espn-college";
 import { db } from "@/lib/instantdb/client";
@@ -1879,20 +1880,6 @@ function getFriendlyProfileSaveError(error: unknown, fallback: string) {
   }
 
   return getErrorMessage(error, fallback);
-}
-
-function formatOfflineOperationLabel(operation: string | null) {
-  if (!operation) {
-    return "an offline change";
-  }
-
-  const normalized = operation
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/_/g, " ")
-    .trim()
-    .toLowerCase();
-
-  return normalized.length > 0 ? normalized : "an offline change";
 }
 
 function normalizeHexColor(value: string | null | undefined): string | null {
