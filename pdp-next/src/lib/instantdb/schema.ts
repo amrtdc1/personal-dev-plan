@@ -1,5 +1,5 @@
 import { i } from "@instantdb/react";
-import type { GoalType, ItemStatus } from "@/lib/domain/types";
+import type { GoalHorizon, GoalType, ItemStatus } from "@/lib/domain/types";
 
 export const appSchema = i.schema({
   entities: {
@@ -23,6 +23,7 @@ export const appSchema = i.schema({
     goals: i.entity({
       ownerUid: i.string().indexed(),
       type: i.string<GoalType>().indexed(),
+      horizon: i.string<GoalHorizon>().optional().indexed(),
       title: i.string(),
       description: i.string(),
       timeframe: i.string(),
@@ -91,6 +92,27 @@ export const appSchema = i.schema({
       deletedBy: i.string().optional(),
       restoreUntil: i.string().optional().indexed(),
       purgeAt: i.string().optional().indexed(),
+    }),
+    habits: i.entity({
+      ownerUid: i.string().indexed(),
+      title: i.string(),
+      cadence: i.string<"daily" | "weekly">().indexed(),
+      targetCount: i.number(),
+      status: i.string<"active" | "paused" | "archived">().indexed(),
+      createdAt: i.string().indexed(),
+      updatedAt: i.string(),
+      deletedAt: i.string().optional().indexed(),
+      deletedBy: i.string().optional(),
+      restoreUntil: i.string().optional().indexed(),
+      purgeAt: i.string().optional().indexed(),
+    }),
+    habitCheckins: i.entity({
+      ownerUid: i.string().indexed(),
+      habitId: i.string().indexed(),
+      checkInDate: i.string().indexed(),
+      notes: i.string().optional(),
+      createdAt: i.string().indexed(),
+      updatedAt: i.string(),
     }),
     pushSubscriptions: i.entity({
       ownerUid: i.string().indexed(),

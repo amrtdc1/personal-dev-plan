@@ -1,8 +1,9 @@
-import type { GoalType } from "@/lib/domain/types";
+import type { GoalHorizon, GoalType } from "@/lib/domain/types";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 
 type GoalWritePayload = {
   type?: GoalType;
+  horizon?: GoalHorizon;
   title?: string;
   description?: string;
   projectedStartDate?: string | null;
@@ -37,6 +38,7 @@ type JournalWritePayload = {
 
 export type ParsedGoalWritePayload = {
   type: GoalType;
+  horizon: GoalHorizon;
   title: string;
   description: string;
   projectedStartDate: string | null;
@@ -90,6 +92,7 @@ export async function parseGoalWritePayload(request: Request): Promise<ParsedGoa
 
   return {
     type: payload.type,
+    horizon: parseGoalHorizon(payload.horizon),
     title: payload.title,
     description: payload.description,
     projectedStartDate: parseOptionalString(payload.projectedStartDate),
@@ -195,4 +198,20 @@ function parseOptionalString(value: unknown) {
 
 function isGoalType(value: string): value is GoalType {
   return value === "professional" || value === "personal";
+}
+
+function isGoalHorizon(value: string): value is GoalHorizon {
+  return value === "long_term" || value === "medium_term" || value === "short_term";
+}
+
+function parseGoalHorizon(value: unknown): GoalHorizon {
+  if (value === undefined || value === null || value === "") {
+    return "medium_term";
+  }
+
+  if (typeof value !== "string" || !isGoalHorizon(value)) {
+    throw new InstantRouteBadRequestError("Goal horizon is not supported.");
+  }
+
+  return value;
 }

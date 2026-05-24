@@ -22,6 +22,8 @@ const rules = {
   subgoals: ownerScopedRules,
   tasks: ownerScopedRules,
   journalEntries: ownerScopedRules,
+  habits: ownerScopedRules,
+  habitCheckins: ownerScopedRules,
   pushSubscriptions: ownerScopedRules,
   notificationPreferences: ownerScopedRules,
   notificationDeliveries: ownerScopedRules,

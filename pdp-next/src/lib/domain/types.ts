@@ -1,4 +1,5 @@
 export type GoalType = "professional" | "personal";
+export type GoalHorizon = "long_term" | "medium_term" | "short_term";
 export type ItemStatus = "not_started" | "in_progress" | "done";
 
 export type SoftDeleteFields = {
@@ -12,6 +13,7 @@ export type Goal = SoftDeleteFields & {
   id: string;
   ownerUid: string;
   type: GoalType;
+  horizon?: GoalHorizon;
   title: string;
   description: string;
   timeframe: string;

@@ -41,6 +41,7 @@ export async function createGoal(ownerUid: string, payload: ParsedGoalWritePaylo
   const { trimmedTitle, trimmedDescription } = validateGoalWrite({
     ownerUid,
     type: payload.type,
+    horizon: payload.horizon,
     title: payload.title,
     description: payload.description,
     projectedStartDate: payload.projectedStartDate,
@@ -55,6 +56,7 @@ export async function createGoal(ownerUid: string, payload: ParsedGoalWritePaylo
     id: goalId,
     ownerUid,
     type: payload.type,
+    horizon: payload.horizon,
     title: trimmedTitle,
     description: trimmedDescription,
     timeframe: buildGoalTimeframe(payload.timeframeLabel, payload.projectedStartDate, payload.projectedEndDate),
@@ -79,6 +81,7 @@ export async function createGoal(ownerUid: string, payload: ParsedGoalWritePaylo
     instantAdmin.tx.goals[goalId].update({
       ownerUid: goal.ownerUid,
       type: goal.type,
+      horizon: goal.horizon,
       title: goal.title,
       description: goal.description,
       timeframe: goal.timeframe,
@@ -116,6 +119,7 @@ export async function updateGoal(
     goalId,
     ownerUid,
     type: payload.type,
+    horizon: payload.horizon,
     title: payload.title,
     description: payload.description,
     projectedStartDate: payload.projectedStartDate,
@@ -133,6 +137,7 @@ export async function updateGoal(
   const goal: Goal = {
     ...existingGoal,
     type: payload.type,
+    horizon: payload.horizon,
     title: trimmedTitle,
     description: trimmedDescription,
     timeframe: buildGoalTimeframe(payload.timeframeLabel, payload.projectedStartDate, payload.projectedEndDate),
@@ -147,6 +152,7 @@ export async function updateGoal(
   await instantAdmin.transact(
     instantAdmin.tx.goals[goalId].update({
       type: goal.type,
+      horizon: goal.horizon,
       title: goal.title,
       description: goal.description,
       timeframe: goal.timeframe,

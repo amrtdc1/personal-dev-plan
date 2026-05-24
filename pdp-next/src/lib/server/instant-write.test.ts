@@ -19,6 +19,7 @@ describe("instant write payload parsing", () => {
     const payload = await parseGoalWritePayload(
       buildRequest({
         type: "professional",
+        horizon: "short_term",
         title: "Ship checkpoint",
         description: "Complete protected route coverage",
         projectedStartDate: "",
@@ -30,6 +31,7 @@ describe("instant write payload parsing", () => {
 
     expect(payload).toEqual({
       type: "professional",
+      horizon: "short_term",
       title: "Ship checkpoint",
       description: "Complete protected route coverage",
       projectedStartDate: null,
@@ -49,6 +51,33 @@ describe("instant write payload parsing", () => {
         }),
       ),
     ).rejects.toThrow("Goal focus flag is required.");
+  });
+
+  it("defaults goal horizon when omitted", async () => {
+    const payload = await parseGoalWritePayload(
+      buildRequest({
+        type: "professional",
+        title: "Ship checkpoint",
+        description: "Complete protected route coverage",
+        isFocus: true,
+      }),
+    );
+
+    expect(payload.horizon).toBe("medium_term");
+  });
+
+  it("rejects unsupported goal horizon values", async () => {
+    await expect(
+      parseGoalWritePayload(
+        buildRequest({
+          type: "professional",
+          horizon: "month_to_month",
+          title: "Ship checkpoint",
+          description: "Complete protected route coverage",
+          isFocus: true,
+        }),
+      ),
+    ).rejects.toThrow("Goal horizon is not supported.");
   });
 
   it("rejects subgoal payload when goal id is missing", async () => {

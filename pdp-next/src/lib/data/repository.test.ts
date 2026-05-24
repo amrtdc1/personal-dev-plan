@@ -61,6 +61,7 @@ function buildGoal(overrides: Partial<Goal> = {}): Goal {
     id: "goal-1",
     ownerUid: "user-1",
     type: "professional",
+    horizon: "medium_term",
     title: "Goal",
     description: "Desc",
     timeframe: "Q2",
@@ -564,6 +565,57 @@ describe("dataRepository soft-delete cascade", () => {
       expect.stringContaining("/api/goals"),
       expect.objectContaining({ method: "GET", credentials: "include" }),
     );
+
+    fetchSpy.mockRestore();
+  });
+
+  it("normalizes legacy goals without horizon to medium_term", async () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        location: { origin: "http://localhost:3000" },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    const legacyGoal = {
+      id: "goal-legacy",
+      ownerUid: "user-1",
+      type: "professional",
+      title: "Legacy goal",
+      description: "Older goal without horizon field",
+      timeframe: "Q2",
+      projectedStartDate: null,
+      projectedEndDate: null,
+      actualStartDate: null,
+      actualEndDate: null,
+      status: "not_started",
+      percentComplete: 0,
+      isFocus: false,
+      themeColor: "#2563eb",
+      orderIndex: 0,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+    };
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          goals: [legacyGoal],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const goals = await dataRepository.listGoals("user-1", "professional");
+
+    expect(goals).toHaveLength(1);
+    expect(goals[0]?.id).toBe("goal-legacy");
+    expect(goals[0]?.horizon).toBe("medium_term");
 
     fetchSpy.mockRestore();
   });

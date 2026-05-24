@@ -1,5 +1,6 @@
 import type {
   Goal,
+  GoalHorizon,
   JournalEntry,
   ItemStatus,
   Subgoal,
@@ -13,6 +14,7 @@ import type {
 } from "@/lib/data/repository";
 
 const ITEM_STATUSES: ItemStatus[] = ["not_started", "in_progress", "done"];
+const GOAL_HORIZONS: GoalHorizon[] = ["long_term", "medium_term", "short_term"];
 const ALLOWED_COLLEGE_LOGO_HOSTS = new Set([
   "a.espncdn.com",
   "a1.espncdn.com",
@@ -43,6 +45,9 @@ export function validateGoalWrite(input: SaveGoalInput) {
   const trimmedDescription = input.description.trim();
 
   assertRequiredText(trimmedTitle, "Goal title");
+  if (input.horizon && !GOAL_HORIZONS.includes(input.horizon)) {
+    throw new Error("Goal horizon is not supported.");
+  }
   assertValidDateRange(input.projectedStartDate, input.projectedEndDate);
 
   return {

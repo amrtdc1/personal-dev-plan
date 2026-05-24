@@ -2,7 +2,16 @@ import { id, type InstaQLParams } from "@instantdb/react";
 import { db, isInstantConfigured } from "@/lib/instantdb/client";
 import { env } from "@/lib/config/env";
 import { statusToPercent } from "@/lib/domain/status";
-import type { Goal, GoalType, ItemStatus, JournalEntry, Subgoal, Task, UserProfile } from "@/lib/domain/types";
+import type {
+  Goal,
+  GoalHorizon,
+  GoalType,
+  ItemStatus,
+  JournalEntry,
+  Subgoal,
+  Task,
+  UserProfile,
+} from "@/lib/domain/types";
 import type { AppSchema } from "@/lib/instantdb/schema";
 import {
   enqueueOfflineMutation,
@@ -45,6 +54,7 @@ export type SaveGoalInput = {
   goalId?: string;
   ownerUid: string;
   type: GoalType;
+  horizon?: GoalHorizon;
   title: string;
   description: string;
   projectedStartDate: string | null;
@@ -219,7 +229,9 @@ export const dataRepository: DataRepository = {
         type,
       });
       const response = await invokeProtectedRead<{ goals?: Goal[] }>(`/api/goals?${searchParams.toString()}`);
-      return filterDeleted(response.goals ?? [], options).sort(compareGoals);
+      return filterDeleted(response.goals ?? [], options)
+        .map(normalizeGoalDefaults)
+        .sort(compareGoals);
     }
 
     const data = await runClientQuery<{ goals?: Goal[] }>({
@@ -233,7 +245,9 @@ export const dataRepository: DataRepository = {
       },
     });
 
-    return filterDeleted(data.goals ?? [], options).sort(compareGoals);
+    return filterDeleted(data.goals ?? [], options)
+      .map(normalizeGoalDefaults)
+      .sort(compareGoals);
   },
   async saveGoal(input) {
     ensureClientMutationSupport();
@@ -252,6 +266,7 @@ export const dataRepository: DataRepository = {
       id: goalId,
       ownerUid: input.ownerUid,
       type: input.type,
+      horizon: input.horizon ?? input.existingGoal?.horizon ?? "medium_term",
       title: trimmedTitle,
       description: trimmedDescription,
       timeframe: buildGoalTimeframe(
@@ -292,6 +307,7 @@ export const dataRepository: DataRepository = {
               db.tx.goals[goalId].update({
                 ownerUid: goal.ownerUid,
                 type: goal.type,
+                horizon: goal.horizon,
                 title: goal.title,
                 description: goal.description,
                 timeframe: goal.timeframe,
@@ -1792,6 +1808,7 @@ async function saveGoalViaApi(goal: Goal, isUpdate: boolean) {
 
   await invokeProtectedWrite(path, method, {
     type: goal.type,
+    horizon: goal.horizon,
     title: goal.title,
     description: goal.description,
     projectedStartDate: goal.projectedStartDate,
@@ -1799,6 +1816,13 @@ async function saveGoalViaApi(goal: Goal, isUpdate: boolean) {
     timeframeLabel: goal.timeframe,
     isFocus: goal.isFocus,
   });
+}
+
+function normalizeGoalDefaults(goal: Goal): Goal {
+  return {
+    ...goal,
+    horizon: goal.horizon ?? "medium_term",
+  };
 }
 
 async function saveSubgoalViaApi(subgoal: Subgoal, isUpdate: boolean) {

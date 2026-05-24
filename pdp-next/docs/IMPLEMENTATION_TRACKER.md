@@ -99,6 +99,10 @@
 - [x] Align journal CRUD/archive/restore/delete flows to protected server API routes
 - [x] Add route-level regression tests for journal list/detail/archive/restore/delete APIs
 - [x] Add derived progress rollup parity for task -> subgoal -> goal completion in Goals workspace
+- [x] Add goal horizon foundation (weekly/quarterly/long-term), weekly-default workspace filtering, and habit/check-in schema placeholders
+- [x] Add dashboard regression test coverage for weekly-default goal horizon filter controls
+- [x] Add goal route-level regression tests for horizon-aware create/update payload handling
+- [x] Add horizon filter count badges and repository regression coverage for legacy goals without horizon
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).

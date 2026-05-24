@@ -19,7 +19,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Goal, ItemStatus, Subgoal, Task, UserProfile } from "@/lib/domain/types";
+import type { Goal, GoalHorizon, ItemStatus, Subgoal, Task, UserProfile } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
@@ -60,6 +60,8 @@ export function MigrationDataPreview({
   const [isSubgoalModalOpen, setIsSubgoalModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [goalType, setGoalType] = useState<"professional" | "personal">("professional");
+  const [goalHorizon, setGoalHorizon] = useState<GoalHorizon>("short_term");
+  const [goalHorizonFilter, setGoalHorizonFilter] = useState<GoalHorizon | "all">("short_term");
   const [goalTitle, setGoalTitle] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
   const [goalStartDate, setGoalStartDate] = useState("");
@@ -141,17 +143,37 @@ export function MigrationDataPreview({
     () => allGoals.filter((goal) => goal.deletedAt === null),
     [allGoals],
   );
-  const professionalGoals = useMemo(
-    () => activeGoals.filter((goal) => goal.type === "professional"),
+  const filteredActiveGoals = useMemo(
+    () =>
+      activeGoals.filter((goal) => {
+        if (goalHorizonFilter === "all") {
+          return true;
+        }
+
+        return (goal.horizon ?? "medium_term") === goalHorizonFilter;
+      }),
+    [activeGoals, goalHorizonFilter],
+  );
+  const goalHorizonCounts = useMemo(
+    () => ({
+      short_term: activeGoals.filter((goal) => (goal.horizon ?? "medium_term") === "short_term").length,
+      medium_term: activeGoals.filter((goal) => (goal.horizon ?? "medium_term") === "medium_term").length,
+      long_term: activeGoals.filter((goal) => (goal.horizon ?? "medium_term") === "long_term").length,
+      all: activeGoals.length,
+    }),
     [activeGoals],
+  );
+  const professionalGoals = useMemo(
+    () => filteredActiveGoals.filter((goal) => goal.type === "professional"),
+    [filteredActiveGoals],
   );
   const personalGoals = useMemo(
-    () => activeGoals.filter((goal) => goal.type === "personal"),
-    [activeGoals],
+    () => filteredActiveGoals.filter((goal) => goal.type === "personal"),
+    [filteredActiveGoals],
   );
   const selectedGoal = useMemo(
-    () => activeGoals.find((goal) => goal.id === selectedGoalId) ?? null,
-    [activeGoals, selectedGoalId],
+    () => filteredActiveGoals.find((goal) => goal.id === selectedGoalId) ?? null,
+    [filteredActiveGoals, selectedGoalId],
   );
   const subgoalsForSelectedGoal = useMemo(
     () =>
@@ -284,6 +306,7 @@ export function MigrationDataPreview({
           setSelectedTaskId(null);
           setMobileView("goals");
           setGoalType(goal.type);
+          setGoalHorizon(goal.horizon ?? "medium_term");
           setGoalTitle(goal.title);
           setGoalDescription(goal.description);
           setGoalStartDate(goal.projectedStartDate ?? "");
@@ -337,7 +360,7 @@ export function MigrationDataPreview({
   }, [pendingOpenItem, snapshot, allGoals, allSubgoals, allTasks, onPendingItemConsumed]);
 
   useEffect(() => {
-    if (activeGoals.length === 0) {
+    if (filteredActiveGoals.length === 0) {
       queueMicrotask(() => {
         setSelectedGoalId(null);
         setSelectedSubgoalId(null);
@@ -346,9 +369,9 @@ export function MigrationDataPreview({
       return;
     }
 
-    if (!selectedGoalId || !activeGoals.some((goal) => goal.id === selectedGoalId)) {
+    if (!selectedGoalId || !filteredActiveGoals.some((goal) => goal.id === selectedGoalId)) {
       queueMicrotask(() => {
-        setSelectedGoalId(activeGoals[0].id);
+        setSelectedGoalId(filteredActiveGoals[0].id);
       });
       return;
     }
@@ -381,7 +404,7 @@ export function MigrationDataPreview({
       });
     }
   }, [
-    activeGoals,
+    filteredActiveGoals,
     selectedGoalId,
     selectedSubgoalId,
     selectedTaskId,
@@ -792,6 +815,7 @@ export function MigrationDataPreview({
         goalId: editingGoal?.id,
         ownerUid: currentUser.id,
         type: goalType,
+        horizon: goalHorizon,
         title: goalTitle,
         description: goalDescription,
         projectedStartDate: goalStartDate || null,
@@ -813,6 +837,7 @@ export function MigrationDataPreview({
 
   function startEditing(goal: Goal) {
     setGoalType(goal.type);
+    setGoalHorizon(goal.horizon ?? "medium_term");
     setGoalTitle(goal.title);
     setGoalDescription(goal.description);
     setGoalStartDate(goal.projectedStartDate ?? "");
@@ -865,6 +890,7 @@ export function MigrationDataPreview({
   function resetGoalForm() {
     setEditingGoalId(null);
     setGoalType("professional");
+    setGoalHorizon("short_term");
     setGoalTitle("");
     setGoalDescription("");
     setGoalStartDate("");
@@ -994,6 +1020,7 @@ export function MigrationDataPreview({
                 onClick={() => {
                   resetGoalForm();
                   setGoalType("professional");
+                  setGoalHorizon("short_term");
                   setIsGoalModalOpen(true);
                 }}
                 className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
@@ -1005,6 +1032,7 @@ export function MigrationDataPreview({
                 onClick={() => {
                   resetGoalForm();
                   setGoalType("personal");
+                  setGoalHorizon("short_term");
                   setIsGoalModalOpen(true);
                 }}
                 className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
@@ -1015,6 +1043,28 @@ export function MigrationDataPreview({
           </div>
 
           <p className="mt-2 text-xs text-slate-500">Pick a goal to view its sub-goals and tasks.</p>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {[
+              ["short_term", "Weekly"],
+              ["medium_term", "Quarterly"],
+              ["long_term", "Long-term"],
+              ["all", "All"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setGoalHorizonFilter(value as GoalHorizon | "all")}
+                className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition ${
+                  goalHorizonFilter === value
+                    ? "bg-slate-900 text-white"
+                    : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {label} ({goalHorizonCounts[value as keyof typeof goalHorizonCounts]})
+              </button>
+            ))}
+          </div>
 
           <div className="mt-3 space-y-3">
             {[
@@ -1066,6 +1116,9 @@ export function MigrationDataPreview({
                                   </div>
                                   <p className="mt-1 text-xs text-slate-600">
                                     {subgoalCount} sub-goal{subgoalCount === 1 ? "" : "s"} | {goal.percentComplete}% complete
+                                  </p>
+                                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                    {getGoalHorizonLabel(goal.horizon ?? "medium_term")}
                                   </p>
                                 </button>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1431,6 +1484,19 @@ export function MigrationDataPreview({
             >
               <option value="professional">Professional</option>
               <option value="personal">Personal</option>
+            </select>
+          </label>
+
+          <label className="block text-sm text-slate-700">
+            Horizon
+            <select
+              value={goalHorizon}
+              onChange={(event) => setGoalHorizon(event.target.value as GoalHorizon)}
+              className="pdp-control mt-1 rounded-xl"
+            >
+              <option value="short_term">Weekly</option>
+              <option value="medium_term">Quarterly</option>
+              <option value="long_term">Long-term</option>
             </select>
           </label>
 
@@ -1851,5 +1917,17 @@ function deriveRollupStatus(statuses: ItemStatus[]): ItemStatus {
   }
 
   return "in_progress";
+}
+
+function getGoalHorizonLabel(horizon: GoalHorizon) {
+  if (horizon === "short_term") {
+    return "Weekly";
+  }
+
+  if (horizon === "long_term") {
+    return "Long-term";
+  }
+
+  return "Quarterly";
 }
 

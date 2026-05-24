@@ -18,6 +18,7 @@ describe("data validation helpers", () => {
     const result = validateGoalWrite({
       ownerUid: "user-1",
       type: "professional",
+      horizon: "short_term",
       title: "  Goal title  ",
       description: "  Goal description  ",
       projectedStartDate: "2026-05-01",
@@ -29,6 +30,21 @@ describe("data validation helpers", () => {
       trimmedTitle: "Goal title",
       trimmedDescription: "Goal description",
     });
+  });
+
+  it("rejects unsupported goal horizons", () => {
+    expect(() =>
+      validateGoalWrite({
+        ownerUid: "user-1",
+        type: "professional",
+        horizon: "monthly" as never,
+        title: "Goal title",
+        description: "Goal description",
+        projectedStartDate: null,
+        projectedEndDate: null,
+        isFocus: false,
+      }),
+    ).toThrow("Goal horizon is not supported.");
   });
 
   it("rejects invalid projected date ranges", () => {
