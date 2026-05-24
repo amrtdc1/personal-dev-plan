@@ -31,8 +31,6 @@ export function MigrationDataPreview({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [expandedGoalIds, setExpandedGoalIds] = useState<Set<string>>(new Set());
-  const [expandedSubgoalIds, setExpandedSubgoalIds] = useState<Set<string>>(new Set());
   const [showArchivedGoals, setShowArchivedGoals] = useState(false);
   const [targetGoalIdForSubgoal, setTargetGoalIdForSubgoal] = useState<string | null>(null);
   const [targetSubgoalIdForTask, setTargetSubgoalIdForTask] = useState<string | null>(null);
@@ -62,6 +60,9 @@ export function MigrationDataPreview({
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [taskSaveError, setTaskSaveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+  const [selectedSubgoalId, setSelectedSubgoalId] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<"goals" | "subgoals" | "tasks">("goals");
 
   const allGoals = useMemo(
     () => [
@@ -115,6 +116,40 @@ export function MigrationDataPreview({
   const editingGoal = allGoals.find((goal) => goal.id === editingGoalId) ?? null;
   const editingSubgoal = allSubgoals.find((subgoal) => subgoal.id === editingSubgoalId) ?? null;
   const editingTask = allTasks.find((task) => task.id === editingTaskId) ?? null;
+  const activeGoals = useMemo(
+    () => allGoals.filter((goal) => goal.deletedAt === null),
+    [allGoals],
+  );
+  const professionalGoals = useMemo(
+    () => activeGoals.filter((goal) => goal.type === "professional"),
+    [activeGoals],
+  );
+  const personalGoals = useMemo(
+    () => activeGoals.filter((goal) => goal.type === "personal"),
+    [activeGoals],
+  );
+  const selectedGoal = useMemo(
+    () => activeGoals.find((goal) => goal.id === selectedGoalId) ?? null,
+    [activeGoals, selectedGoalId],
+  );
+  const subgoalsForSelectedGoal = useMemo(
+    () =>
+      selectedGoal
+        ? (snapshot?.subgoalsByGoalId[selectedGoal.id] ?? []).filter((subgoal) => subgoal.deletedAt === null)
+        : [],
+    [selectedGoal, snapshot?.subgoalsByGoalId],
+  );
+  const selectedSubgoal = useMemo(
+    () => subgoalsForSelectedGoal.find((subgoal) => subgoal.id === selectedSubgoalId) ?? null,
+    [selectedSubgoalId, subgoalsForSelectedGoal],
+  );
+  const tasksForSelectedSubgoal = useMemo(
+    () =>
+      selectedSubgoal
+        ? (snapshot?.tasksBySubgoalId[selectedSubgoal.id] ?? []).filter((task) => task.deletedAt === null)
+        : [],
+    [selectedSubgoal, snapshot?.tasksBySubgoalId],
+  );
 
   useEffect(() => {
     if (!enableDataHydration || !user) {
@@ -199,6 +234,8 @@ export function MigrationDataPreview({
     if (pendingOpenItem.kind === "goal") {
       const goal = allGoals.find((candidate) => candidate.id === pendingOpenItem.id);
       if (goal) {
+        setSelectedGoalId(goal.id);
+        setMobileView("goals");
         setGoalType(goal.type);
         setGoalTitle(goal.title);
         setGoalDescription(goal.description);
@@ -213,7 +250,9 @@ export function MigrationDataPreview({
     } else if (pendingOpenItem.kind === "subgoal") {
       const subgoal = allSubgoals.find((candidate) => candidate.id === pendingOpenItem.id);
       if (subgoal) {
-        setExpandedGoalIds((previous) => new Set(previous).add(subgoal.goalId));
+        setSelectedGoalId(subgoal.goalId);
+        setSelectedSubgoalId(subgoal.id);
+        setMobileView("subgoals");
         setSubgoalTitle(subgoal.title);
         setSubgoalDescription(subgoal.description);
         setSubgoalTimeframeLabel(subgoal.timeframe === "Ongoing" ? "" : subgoal.timeframe);
@@ -226,9 +265,10 @@ export function MigrationDataPreview({
       if (task) {
         const parentSubgoal = allSubgoals.find((candidate) => candidate.id === task.subgoalId);
         if (parentSubgoal) {
-          setExpandedGoalIds((previous) => new Set(previous).add(parentSubgoal.goalId));
-          setExpandedSubgoalIds((previous) => new Set(previous).add(parentSubgoal.id));
+          setSelectedGoalId(parentSubgoal.goalId);
+          setSelectedSubgoalId(parentSubgoal.id);
         }
+        setMobileView("tasks");
         setTaskTitle(task.title);
         setTaskNotes(task.notes);
         setTaskDueDate(task.dueDate ?? "");
@@ -240,6 +280,28 @@ export function MigrationDataPreview({
 
     onPendingItemConsumed?.();
   }, [pendingOpenItem, snapshot, allGoals, allSubgoals, allTasks, onPendingItemConsumed]);
+
+  useEffect(() => {
+    if (activeGoals.length === 0) {
+      setSelectedGoalId(null);
+      setSelectedSubgoalId(null);
+      return;
+    }
+
+    if (!selectedGoalId || !activeGoals.some((goal) => goal.id === selectedGoalId)) {
+      setSelectedGoalId(activeGoals[0].id);
+      return;
+    }
+
+    if (subgoalsForSelectedGoal.length === 0) {
+      setSelectedSubgoalId(null);
+      return;
+    }
+
+    if (!selectedSubgoalId || !subgoalsForSelectedGoal.some((subgoal) => subgoal.id === selectedSubgoalId)) {
+      setSelectedSubgoalId(subgoalsForSelectedGoal[0].id);
+    }
+  }, [activeGoals, selectedGoalId, selectedSubgoalId, subgoalsForSelectedGoal]);
 
   if (isLoading || error || !user) {
     return null;
@@ -614,30 +676,6 @@ export function MigrationDataPreview({
     setIsTaskModalOpen(true);
   }
 
-  function toggleGoalExpansion(goalId: string) {
-    setExpandedGoalIds((previous) => {
-      const next = new Set(previous);
-      if (next.has(goalId)) {
-        next.delete(goalId);
-      } else {
-        next.add(goalId);
-      }
-      return next;
-    });
-  }
-
-  function toggleSubgoalExpansion(subgoalId: string) {
-    setExpandedSubgoalIds((previous) => {
-      const next = new Set(previous);
-      if (next.has(subgoalId)) {
-        next.delete(subgoalId);
-      } else {
-        next.add(subgoalId);
-      }
-      return next;
-    });
-  }
-
   return (
     <>
       {showWorkspaceShell ? (
@@ -671,66 +709,339 @@ export function MigrationDataPreview({
         </label>
       ) : null}
 
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <GoalGroup
-          title="Professional goals"
-          goals={(snapshot?.professionalGoals ?? []).filter((goal) => goal.deletedAt === null)}
-          subgoalsByGoalId={snapshot?.subgoalsByGoalId ?? {}}
-          tasksBySubgoalId={snapshot?.tasksBySubgoalId ?? {}}
-          expandedGoalIds={expandedGoalIds}
-          expandedSubgoalIds={expandedSubgoalIds}
-          onToggleGoal={toggleGoalExpansion}
-          onToggleSubgoal={toggleSubgoalExpansion}
-          onAddGoal={() => {
-            resetGoalForm();
-            setGoalType("professional");
-            setIsGoalModalOpen(true);
-          }}
-          onEditGoal={startEditing}
-          onArchiveGoal={handleGoalArchiveToggle}
-          onMoveGoal={handleGoalMove}
-          onStatusChangeGoal={handleGoalStatusChange}
-          onAddSubgoal={openCreateSubgoalModal}
-          onEditSubgoal={startEditingSubgoal}
-          onArchiveSubgoal={handleSubgoalArchiveToggle}
-          onMoveSubgoal={handleSubgoalMove}
-          onStatusChangeSubgoal={handleSubgoalStatusChange}
-          onAddTask={openCreateTaskModal}
-          onEditTask={startEditingTask}
-          onArchiveTask={handleTaskArchiveToggle}
-          onMoveTask={handleTaskMove}
-          onStatusChangeTask={handleTaskStatusChange}
-        />
+      <div className="mt-5 flex items-center gap-2 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileView("goals")}
+          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+            mobileView === "goals"
+              ? "bg-slate-900 text-white"
+              : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+          }`}
+        >
+          Goals
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileView("subgoals")}
+          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+            mobileView === "subgoals"
+              ? "bg-slate-900 text-white"
+              : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+          }`}
+        >
+          Sub-goals
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileView("tasks")}
+          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+            mobileView === "tasks"
+              ? "bg-slate-900 text-white"
+              : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+          }`}
+        >
+          Tasks
+        </button>
+      </div>
 
-        <GoalGroup
-          title="Personal goals"
-          goals={(snapshot?.personalGoals ?? []).filter((goal) => goal.deletedAt === null)}
-          subgoalsByGoalId={snapshot?.subgoalsByGoalId ?? {}}
-          tasksBySubgoalId={snapshot?.tasksBySubgoalId ?? {}}
-          expandedGoalIds={expandedGoalIds}
-          expandedSubgoalIds={expandedSubgoalIds}
-          onToggleGoal={toggleGoalExpansion}
-          onToggleSubgoal={toggleSubgoalExpansion}
-          onAddGoal={() => {
-            resetGoalForm();
-            setGoalType("personal");
-            setIsGoalModalOpen(true);
-          }}
-          onEditGoal={startEditing}
-          onArchiveGoal={handleGoalArchiveToggle}
-          onMoveGoal={handleGoalMove}
-          onStatusChangeGoal={handleGoalStatusChange}
-          onAddSubgoal={openCreateSubgoalModal}
-          onEditSubgoal={startEditingSubgoal}
-          onArchiveSubgoal={handleSubgoalArchiveToggle}
-          onMoveSubgoal={handleSubgoalMove}
-          onStatusChangeSubgoal={handleSubgoalStatusChange}
-          onAddTask={openCreateTaskModal}
-          onEditTask={startEditingTask}
-          onArchiveTask={handleTaskArchiveToggle}
-          onMoveTask={handleTaskMove}
-          onStatusChangeTask={handleTaskStatusChange}
-        />
+      <div className="mt-4 hidden text-xs text-slate-500 lg:block">
+        <span>Relationship path:</span>{" "}
+        <span className="font-semibold text-slate-700">{selectedGoal?.title ?? "Select a goal"}</span>{" "}
+        <span>&gt;</span>{" "}
+        <span className="font-semibold text-slate-700">{selectedSubgoal?.title ?? "Select a sub-goal"}</span>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <article className={`${mobileView === "goals" ? "block" : "hidden"} pdp-panel-muted lg:block`}>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Goals</h3>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  resetGoalForm();
+                  setGoalType("professional");
+                  setIsGoalModalOpen(true);
+                }}
+                className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                + Pro
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  resetGoalForm();
+                  setGoalType("personal");
+                  setIsGoalModalOpen(true);
+                }}
+                className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                + Personal
+              </button>
+            </div>
+          </div>
+
+          <p className="mt-2 text-xs text-slate-500">Pick a goal to view its sub-goals and tasks.</p>
+
+          <div className="mt-3 space-y-3">
+            {[
+              ["Professional", professionalGoals] as const,
+              ["Personal", personalGoals] as const,
+            ].map(([groupLabel, groupGoals]) => (
+              <div key={groupLabel}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{groupLabel}</p>
+                <ul className="mt-2 space-y-2">
+                  {groupGoals.length === 0 ? (
+                    <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+                      No {groupLabel.toLowerCase()} goals yet.
+                    </li>
+                  ) : (
+                    groupGoals.map((goal) => {
+                      const isSelected = goal.id === selectedGoalId;
+                      const subgoalCount = (snapshot?.subgoalsByGoalId[goal.id] ?? []).filter((item) => item.deletedAt === null).length;
+                      return (
+                        <li key={goal.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedGoalId(goal.id);
+                              setMobileView("subgoals");
+                            }}
+                            className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                              isSelected
+                                ? "border-blue-300 bg-blue-50"
+                                : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium text-slate-900">{goal.title}</p>
+                              <GoalTypeTag type={goal.type} />
+                            </div>
+                            <p className="mt-1 text-xs text-slate-600">
+                              {subgoalCount} sub-goal{subgoalCount === 1 ? "" : "s"} | {goal.percentComplete}% complete
+                            </p>
+                          </button>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <IconActionButton label="Edit goal" onClick={() => startEditing(goal)}>
+                              <PencilIcon />
+                            </IconActionButton>
+                            <IconActionButton label="Archive goal" onClick={() => void handleGoalArchiveToggle(goal)}>
+                              <ArchiveIcon />
+                            </IconActionButton>
+                            <button
+                              type="button"
+                              onClick={() => void handleGoalMove(goal, "up")}
+                              className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                            >
+                              Up
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleGoalMove(goal, "down")}
+                              className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                            >
+                              Down
+                            </button>
+                            <select
+                              value={goal.status}
+                              onChange={(event) => {
+                                void handleGoalStatusChange(goal, event.target.value as ItemStatus);
+                              }}
+                              className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                            >
+                              <option value="not_started">Not started</option>
+                              <option value="in_progress">In progress</option>
+                              <option value="done">Done</option>
+                            </select>
+                          </div>
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className={`${mobileView === "subgoals" ? "block" : "hidden"} pdp-panel-muted lg:block`}>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Sub-goals</h3>
+            <button
+              type="button"
+              disabled={!selectedGoal}
+              onClick={() => {
+                if (selectedGoal) {
+                  openCreateSubgoalModal(selectedGoal.id);
+                }
+              }}
+              className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              + Sub-goal
+            </button>
+          </div>
+
+          {selectedGoal ? (
+            <p className="mt-2 text-xs text-slate-500">
+              Under goal: <span className="font-semibold text-slate-700">{selectedGoal.title}</span>
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-slate-500">Select a goal to view sub-goals.</p>
+          )}
+
+          <ul className="mt-3 space-y-2">
+            {subgoalsForSelectedGoal.length === 0 ? (
+              <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+                No sub-goals yet.
+              </li>
+            ) : (
+              subgoalsForSelectedGoal.map((subgoal) => {
+                const isSelected = subgoal.id === selectedSubgoalId;
+                const taskCount = (snapshot?.tasksBySubgoalId[subgoal.id] ?? []).filter((item) => item.deletedAt === null).length;
+                return (
+                  <li key={subgoal.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSubgoalId(subgoal.id);
+                        setMobileView("tasks");
+                      }}
+                      className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                        isSelected
+                          ? "border-blue-300 bg-blue-50"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <p className="font-medium text-slate-900">{subgoal.title}</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {taskCount} task{taskCount === 1 ? "" : "s"} | {subgoal.percentComplete}% complete
+                      </p>
+                    </button>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <IconActionButton label="Edit sub-goal" onClick={() => startEditingSubgoal(subgoal)}>
+                        <PencilIcon />
+                      </IconActionButton>
+                      <IconActionButton
+                        label="Archive sub-goal"
+                        onClick={() => void handleSubgoalArchiveToggle(subgoal)}
+                      >
+                        <ArchiveIcon />
+                      </IconActionButton>
+                      <button
+                        type="button"
+                        onClick={() => void handleSubgoalMove(subgoal, "up")}
+                        className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                      >
+                        Up
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSubgoalMove(subgoal, "down")}
+                        className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                      >
+                        Down
+                      </button>
+                      <select
+                        value={subgoal.status}
+                        onChange={(event) => {
+                          void handleSubgoalStatusChange(subgoal, event.target.value as ItemStatus);
+                        }}
+                        className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                      >
+                        <option value="not_started">Not started</option>
+                        <option value="in_progress">In progress</option>
+                        <option value="done">Done</option>
+                      </select>
+                    </div>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </article>
+
+        <article className={`${mobileView === "tasks" ? "block" : "hidden"} pdp-panel-muted lg:block`}>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Tasks</h3>
+            <button
+              type="button"
+              disabled={!selectedSubgoal}
+              onClick={() => {
+                if (selectedSubgoal) {
+                  openCreateTaskModal(selectedSubgoal.id);
+                }
+              }}
+              className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              + Task
+            </button>
+          </div>
+
+          {selectedSubgoal ? (
+            <p className="mt-2 text-xs text-slate-500">
+              Under sub-goal: <span className="font-semibold text-slate-700">{selectedSubgoal.title}</span>
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-slate-500">Select a sub-goal to view tasks.</p>
+          )}
+
+          <ul className="mt-3 space-y-2">
+            {tasksForSelectedSubgoal.length === 0 ? (
+              <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+                No tasks yet.
+              </li>
+            ) : (
+              tasksForSelectedSubgoal.map((task) => (
+                <li key={task.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => startEditingTask(task)}
+                    className="w-full text-left"
+                  >
+                    <p className="font-medium text-slate-900">{task.title}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {task.dueDate ? `Due ${task.dueDate}` : "No due date"} | {task.percentComplete}% complete
+                    </p>
+                  </button>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <IconActionButton label="Edit task" onClick={() => startEditingTask(task)}>
+                      <PencilIcon />
+                    </IconActionButton>
+                    <IconActionButton label="Archive task" onClick={() => void handleTaskArchiveToggle(task)}>
+                      <ArchiveIcon />
+                    </IconActionButton>
+                    <button
+                      type="button"
+                      onClick={() => void handleTaskMove(task, "up")}
+                      className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleTaskMove(task, "down")}
+                      className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                    >
+                      Down
+                    </button>
+                    <select
+                      value={task.status}
+                      onChange={(event) => {
+                        void handleTaskStatusChange(task, event.target.value as ItemStatus);
+                      }}
+                      className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                    >
+                      <option value="not_started">Not started</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </div>
+                </li>
+              ))
+            )}
+          </ul>
+        </article>
       </div>
 
       {showArchivedGoals && hasAnyArchived ? (
@@ -1122,30 +1433,6 @@ function ArchiveIcon() {
   );
 }
 
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
-    </svg>
-  );
-}
-
-function ChevronIcon({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={`size-4 transition-transform ${expanded ? "rotate-90" : ""}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden="true"
-    >
-      <path d="M9 6l6 6-6 6" />
-    </svg>
-  );
-}
-
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -1174,318 +1461,5 @@ function buildReorderedActiveIds<T extends { id: string; deletedAt: string | nul
   const [movedId] = nextIds.splice(currentIndex, 1);
   nextIds.splice(targetIndex, 0, movedId);
   return nextIds;
-}
-
-type GoalGroupProps = {
-  title: string;
-  goals: Goal[];
-  subgoalsByGoalId: Record<string, Subgoal[]>;
-  tasksBySubgoalId: Record<string, Task[]>;
-  expandedGoalIds: Set<string>;
-  expandedSubgoalIds: Set<string>;
-  onToggleGoal: (goalId: string) => void;
-  onToggleSubgoal: (subgoalId: string) => void;
-  onAddGoal: () => void;
-  onEditGoal: (goal: Goal) => void;
-  onArchiveGoal: (goal: Goal) => void;
-  onMoveGoal: (goal: Goal, direction: "up" | "down") => void;
-  onStatusChangeGoal: (goal: Goal, status: ItemStatus) => void;
-  onAddSubgoal: (goalId: string) => void;
-  onEditSubgoal: (subgoal: Subgoal) => void;
-  onArchiveSubgoal: (subgoal: Subgoal) => void;
-  onMoveSubgoal: (subgoal: Subgoal, direction: "up" | "down") => void;
-  onStatusChangeSubgoal: (subgoal: Subgoal, status: ItemStatus) => void;
-  onAddTask: (subgoalId: string) => void;
-  onEditTask: (task: Task) => void;
-  onArchiveTask: (task: Task) => void;
-  onMoveTask: (task: Task, direction: "up" | "down") => void;
-  onStatusChangeTask: (task: Task, status: ItemStatus) => void;
-};
-
-function GoalGroup({
-  title,
-  goals,
-  subgoalsByGoalId,
-  tasksBySubgoalId,
-  expandedGoalIds,
-  expandedSubgoalIds,
-  onToggleGoal,
-  onToggleSubgoal,
-  onAddGoal,
-  onEditGoal,
-  onArchiveGoal,
-  onMoveGoal,
-  onStatusChangeGoal,
-  onAddSubgoal,
-  onEditSubgoal,
-  onArchiveSubgoal,
-  onMoveSubgoal,
-  onStatusChangeSubgoal,
-  onAddTask,
-  onEditTask,
-  onArchiveTask,
-  onMoveTask,
-  onStatusChangeTask,
-}: GoalGroupProps) {
-  return (
-    <article className="pdp-panel-muted">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-slate-900">
-          {title} ({goals.length})
-        </h3>
-        <IconActionButton label={`Add ${title.toLowerCase()}`} onClick={onAddGoal}>
-          <PlusIcon />
-        </IconActionButton>
-      </header>
-
-      {goals.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-600">No goals yet. Use the + button to create one.</p>
-      ) : (
-        <ul className="mt-3 space-y-3">
-          {goals.map((goal) => {
-            const subgoals = (subgoalsByGoalId[goal.id] ?? []).filter((subgoal) => subgoal.deletedAt === null);
-            const isGoalExpanded = expandedGoalIds.has(goal.id);
-
-            return (
-              <li
-                key={goal.id}
-                className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p
-                        className="pdp-heading text-2xl font-semibold leading-tight"
-                        style={{ color: "var(--pdp-theme-primary)" }}
-                      >
-                        {goal.title}
-                      </p>
-                      <GoalTypeTag type={goal.type} />
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {goal.status.replaceAll("_", " ")} · {goal.timeframe || "No timeframe"}
-                    </p>
-                    {goal.description ? (
-                      <p className="mt-2 text-sm text-slate-700">{goal.description}</p>
-                    ) : null}
-                    <label className="mt-2 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Status
-                      <select
-                        value={goal.status}
-                        onChange={(event) => onStatusChangeGoal(goal, event.target.value as ItemStatus)}
-                        className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal normal-case text-slate-900"
-                      >
-                        <option value="not_started">Not started</option>
-                        <option value="in_progress">In progress</option>
-                        <option value="done">Done</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onMoveGoal(goal, "up")}
-                      className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                      aria-label="Move goal up"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onMoveGoal(goal, "down")}
-                      className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                      aria-label="Move goal down"
-                    >
-                      ↓
-                    </button>
-                    <IconActionButton label="Edit goal" onClick={() => onEditGoal(goal)}>
-                      <PencilIcon />
-                    </IconActionButton>
-                    <IconActionButton label="Archive goal" onClick={() => onArchiveGoal(goal)}>
-                      <ArchiveIcon />
-                    </IconActionButton>
-                  </div>
-                </div>
-
-                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => onToggleGoal(goal.id)}
-                      className="flex items-center gap-2 text-sm font-semibold text-slate-900"
-                      aria-expanded={isGoalExpanded}
-                    >
-                      <ChevronIcon expanded={isGoalExpanded} />
-                      Sub-goals ({subgoals.length})
-                    </button>
-                    <IconActionButton label="Add sub-goal" onClick={() => onAddSubgoal(goal.id)}>
-                      <PlusIcon />
-                    </IconActionButton>
-                  </div>
-
-                  {isGoalExpanded ? (
-                    subgoals.length === 0 ? (
-                      <p className="mt-3 text-sm text-slate-600">No sub-goals yet. Use the + button to add one.</p>
-                    ) : (
-                      <ul className="mt-3 space-y-3">
-                        {subgoals.map((subgoal) => {
-                          const tasks = (tasksBySubgoalId[subgoal.id] ?? []).filter((task) => task.deletedAt === null);
-                          const isSubgoalExpanded = expandedSubgoalIds.has(subgoal.id);
-
-                          return (
-                            <li
-                              key={subgoal.id}
-                              className="rounded-lg border border-slate-200 bg-white p-3"
-                            >
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-slate-900">{subgoal.title}</p>
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    {subgoal.status.replaceAll("_", " ")} · {subgoal.timeframe || "No timeframe"}
-                                  </p>
-                                  {subgoal.description ? (
-                                    <p className="mt-2 text-sm text-slate-700">{subgoal.description}</p>
-                                  ) : null}
-                                  <label className="mt-2 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                                    Status
-                                    <select
-                                      value={subgoal.status}
-                                      onChange={(event) =>
-                                        onStatusChangeSubgoal(subgoal, event.target.value as ItemStatus)
-                                      }
-                                      className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal normal-case text-slate-900"
-                                    >
-                                      <option value="not_started">Not started</option>
-                                      <option value="in_progress">In progress</option>
-                                      <option value="done">Done</option>
-                                    </select>
-                                  </label>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => onMoveSubgoal(subgoal, "up")}
-                                    className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                                    aria-label="Move sub-goal up"
-                                  >
-                                    ↑
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => onMoveSubgoal(subgoal, "down")}
-                                    className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                                    aria-label="Move sub-goal down"
-                                  >
-                                    ↓
-                                  </button>
-                                  <IconActionButton label="Edit sub-goal" onClick={() => onEditSubgoal(subgoal)}>
-                                    <PencilIcon />
-                                  </IconActionButton>
-                                  <IconActionButton label="Archive sub-goal" onClick={() => onArchiveSubgoal(subgoal)}>
-                                    <ArchiveIcon />
-                                  </IconActionButton>
-                                </div>
-                              </div>
-
-                              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                <div className="flex items-center justify-between gap-3">
-                                  <button
-                                    type="button"
-                                    onClick={() => onToggleSubgoal(subgoal.id)}
-                                    className="flex items-center gap-2 text-sm font-semibold text-slate-900"
-                                    aria-expanded={isSubgoalExpanded}
-                                  >
-                                    <ChevronIcon expanded={isSubgoalExpanded} />
-                                    Tasks ({tasks.length})
-                                  </button>
-                                  <IconActionButton label="Add task" onClick={() => onAddTask(subgoal.id)}>
-                                    <PlusIcon />
-                                  </IconActionButton>
-                                </div>
-
-                                {isSubgoalExpanded ? (
-                                  tasks.length === 0 ? (
-                                    <p className="mt-3 text-sm text-slate-600">
-                                      No tasks yet. Use the + button to add one.
-                                    </p>
-                                  ) : (
-                                    <ul className="mt-3 space-y-2">
-                                      {tasks.map((task) => (
-                                        <li
-                                          key={task.id}
-                                          className="rounded-lg border border-slate-200 bg-white p-3"
-                                        >
-                                          <div className="flex flex-wrap items-start justify-between gap-3">
-                                            <div className="min-w-0 flex-1">
-                                              <p className="font-medium text-slate-900">{task.title}</p>
-                                              {task.dueDate ? (
-                                                <p className="mt-1 text-xs text-slate-500">Due {task.dueDate}</p>
-                                              ) : null}
-                                              {task.notes ? (
-                                                <p className="mt-2 text-sm text-slate-700">{task.notes}</p>
-                                              ) : null}
-                                              <label className="mt-2 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                                                Status
-                                                <select
-                                                  value={task.status}
-                                                  onChange={(event) =>
-                                                    onStatusChangeTask(task, event.target.value as ItemStatus)
-                                                  }
-                                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal normal-case text-slate-900"
-                                                >
-                                                  <option value="not_started">Not started</option>
-                                                  <option value="in_progress">In progress</option>
-                                                  <option value="done">Done</option>
-                                                </select>
-                                              </label>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                              <button
-                                                type="button"
-                                                onClick={() => onMoveTask(task, "up")}
-                                                className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                                                aria-label="Move task up"
-                                              >
-                                                ↑
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => onMoveTask(task, "down")}
-                                                className="rounded-full border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                                                aria-label="Move task down"
-                                              >
-                                                ↓
-                                              </button>
-                                              <IconActionButton label="Edit task" onClick={() => onEditTask(task)}>
-                                                <PencilIcon />
-                                              </IconActionButton>
-                                              <IconActionButton
-                                                label="Archive task"
-                                                onClick={() => onArchiveTask(task)}
-                                              >
-                                                <ArchiveIcon />
-                                              </IconActionButton>
-                                            </div>
-                                          </div>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )
-                                ) : null}
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </article>
-  );
 }
 
