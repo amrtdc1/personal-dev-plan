@@ -1092,7 +1092,15 @@ export function MigrationDataPreview({
       {showWorkspaceShell ? (
         <WorkspaceShell
           title="Planning"
+          titleTrailing={
+            <span className="sm:hidden">
+              <InfoPopover className="self-center" label="Planning help">
+                Build and organize your professional and personal goals into clear, trackable timelines.
+              </InfoPopover>
+            </span>
+          }
           description="Build and organize your professional and personal goals into clear, trackable timelines."
+          descriptionClassName="hidden sm:block"
           headerAside={
             isRefreshing ? (
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
@@ -1121,12 +1129,6 @@ export function MigrationDataPreview({
           leftRailTitle="Timeline Filters"
           leftRailContent={timelineNav}
         >
-          <div className="flex items-center gap-2 lg:hidden">
-            <InfoPopover className="self-center" label="Planning help">
-              Build and organize your professional and personal goals into clear, trackable timelines.
-            </InfoPopover>
-          </div>
-
           <div className="pdp-card sticky top-2 z-10 mt-4 px-3 py-2 text-[11px] leading-5 text-slate-500 shadow-sm backdrop-blur sm:text-xs lg:static lg:shadow-none">
         <span className="font-semibold uppercase tracking-wide text-slate-500">Relationship path:</span>{" "}
         <span className="font-semibold text-slate-700">{selectedGoal?.title ?? "Select a goal"}</span>{" "}

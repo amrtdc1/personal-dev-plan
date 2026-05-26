@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { buildNodeGraphModel } from "@/components/dashboard/node-map/graph-adapter";
+import { NodeGraphCanvas } from "@/components/dashboard/node-map/node-graph-canvas";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import type { Goal, GoalTimeframeLevel, GoalType, ItemStatus, Task } from "@/lib/domain/types";
@@ -194,62 +196,21 @@ export function NodeMapWorkspace({
       .sort((a, b) => a.parentTitle.localeCompare(b.parentTitle) || a.childTitle.localeCompare(b.childTitle));
   }, [filteredGoalIds, filteredGoals, goalMap]);
 
-  const graphNodes = useMemo(() => {
-    const byLevel = new Map<GoalTimeframeLevel, Goal[]>();
-    for (const level of TIMEFRAME_ORDER) {
-      byLevel.set(level, []);
-    }
+  const graphTasks = useMemo(() => {
+    const linkedTasks = Array.from(tasksByGoalId.values()).flat();
+    return uniqueById(includeFreestandingTasks ? [...linkedTasks, ...freestandingTasks] : linkedTasks);
+  }, [freestandingTasks, includeFreestandingTasks, tasksByGoalId]);
 
-    for (const goal of filteredGoals) {
-      const bucket = byLevel.get(goal.timeframeLevel) ?? [];
-      bucket.push(goal);
-      byLevel.set(goal.timeframeLevel, bucket);
-    }
-
-    const nodeMap = new Map<string, { goal: Goal; x: number; y: number }>();
-
-    for (let columnIndex = 0; columnIndex < TIMEFRAME_ORDER.length; columnIndex += 1) {
-      const level = TIMEFRAME_ORDER[columnIndex];
-      const sortedGoals = (byLevel.get(level) ?? []).slice().sort((a, b) => a.orderIndex - b.orderIndex || a.title.localeCompare(b.title));
-
-      for (let rowIndex = 0; rowIndex < sortedGoals.length; rowIndex += 1) {
-        nodeMap.set(sortedGoals[rowIndex].id, {
-          goal: sortedGoals[rowIndex],
-          x: 130 + columnIndex * 220,
-          y: 70 + rowIndex * 90,
-        });
-      }
-    }
-
-    return nodeMap;
-  }, [filteredGoals]);
-
-  const graphEdges = useMemo(() => {
-    return filteredGoals
-      .filter((goal) => goal.parentGoalId && graphNodes.has(goal.parentGoalId) && graphNodes.has(goal.id))
-      .map((goal) => {
-        const child = graphNodes.get(goal.id)!;
-        const parent = graphNodes.get(goal.parentGoalId!)!;
-        return {
-          id: `${parent.goal.id}-${child.goal.id}`,
-          fromX: parent.x,
-          fromY: parent.y,
-          toX: child.x,
-          toY: child.y,
-        };
-      });
-  }, [filteredGoals, graphNodes]);
-
-  const graphHeight = useMemo(() => {
-    let maxRowCount = 1;
-    for (const level of TIMEFRAME_ORDER) {
-      const count = goalsByTimeframe.get(level)?.length ?? 0;
-      if (count > maxRowCount) {
-        maxRowCount = count;
-      }
-    }
-    return 120 + maxRowCount * 90;
-  }, [goalsByTimeframe]);
+  const graphModel = useMemo(
+    () =>
+      buildNodeGraphModel({
+        goals: filteredGoals,
+        tasks: graphTasks,
+        timeframeOrder: TIMEFRAME_ORDER,
+        includeFreestandingTasks,
+      }),
+    [filteredGoals, graphTasks, includeFreestandingTasks],
+  );
 
   if (isLoading) {
     return (
@@ -362,61 +323,14 @@ export function NodeMapWorkspace({
 
       <div className="rounded-2xl border border-slate-200 bg-white p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-900">Node Link Canvas</h3>
-          <p className="text-[11px] text-slate-500">Click a node to open it in Goals</p>
+          <h3 className="text-sm font-semibold text-slate-900">Node Graph Canvas</h3>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-100 bg-slate-50/50">
-          <svg viewBox={`0 0 1200 ${graphHeight}`} className="h-auto min-w-[980px] w-full" role="img" aria-label="Goal relationship map">
-            {TIMEFRAME_ORDER.map((level, index) => (
-              <g key={`band-${level}`}>
-                <rect
-                  x={20 + index * 220}
-                  y={18}
-                  width={200}
-                  height={graphHeight - 36}
-                  rx={16}
-                  fill="#f8fafc"
-                  stroke="#e2e8f0"
-                />
-                <text x={120 + index * 220} y={42} textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">
-                  {TIMEFRAME_LABELS[level]}
-                </text>
-              </g>
-            ))}
-
-            {graphEdges.map((edge) => (
-              <line
-                key={edge.id}
-                x1={edge.fromX}
-                y1={edge.fromY}
-                x2={edge.toX}
-                y2={edge.toY}
-                stroke="#64748b"
-                strokeWidth="1.5"
-                strokeDasharray="4 4"
-              />
-            ))}
-
-            {Array.from(graphNodes.values()).map(({ goal, x, y }) => (
-              <g key={`node-${goal.id}`}>
-                <circle cx={x} cy={y} r={14} fill={goal.type === "professional" ? "#0ea5e9" : "#10b981"} />
-                <text x={x + 20} y={y + 4} fontSize="11" fill="#0f172a">
-                  {truncateLabel(goal.title, 24)}
-                </text>
-                <rect
-                  x={x - 16}
-                  y={y - 16}
-                  width={200}
-                  height={32}
-                  fill="transparent"
-                  className="cursor-pointer"
-                  onClick={() => onOpenItem?.("goal", goal.id)}
-                />
-              </g>
-            ))}
-          </svg>
-        </div>
+        <NodeGraphCanvas
+          nodes={graphModel.nodes}
+          edges={graphModel.edges}
+          onOpenItem={onOpenItem}
+        />
 
         {filteredGoals.length === 0 ? (
           <p className="mt-2 text-xs text-slate-500">
@@ -566,14 +480,6 @@ function uniqueById<TEntity extends { id: string }>(items: TEntity[]) {
   }
 
   return unique;
-}
-
-function truncateLabel(value: string, maxLength: number) {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength - 1)}...`;
 }
 
 function toErrorMessage(error: unknown, fallbackMessage: string) {

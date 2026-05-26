@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 
 type WorkspaceShellProps = {
   title: string;
+  titleTrailing?: ReactNode;
   description?: string;
+  descriptionClassName?: string;
   headerAside?: ReactNode;
   notices?: ReactNode;
   mobileNav?: ReactNode;
@@ -13,7 +15,9 @@ type WorkspaceShellProps = {
 
 export function WorkspaceShell({
   title,
+  titleTrailing,
   description,
+  descriptionClassName,
   headerAside,
   notices,
   mobileNav,
@@ -25,8 +29,15 @@ export function WorkspaceShell({
     <section className="pdp-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="pdp-section-title text-slate-900">{title}</h2>
-          {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">{description}</p> : null}
+          <div className="flex items-center gap-2">
+            <h2 className="pdp-section-title text-slate-900">{title}</h2>
+            {titleTrailing}
+          </div>
+          {description ? (
+            <p className={`mt-2 max-w-3xl text-sm leading-6 text-slate-700 ${descriptionClassName ?? ""}`}>
+              {description}
+            </p>
+          ) : null}
         </div>
         {headerAside}
       </div>
