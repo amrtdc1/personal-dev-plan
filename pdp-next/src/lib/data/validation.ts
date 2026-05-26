@@ -1,20 +1,20 @@
 import type {
   Goal,
-  GoalHorizon,
+  GoalTimeframeLevel,
   JournalEntry,
   ItemStatus,
-  Subgoal,
+  ChildGoal,
   Task,
 } from "@/lib/domain/types";
 import type {
   SaveGoalInput,
   SaveJournalEntryInput,
-  SaveSubgoalInput,
+  SaveChildGoalInput,
   SaveTaskInput,
 } from "@/lib/data/repository";
 
 const ITEM_STATUSES: ItemStatus[] = ["not_started", "in_progress", "done"];
-const GOAL_HORIZONS: GoalHorizon[] = ["long_term", "medium_term", "short_term"];
+const GOAL_TIMEFRAME_LEVELS: GoalTimeframeLevel[] = ["vision_5y", "annual", "quarterly", "monthly", "weekly"];
 const ALLOWED_COLLEGE_LOGO_HOSTS = new Set([
   "a.espncdn.com",
   "a1.espncdn.com",
@@ -45,8 +45,14 @@ export function validateGoalWrite(input: SaveGoalInput) {
   const trimmedDescription = input.description.trim();
 
   assertRequiredText(trimmedTitle, "Goal title");
-  if (input.horizon && !GOAL_HORIZONS.includes(input.horizon)) {
-    throw new Error("Goal horizon is not supported.");
+  if (!input.timeframeLevel) {
+    throw new Error("Goal timeframe level is required.");
+  }
+  if (!GOAL_TIMEFRAME_LEVELS.includes(input.timeframeLevel)) {
+    throw new Error("Goal timeframe level is not supported.");
+  }
+  if (input.goalId && input.parentGoalId && input.goalId === input.parentGoalId) {
+    throw new Error("Goal cannot be its own parent.");
   }
   assertValidDateRange(input.projectedStartDate, input.projectedEndDate);
 
@@ -56,11 +62,11 @@ export function validateGoalWrite(input: SaveGoalInput) {
   };
 }
 
-export function validateSubgoalWrite(input: SaveSubgoalInput) {
+export function validateChildGoalWrite(input: SaveChildGoalInput) {
   const trimmedTitle = input.title.trim();
   const trimmedDescription = input.description.trim();
 
-  assertRequiredText(trimmedTitle, "Subgoal title");
+  assertRequiredText(trimmedTitle, "ChildGoal title");
   assertValidDateRange(input.projectedStartDate, input.projectedEndDate);
 
   return {
@@ -157,8 +163,8 @@ export function assertOwnedGoal(goal: Goal | null, ownerUid: string) {
   return assertOwnedEntity(goal, ownerUid, "Goal");
 }
 
-export function assertOwnedSubgoal(subgoal: Subgoal | null, ownerUid: string) {
-  return assertOwnedEntity(subgoal, ownerUid, "Subgoal");
+export function assertOwnedChildGoal(childGoal: ChildGoal | null, ownerUid: string) {
+  return assertOwnedEntity(childGoal, ownerUid, "ChildGoal");
 }
 
 export function assertOwnedTask(task: Task | null, ownerUid: string) {

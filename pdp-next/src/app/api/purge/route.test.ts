@@ -30,7 +30,7 @@ describe("api/purge route", () => {
     requireInstantUserMock.mockResolvedValue({ id: "user-1" });
     purgeExpiredOwnedDataMock.mockResolvedValue({
       goals: 1,
-      subgoals: 2,
+      childGoals: 2,
       tasks: 3,
       purgedAt: "2026-05-23T12:00:00.000Z",
     });
@@ -44,7 +44,7 @@ describe("api/purge route", () => {
     await expect(response.json()).resolves.toEqual({
       summary: {
         goals: 1,
-        subgoals: 2,
+        childGoals: 2,
         tasks: 3,
         purgedAt: "2026-05-23T12:00:00.000Z",
       },

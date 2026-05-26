@@ -1,5 +1,5 @@
 import { getInstantAdmin } from "@/lib/instantdb/admin";
-import type { Goal, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, Task } from "@/lib/domain/types";
 import { buildCalendarIcs } from "@/lib/server/calendar-ics";
 import { verifyCalendarFeedToken } from "@/lib/server/calendar-feed-token";
 import { resolveInstantRouteError } from "@/lib/server/instant-error-response";
@@ -28,18 +28,9 @@ export async function GET(_request: Request, context: { params: Promise<{ token:
       throw new InstantAuthError("Calendar feed token has been rotated.");
     }
 
-    const [{ goals = [] }, { subgoals = [] }, { tasks = [] }] = await Promise.all([
+    const [{ goals = [] }, { tasks = [] }] = await Promise.all([
       instantAdmin.query({
         goals: {
-          $: {
-            where: {
-              ownerUid: uid,
-            },
-          },
-        },
-      }),
-      instantAdmin.query({
-        subgoals: {
           $: {
             where: {
               ownerUid: uid,
@@ -60,7 +51,6 @@ export async function GET(_request: Request, context: { params: Promise<{ token:
 
     const ics = buildCalendarIcs({
       goals: goals as Goal[],
-      subgoals: subgoals as Subgoal[],
       tasks: tasks as Task[],
     });
 

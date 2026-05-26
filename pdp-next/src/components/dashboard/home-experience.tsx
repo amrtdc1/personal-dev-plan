@@ -7,6 +7,7 @@ import { CalendarWorkspace } from "@/components/dashboard/calendar-workspace";
 import { DashboardInsights } from "@/components/dashboard/dashboard-insights";
 import { JournalWorkspace } from "@/components/dashboard/journal-workspace";
 import { MigrationDataPreview as GoalsWorkspace } from "@/components/dashboard/migration-data-preview";
+import { NodeMapWorkspace } from "@/components/dashboard/node-map-workspace";
 import { OfflineSyncStatus } from "@/components/dashboard/offline-sync-status";
 import { CalendarFeedRotationControl } from "@/components/dashboard/calendar-feed-rotation-control";
 import { SchedulerHealthCard } from "@/components/dashboard/scheduler-health-card";
@@ -24,7 +25,7 @@ import { db } from "@/lib/instantdb/client";
 import { env } from "@/lib/config/env";
 import type { UserProfile } from "@/lib/domain/types";
 
-type AppSection = "dashboard" | "goals" | "calendar" | "journal" | "profile";
+type AppSection = "dashboard" | "goals" | "node-map" | "calendar" | "journal" | "profile";
 type ThemeChoice = "light" | "dark" | "system";
 type ThemeSource = "palette" | "cwm" | "college";
 type ThemeBrandSnapshot = {
@@ -46,6 +47,7 @@ type BrandVisual = {
 
 const THEME_STORAGE_KEY = "pdp:theme";
 const PALETTE_STORAGE_KEY = "pdp:palette";
+const ACTIVE_SECTION_STORAGE_KEY = "pdp.activeSection";
 
 const PALETTE_OPTIONS: UserProfile["palette"][] = [
   "ocean",
@@ -130,7 +132,7 @@ function SignedOutLanding() {
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-700 md:text-[15px]">
             Sign in with Magic Code and pick up exactly where you left off. Your dashboard becomes the launch point
             for planning goals, tracking your timeline, and reflecting on progress. Calendar sync support gives you a
-            clean path to mirror milestones into your preferred calendar tools.
+            clean path to mirror childGoals into your preferred calendar tools.
           </p>
 
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -153,7 +155,7 @@ function SignedOutLanding() {
           <div className="auth-visual-stack mt-4">
             <div className="auth-visual-card auth-visual-card-top">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Today</p>
-              <h2 className="mt-2 text-sm font-semibold text-slate-900">Q3 Product Milestones</h2>
+              <h2 className="mt-2 text-sm font-semibold text-slate-900">Q3 Product ChildGoals</h2>
               <div className="mt-3 space-y-2">
                 <div className="auth-progress-row">
                   <span>Goal Progress</span>
@@ -193,9 +195,9 @@ function SignedOutLanding() {
 
 function SignedInShell() {
   const { user } = db.useAuth();
-  const [activeSection, setActiveSection] = useState<AppSection>("dashboard");
+  const [activeSection, setActiveSection] = useState<AppSection>(() => readActiveSectionPreference());
   const [pendingOpenItem, setPendingOpenItem] = useState<
-    { kind: "goal" | "subgoal" | "task"; id: string } | null
+    { kind: "goal" | "childGoal" | "task"; id: string } | null
   >(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isThemeSaving, setIsThemeSaving] = useState(false);
@@ -222,6 +224,7 @@ function SignedInShell() {
     () => [
       { id: "dashboard" as const, label: "Dashboard", shortLabel: "Home", icon: "dashboard" as const },
       { id: "goals" as const, label: "Goals", shortLabel: "Goals", icon: "goals" as const },
+      { id: "node-map" as const, label: "Node Map", shortLabel: "Map", icon: "node-map" as const },
       { id: "calendar" as const, label: "Calendar", shortLabel: "Calendar", icon: "calendar" as const },
       { id: "journal" as const, label: "Journal", shortLabel: "Journal", icon: "journal" as const },
     ],
@@ -247,6 +250,19 @@ function SignedInShell() {
     window.localStorage.setItem(THEME_STORAGE_KEY, storedTheme);
     window.localStorage.setItem(PALETTE_STORAGE_KEY, resolvedPalette);
   }, [resolvedPalette, storedTheme]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (activeSection === "profile") {
+      window.localStorage.removeItem(ACTIVE_SECTION_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(ACTIVE_SECTION_STORAGE_KEY, activeSection);
+  }, [activeSection]);
 
   useEffect(() => {
     applyThemeToDocument(storedTheme);
@@ -444,7 +460,15 @@ function SignedInShell() {
   }
 
   function handleOpenItemFromDashboard(
-    kind: "goal" | "subgoal" | "task",
+    kind: "goal" | "childGoal" | "task",
+    id: string,
+  ) {
+    setPendingOpenItem({ kind, id });
+    setActiveSection("goals");
+  }
+
+  function handleOpenItemFromNodeMap(
+    kind: "goal" | "childGoal" | "task",
     id: string,
   ) {
     setPendingOpenItem({ kind, id });
@@ -554,7 +578,7 @@ function SignedInShell() {
               ) : null}
               <p
                 className="min-w-0 text-xs font-medium uppercase tracking-wide sm:text-sm"
-                style={{ color: "var(--pdp-theme-primary)" }}
+                style={{ color: "var(--pdp-header-kicker-text, var(--pdp-theme-primary))" }}
               >
                 Personal Development Plan
               </p>
@@ -597,7 +621,6 @@ function SignedInShell() {
           <OfflineSyncStatus />
           <DashboardInsights
             onOpenItem={handleOpenItemFromDashboard}
-            onOpenGoalsWorkspace={() => navigateToSection("goals")}
           />
         </>
       ) : null}
@@ -608,6 +631,7 @@ function SignedInShell() {
         showWorkspaceShell={activeSection === "goals"}
         enableDataHydration={activeSection === "goals" || pendingOpenItem !== null}
       />
+      {activeSection === "node-map" ? <NodeMapWorkspace onOpenItem={handleOpenItemFromNodeMap} /> : null}
       {activeSection === "calendar" ? <CalendarWorkspace /> : null}
       {activeSection === "journal" ? <JournalWorkspace /> : null}
       {activeSection === "profile" ? (
@@ -618,7 +642,7 @@ function SignedInShell() {
         className="pdp-solid-surface fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white sm:hidden"
         aria-label="Mobile app sections"
       >
-        <div className="mx-auto grid max-w-6xl grid-cols-4">
+        <div className="mx-auto grid max-w-6xl grid-cols-5">
           {navItems.map((item) => {
             const isActive = activeSection === item.id;
             return (
@@ -1984,6 +2008,25 @@ function readCachedPalette(): UserProfile["palette"] | null {
   return cachedPalette ? normalizeStoredPalette(cachedPalette) : null;
 }
 
+function readActiveSectionPreference(): AppSection {
+  if (typeof window === "undefined") {
+    return "dashboard";
+  }
+
+  const stored = window.localStorage.getItem(ACTIVE_SECTION_STORAGE_KEY);
+  if (
+    stored === "dashboard" ||
+    stored === "goals" ||
+    stored === "node-map" ||
+    stored === "calendar" ||
+    stored === "journal"
+  ) {
+    return stored;
+  }
+
+  return "dashboard";
+}
+
 function toThemeChoice(theme: "light" | "dark" | "cwm"): ThemeChoice {
   return theme === "cwm" ? "system" : theme;
 }
@@ -2214,9 +2257,9 @@ function applyProfileThemeTokens(
   const eventGoalPersonalBackground =
     themeSource === "cwm" ? "#1e4741" : blendHex(primary, isDark ? "#db2777" : "#db2777", 0.42);
   const eventGoalPersonalBorder = blendHex(eventGoalPersonalBackground, neutral.border, 0.68);
-  const eventSubgoalBackground =
+  const eventChildGoalBackground =
     themeSource === "cwm" ? "#ffd400" : blendHex(primary, isDark ? "#f59e0b" : "#f59e0b", 0.38);
-  const eventSubgoalBorder = blendHex(eventSubgoalBackground, neutral.border, 0.68);
+  const eventChildGoalBorder = blendHex(eventChildGoalBackground, neutral.border, 0.68);
   const eventTaskBackground =
     themeSource === "cwm" ? "#1e4741" : blendHex(primary, isDark ? "#059669" : "#059669", 0.38);
   const eventTaskBorder = blendHex(eventTaskBackground, neutral.border, 0.68);
@@ -2227,6 +2270,9 @@ function applyProfileThemeTokens(
   const statusProgressText = isDark ? "#dbeafe" : "#1e40af";
   const statusDoneBackground = themeSource === "cwm" ? "#182c28" : blendHex(eventTaskBackground, neutral.mutedSurface, isDark ? 0.34 : 0.26);
   const statusDoneText = isDark ? "#dcfce7" : "#166534";
+  const headerKickerText = isDark && getContrastRatio(primary, neutral.surface) < 4.5
+    ? neutral.textStrong
+    : primary;
 
   root.style.setProperty("--background", resolvedBackground);
   root.style.setProperty("--foreground", neutral.foreground);
@@ -2242,8 +2288,8 @@ function applyProfileThemeTokens(
   root.style.setProperty("--pdp-event-goal-professional-border", eventGoalProfessionalBorder);
   root.style.setProperty("--pdp-event-goal-personal-bg", eventGoalPersonalBackground);
   root.style.setProperty("--pdp-event-goal-personal-border", eventGoalPersonalBorder);
-  root.style.setProperty("--pdp-event-subgoal-bg", eventSubgoalBackground);
-  root.style.setProperty("--pdp-event-subgoal-border", eventSubgoalBorder);
+  root.style.setProperty("--pdp-event-childGoal-bg", eventChildGoalBackground);
+  root.style.setProperty("--pdp-event-childGoal-border", eventChildGoalBorder);
   root.style.setProperty("--pdp-event-task-bg", eventTaskBackground);
   root.style.setProperty("--pdp-event-task-border", eventTaskBorder);
   root.style.setProperty("--pdp-status-not-started-bg", statusNotStartedBackground);
@@ -2252,6 +2298,7 @@ function applyProfileThemeTokens(
   root.style.setProperty("--pdp-status-progress-text", statusProgressText);
   root.style.setProperty("--pdp-status-done-bg", statusDoneBackground);
   root.style.setProperty("--pdp-status-done-text", statusDoneText);
+  root.style.setProperty("--pdp-header-kicker-text", headerKickerText);
 }
 
 function getFriendlyProfileSaveError(error: unknown, fallback: string) {
@@ -2307,6 +2354,33 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
+function getContrastRatio(foreground: string, background: string): number {
+  const fg = hexToRgb(foreground);
+  const bg = hexToRgb(background);
+
+  if (!fg || !bg) {
+    return 21;
+  }
+
+  const fgLuminance = getRelativeLuminance(fg.r, fg.g, fg.b);
+  const bgLuminance = getRelativeLuminance(bg.r, bg.g, bg.b);
+  const lighter = Math.max(fgLuminance, bgLuminance);
+  const darker = Math.min(fgLuminance, bgLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function getRelativeLuminance(r: number, g: number, b: number): number {
+  const normalize = (channel: number) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+
+  const rs = normalize(r);
+  const gs = normalize(g);
+  const bs = normalize(b);
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
 function SunIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
@@ -2337,7 +2411,7 @@ function SectionIcon({
   type,
   className,
 }: {
-  type: "dashboard" | "goals" | "calendar" | "journal";
+  type: "dashboard" | "goals" | "node-map" | "calendar" | "journal";
   className?: string;
 }) {
   if (type === "goals") {
@@ -2353,6 +2427,17 @@ function SectionIcon({
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
         <rect x="3" y="5" width="18" height="16" rx="2" />
         <path d="M8 3v4M16 3v4M3 10h18" />
+      </svg>
+    );
+  }
+
+  if (type === "node-map") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+        <circle cx="5" cy="6" r="2" />
+        <circle cx="19" cy="6" r="2" />
+        <circle cx="12" cy="18" r="2" />
+        <path d="M7 6h10M6.7 7.4 10.8 16M17.3 7.4 13.2 16" />
       </svg>
     );
   }

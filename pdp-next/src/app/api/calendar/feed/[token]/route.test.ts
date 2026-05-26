@@ -48,7 +48,6 @@ describe("api/calendar/feed/[token] route", () => {
     instantAdmin.query
       .mockResolvedValueOnce({ userProfiles: [{ updatedAt: "2026-05-24T12:00:00.000Z" }] })
       .mockResolvedValueOnce({ goals: [{ id: "goal-1", ownerUid: "user-1", title: "Goal", status: "in_progress" }] })
-      .mockResolvedValueOnce({ subgoals: [] })
       .mockResolvedValueOnce({ tasks: [] });
     buildCalendarIcsMock.mockReturnValue("BEGIN:VCALENDAR\nEND:VCALENDAR\n");
 
@@ -62,7 +61,6 @@ describe("api/calendar/feed/[token] route", () => {
     expect(buildCalendarIcsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         goals: expect.any(Array),
-        subgoals: expect.any(Array),
         tasks: expect.any(Array),
       }),
     );

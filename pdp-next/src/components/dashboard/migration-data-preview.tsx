@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import {
@@ -21,12 +21,12 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type {
   Goal,
-  GoalHorizon,
+  GoalTimeframeLevel,
   Habit,
   HabitCadence,
   HabitCheckin,
   ItemStatus,
-  Subgoal,
+  ChildGoal,
   Task,
   UserProfile,
 } from "@/lib/domain/types";
@@ -35,15 +35,17 @@ import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { GoalTypeTag } from "@/components/ui/tags";
+import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
 
-const GOAL_HORIZON_FILTER_STORAGE_KEY = "pdp.goalHorizonFilter";
+const GOAL_TIMELINE_FILTER_STORAGE_KEY = "pdp.goalTimelineFilter";
+const GOAL_TYPE_FILTER_STORAGE_KEY = "pdp.goalTypeFilter";
 
 type RepositorySnapshot = {
   profile: UserProfile | null;
   professionalGoals: Goal[];
   personalGoals: Goal[];
-  subgoalsByGoalId: Record<string, Subgoal[]>;
-  tasksBySubgoalId: Record<string, Task[]>;
+  childGoalsByGoalId: Record<string, ChildGoal[]>;
+  tasksByChildGoalId: Record<string, Task[]>;
 };
 
 export function MigrationDataPreview({
@@ -52,7 +54,7 @@ export function MigrationDataPreview({
   showWorkspaceShell = true,
   enableDataHydration = true,
 }: {
-  pendingOpenItem?: { kind: "goal" | "subgoal" | "task"; id: string } | null;
+  pendingOpenItem?: { kind: "goal" | "childGoal" | "task"; id: string } | null;
   onPendingItemConsumed?: () => void;
   showWorkspaceShell?: boolean;
   enableDataHydration?: boolean;
@@ -63,27 +65,47 @@ export function MigrationDataPreview({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showArchivedGoals, setShowArchivedGoals] = useState(false);
-  const [targetGoalIdForSubgoal, setTargetGoalIdForSubgoal] = useState<string | null>(null);
-  const [targetSubgoalIdForTask, setTargetSubgoalIdForTask] = useState<string | null>(null);
+  const [targetGoalIdForChildGoal, setTargetGoalIdForChildGoal] = useState<string | null>(null);
+  const [targetChildGoalIdForTask, setTargetChildGoalIdForTask] = useState<string | null>(null);
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
-  const [editingSubgoalId, setEditingSubgoalId] = useState<string | null>(null);
+  const [editingChildGoalId, setEditingChildGoalId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
-  const [isSubgoalModalOpen, setIsSubgoalModalOpen] = useState(false);
+  const [isChildGoalModalOpen, setIsChildGoalModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [goalType, setGoalType] = useState<"professional" | "personal">("professional");
-  const [goalHorizon, setGoalHorizon] = useState<GoalHorizon>("short_term");
-  const [goalHorizonFilter, setGoalHorizonFilter] = useState<GoalHorizon | "all">(() => {
+  const [goalTimeframeLevel, setGoalTimeframeLevel] = useState<GoalTimeframeLevel>("weekly");
+  const [goalParentGoalId, setGoalParentGoalId] = useState("");
+  const [goalTimelineFilter, setGoalTimelineFilter] = useState<GoalTimeframeLevel | "all">(() => {
     if (typeof window === "undefined") {
-      return "short_term";
+      return "weekly";
     }
 
-    const stored = window.localStorage.getItem(GOAL_HORIZON_FILTER_STORAGE_KEY);
-    if (stored === "short_term" || stored === "medium_term" || stored === "long_term" || stored === "all") {
+    const stored = window.localStorage.getItem(GOAL_TIMELINE_FILTER_STORAGE_KEY);
+    if (
+      stored === "vision_5y" ||
+      stored === "annual" ||
+      stored === "quarterly" ||
+      stored === "monthly" ||
+      stored === "weekly" ||
+      stored === "all"
+    ) {
       return stored;
     }
 
-    return "short_term";
+    return "weekly";
+  });
+  const [goalTypeFilter, setGoalTypeFilter] = useState<"all" | "professional" | "personal">(() => {
+    if (typeof window === "undefined") {
+      return "all";
+    }
+
+    const stored = window.localStorage.getItem(GOAL_TYPE_FILTER_STORAGE_KEY);
+    if (stored === "professional" || stored === "personal" || stored === "all") {
+      return stored;
+    }
+
+    return "all";
   });
   const [goalTitle, setGoalTitle] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
@@ -93,12 +115,12 @@ export function MigrationDataPreview({
   const [goalIsFocus, setGoalIsFocus] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [subgoalTitle, setSubgoalTitle] = useState("");
-  const [subgoalDescription, setSubgoalDescription] = useState("");
-  const [subgoalDueDate, setSubgoalDueDate] = useState("");
-  const [subgoalTimeframeLabel, setSubgoalTimeframeLabel] = useState("");
-  const [isSavingSubgoal, setIsSavingSubgoal] = useState(false);
-  const [subgoalSaveError, setSubgoalSaveError] = useState<string | null>(null);
+  const [childGoalTitle, setChildGoalTitle] = useState("");
+  const [childGoalDescription, setChildGoalDescription] = useState("");
+  const [childGoalDueDate, setChildGoalDueDate] = useState("");
+  const [childGoalTimeframeLabel, setChildGoalTimeframeLabel] = useState("");
+  const [isSavingChildGoal, setIsSavingChildGoal] = useState(false);
+  const [childGoalSaveError, setChildGoalSaveError] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState("");
   const [taskNotes, setTaskNotes] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
@@ -106,9 +128,9 @@ export function MigrationDataPreview({
   const [taskSaveError, setTaskSaveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
-  const [selectedSubgoalId, setSelectedSubgoalId] = useState<string | null>(null);
+  const [selectedChildGoalId, setSelectedChildGoalId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [mobileView, setMobileView] = useState<"goals" | "subgoals" | "tasks">("goals");
+  const [mobileView, setMobileView] = useState<"goals" | "childGoals" | "tasks">("goals");
   const [habits, setHabits] = useState<Habit[]>([]);
   const [habitCheckinsByHabitId, setHabitCheckinsByHabitId] = useState<Record<string, HabitCheckin[]>>({});
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
@@ -127,28 +149,28 @@ export function MigrationDataPreview({
     ],
     [snapshot],
   );
-  const allSubgoals = useMemo(
-    () => Object.values(snapshot?.subgoalsByGoalId ?? {}).flat(),
-    [snapshot?.subgoalsByGoalId],
+  const allChildGoals = useMemo(
+    () => Object.values(snapshot?.childGoalsByGoalId ?? {}).flat(),
+    [snapshot?.childGoalsByGoalId],
   );
   const allTasks = useMemo(
-    () => Object.values(snapshot?.tasksBySubgoalId ?? {}).flat(),
-    [snapshot?.tasksBySubgoalId],
+    () => Object.values(snapshot?.tasksByChildGoalId ?? {}).flat(),
+    [snapshot?.tasksByChildGoalId],
   );
   const archivedGoals = useMemo(
     () => allGoals.filter((goal) => goal.deletedAt !== null),
     [allGoals],
   );
-  const orphanArchivedSubgoals = useMemo(
+  const orphanArchivedChildGoals = useMemo(
     () =>
-      allSubgoals.filter((subgoal) => {
-        if (subgoal.deletedAt === null) {
+      allChildGoals.filter((childGoal) => {
+        if (childGoal.deletedAt === null) {
           return false;
         }
-        const parentGoal = allGoals.find((goal) => goal.id === subgoal.goalId);
+        const parentGoal = allGoals.find((goal) => goal.id === childGoal.goalId);
         return parentGoal !== undefined && parentGoal.deletedAt === null;
       }),
-    [allSubgoals, allGoals],
+    [allChildGoals, allGoals],
   );
   const orphanArchivedTasks = useMemo(
     () =>
@@ -156,21 +178,21 @@ export function MigrationDataPreview({
         if (task.deletedAt === null) {
           return false;
         }
-        const parentSubgoal = allSubgoals.find((subgoal) => subgoal.id === task.subgoalId);
-        if (parentSubgoal === undefined || parentSubgoal.deletedAt !== null) {
+        const parentChildGoal = allChildGoals.find((childGoal) => childGoal.id === task.goalId);
+        if (parentChildGoal === undefined || parentChildGoal.deletedAt !== null) {
           return false;
         }
-        const parentGoal = allGoals.find((goal) => goal.id === parentSubgoal.goalId);
+        const parentGoal = allGoals.find((goal) => goal.id === parentChildGoal.goalId);
         return parentGoal !== undefined && parentGoal.deletedAt === null;
       }),
-    [allTasks, allSubgoals, allGoals],
+    [allTasks, allChildGoals, allGoals],
   );
   const hasAnyArchived =
     archivedGoals.length > 0 ||
-    orphanArchivedSubgoals.length > 0 ||
+    orphanArchivedChildGoals.length > 0 ||
     orphanArchivedTasks.length > 0;
   const editingGoal = allGoals.find((goal) => goal.id === editingGoalId) ?? null;
-  const editingSubgoal = allSubgoals.find((subgoal) => subgoal.id === editingSubgoalId) ?? null;
+  const editingChildGoal = allChildGoals.find((childGoal) => childGoal.id === editingChildGoalId) ?? null;
   const editingTask = allTasks.find((task) => task.id === editingTaskId) ?? null;
   const activeGoals = useMemo(
     () => allGoals.filter((goal) => goal.deletedAt === null),
@@ -179,22 +201,45 @@ export function MigrationDataPreview({
   const filteredActiveGoals = useMemo(
     () =>
       activeGoals.filter((goal) => {
-        if (goalHorizonFilter === "all") {
+        const matchesTimeline =
+          goalTimelineFilter === "all" || (goal.timeframeLevel ?? "quarterly") === goalTimelineFilter;
+        if (!matchesTimeline) {
+          return false;
+        }
+
+        if (goalTypeFilter === "all") {
           return true;
         }
 
-        return (goal.horizon ?? "medium_term") === goalHorizonFilter;
+        return goal.type === goalTypeFilter;
       }),
-    [activeGoals, goalHorizonFilter],
+    [activeGoals, goalTimelineFilter, goalTypeFilter],
   );
-  const goalHorizonCounts = useMemo(
+  const goalTimelineCounts = useMemo(
     () => ({
-      short_term: activeGoals.filter((goal) => (goal.horizon ?? "medium_term") === "short_term").length,
-      medium_term: activeGoals.filter((goal) => (goal.horizon ?? "medium_term") === "medium_term").length,
-      long_term: activeGoals.filter((goal) => (goal.horizon ?? "medium_term") === "long_term").length,
+      vision_5y: activeGoals.filter((goal) => (goal.timeframeLevel ?? "quarterly") === "vision_5y").length,
+      annual: activeGoals.filter((goal) => (goal.timeframeLevel ?? "quarterly") === "annual").length,
+      quarterly: activeGoals.filter((goal) => (goal.timeframeLevel ?? "quarterly") === "quarterly").length,
+      monthly: activeGoals.filter((goal) => (goal.timeframeLevel ?? "quarterly") === "monthly").length,
+      weekly: activeGoals.filter((goal) => (goal.timeframeLevel ?? "quarterly") === "weekly").length,
       all: activeGoals.length,
     }),
     [activeGoals],
+  );
+  const goalTypeCounts = useMemo(
+    () => ({
+      all: activeGoals.length,
+      professional: activeGoals.filter((goal) => goal.type === "professional").length,
+      personal: activeGoals.filter((goal) => goal.type === "personal").length,
+    }),
+    [activeGoals],
+  );
+  const parentGoalCandidates = useMemo(
+    () =>
+      activeGoals.filter(
+        (goal) => goal.type === goalType && goal.id !== (editingGoal?.id ?? ""),
+      ),
+    [activeGoals, editingGoal?.id, goalType],
   );
   const professionalGoals = useMemo(
     () => filteredActiveGoals.filter((goal) => goal.type === "professional"),
@@ -208,27 +253,27 @@ export function MigrationDataPreview({
     () => filteredActiveGoals.find((goal) => goal.id === selectedGoalId) ?? null,
     [filteredActiveGoals, selectedGoalId],
   );
-  const subgoalsForSelectedGoal = useMemo(
+  const childGoalsForSelectedGoal = useMemo(
     () =>
       selectedGoal
-        ? (snapshot?.subgoalsByGoalId[selectedGoal.id] ?? []).filter((subgoal) => subgoal.deletedAt === null)
+        ? (snapshot?.childGoalsByGoalId[selectedGoal.id] ?? []).filter((childGoal) => childGoal.deletedAt === null)
         : [],
-    [selectedGoal, snapshot?.subgoalsByGoalId],
+    [selectedGoal, snapshot?.childGoalsByGoalId],
   );
-  const selectedSubgoal = useMemo(
-    () => subgoalsForSelectedGoal.find((subgoal) => subgoal.id === selectedSubgoalId) ?? null,
-    [selectedSubgoalId, subgoalsForSelectedGoal],
+  const selectedChildGoal = useMemo(
+    () => childGoalsForSelectedGoal.find((childGoal) => childGoal.id === selectedChildGoalId) ?? null,
+    [selectedChildGoalId, childGoalsForSelectedGoal],
   );
-  const tasksForSelectedSubgoal = useMemo(
+  const tasksForSelectedChildGoal = useMemo(
     () =>
-      selectedSubgoal
-        ? (snapshot?.tasksBySubgoalId[selectedSubgoal.id] ?? []).filter((task) => task.deletedAt === null)
+      selectedChildGoal
+        ? (snapshot?.tasksByChildGoalId[selectedChildGoal.id] ?? []).filter((task) => task.deletedAt === null)
         : [],
-    [selectedSubgoal, snapshot?.tasksBySubgoalId],
+    [selectedChildGoal, snapshot?.tasksByChildGoalId],
   );
   const selectedTask = useMemo(
-    () => tasksForSelectedSubgoal.find((task) => task.id === selectedTaskId) ?? null,
-    [selectedTaskId, tasksForSelectedSubgoal],
+    () => tasksForSelectedChildGoal.find((task) => task.id === selectedTaskId) ?? null,
+    [selectedTaskId, tasksForSelectedChildGoal],
   );
   const selectedHabitCheckins = useMemo(
     () => (selectedHabitId ? habitCheckinsByHabitId[selectedHabitId] ?? [] : []),
@@ -251,8 +296,28 @@ export function MigrationDataPreview({
       return;
     }
 
-    window.localStorage.setItem(GOAL_HORIZON_FILTER_STORAGE_KEY, goalHorizonFilter);
-  }, [goalHorizonFilter]);
+    window.localStorage.setItem(GOAL_TIMELINE_FILTER_STORAGE_KEY, goalTimelineFilter);
+  }, [goalTimelineFilter]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(GOAL_TYPE_FILTER_STORAGE_KEY, goalTypeFilter);
+  }, [goalTypeFilter]);
+
+  useEffect(() => {
+    if (!goalParentGoalId) {
+      return;
+    }
+
+    if (!parentGoalCandidates.some((goal) => goal.id === goalParentGoalId)) {
+      queueMicrotask(() => {
+        setGoalParentGoalId("");
+      });
+    }
+  }, [goalParentGoalId, parentGoalCandidates]);
 
   useEffect(() => {
     if (!enableDataHydration || !user) {
@@ -276,31 +341,31 @@ export function MigrationDataPreview({
 
         const combinedGoals = [...professionalGoals, ...personalGoals];
 
-        const subgoalEntries = await Promise.all(
+        const childGoalEntries = await Promise.all(
           combinedGoals.map(async (goal) => {
-            const subgoals = await dataRepository.listSubgoals(currentUser.id, goal.id, {
+            const childGoals = await dataRepository.listChildGoals(currentUser.id, goal.id, {
               includeDeleted: true,
             });
-            return [goal.id, subgoals] as const;
+            return [goal.id, childGoals] as const;
           }),
         );
-        const subgoalsByGoalId: Record<string, Subgoal[]> = {};
-        for (const [goalId, subgoals] of subgoalEntries) {
-          subgoalsByGoalId[goalId] = subgoals;
+        const childGoalsByGoalId: Record<string, ChildGoal[]> = {};
+        for (const [goalId, childGoals] of childGoalEntries) {
+          childGoalsByGoalId[goalId] = childGoals;
         }
 
-        const allSubgoalsFlat = subgoalEntries.flatMap(([, subgoals]) => subgoals);
+        const allChildGoalsFlat = childGoalEntries.flatMap(([, childGoals]) => childGoals);
         const taskEntries = await Promise.all(
-          allSubgoalsFlat.map(async (subgoal) => {
-            const tasks = await dataRepository.listTasks(currentUser.id, subgoal.id, {
+          allChildGoalsFlat.map(async (childGoal) => {
+            const tasks = await dataRepository.listTasks(currentUser.id, childGoal.id, {
               includeDeleted: true,
             });
-            return [subgoal.id, tasks] as const;
+            return [childGoal.id, tasks] as const;
           }),
         );
-        const tasksBySubgoalId: Record<string, Task[]> = {};
-        for (const [subgoalId, tasks] of taskEntries) {
-          tasksBySubgoalId[subgoalId] = tasks;
+        const tasksByChildGoalId: Record<string, Task[]> = {};
+        for (const [childGoalId, tasks] of taskEntries) {
+          tasksByChildGoalId[childGoalId] = tasks;
         }
 
         const checkinEntries = await Promise.all(
@@ -314,12 +379,12 @@ export function MigrationDataPreview({
           checkinsByHabitId[habitId] = checkins;
         }
 
-        const rolledSubgoalsByGoalId = buildSubgoalRollups(subgoalsByGoalId, tasksBySubgoalId);
+        const rolledChildGoalsByGoalId = buildChildGoalRollups(childGoalsByGoalId, tasksByChildGoalId);
         const rolledProfessionalGoals = professionalGoals.map((goal) =>
-          applyGoalRollup(goal, rolledSubgoalsByGoalId[goal.id] ?? []),
+          applyGoalRollup(goal, rolledChildGoalsByGoalId[goal.id] ?? []),
         );
         const rolledPersonalGoals = personalGoals.map((goal) =>
-          applyGoalRollup(goal, rolledSubgoalsByGoalId[goal.id] ?? []),
+          applyGoalRollup(goal, rolledChildGoalsByGoalId[goal.id] ?? []),
         );
 
         if (!isCancelled) {
@@ -329,8 +394,8 @@ export function MigrationDataPreview({
             profile,
             professionalGoals: rolledProfessionalGoals,
             personalGoals: rolledPersonalGoals,
-            subgoalsByGoalId: rolledSubgoalsByGoalId,
-            tasksBySubgoalId,
+            childGoalsByGoalId: rolledChildGoalsByGoalId,
+            tasksByChildGoalId,
           });
         }
       } catch (repositoryError) {
@@ -376,11 +441,12 @@ export function MigrationDataPreview({
       if (goal) {
         queueMicrotask(() => {
           setSelectedGoalId(goal.id);
-          setSelectedSubgoalId(null);
+          setSelectedChildGoalId(null);
           setSelectedTaskId(null);
           setMobileView("goals");
+          setGoalTypeFilter(goal.type);
           setGoalType(goal.type);
-          setGoalHorizon(goal.horizon ?? "medium_term");
+          setGoalTimeframeLevel(goal.timeframeLevel ?? "quarterly");
           setGoalTitle(goal.title);
           setGoalDescription(goal.description);
           setGoalStartDate(goal.projectedStartDate ?? "");
@@ -392,31 +458,31 @@ export function MigrationDataPreview({
           setIsGoalModalOpen(true);
         });
       }
-    } else if (pendingOpenItem.kind === "subgoal") {
-      const subgoal = allSubgoals.find((candidate) => candidate.id === pendingOpenItem.id);
-      if (subgoal) {
+    } else if (pendingOpenItem.kind === "childGoal") {
+      const childGoal = allChildGoals.find((candidate) => candidate.id === pendingOpenItem.id);
+      if (childGoal) {
         queueMicrotask(() => {
-          setSelectedGoalId(subgoal.goalId);
-          setSelectedSubgoalId(subgoal.id);
+          setSelectedGoalId(childGoal.goalId);
+          setSelectedChildGoalId(childGoal.id);
           setSelectedTaskId(null);
-          setMobileView("subgoals");
-          setSubgoalTitle(subgoal.title);
-          setSubgoalDescription(subgoal.description);
-          setSubgoalDueDate(subgoal.projectedEndDate ?? "");
-          setSubgoalTimeframeLabel(subgoal.timeframe === "Ongoing" ? "" : subgoal.timeframe);
-          setSubgoalSaveError(null);
-          setEditingSubgoalId(subgoal.id);
-          setIsSubgoalModalOpen(true);
+          setMobileView("tasks");
+          setChildGoalTitle(childGoal.title);
+          setChildGoalDescription(childGoal.description);
+          setChildGoalDueDate(childGoal.projectedEndDate ?? "");
+          setChildGoalTimeframeLabel(childGoal.timeframe === "Ongoing" ? "" : childGoal.timeframe);
+          setChildGoalSaveError(null);
+          setEditingChildGoalId(childGoal.id);
+          setIsChildGoalModalOpen(true);
         });
       }
     } else if (pendingOpenItem.kind === "task") {
       const task = allTasks.find((candidate) => candidate.id === pendingOpenItem.id);
       if (task) {
-        const parentSubgoal = allSubgoals.find((candidate) => candidate.id === task.subgoalId);
+        const parentChildGoal = allChildGoals.find((candidate) => candidate.id === task.goalId);
         queueMicrotask(() => {
-          if (parentSubgoal) {
-            setSelectedGoalId(parentSubgoal.goalId);
-            setSelectedSubgoalId(parentSubgoal.id);
+          if (parentChildGoal) {
+            setSelectedGoalId(parentChildGoal.goalId);
+            setSelectedChildGoalId(parentChildGoal.id);
           }
           setSelectedTaskId(task.id);
           setMobileView("tasks");
@@ -431,13 +497,13 @@ export function MigrationDataPreview({
     }
 
     onPendingItemConsumed?.();
-  }, [pendingOpenItem, snapshot, allGoals, allSubgoals, allTasks, onPendingItemConsumed]);
+  }, [pendingOpenItem, snapshot, allGoals, allChildGoals, allTasks, onPendingItemConsumed]);
 
   useEffect(() => {
     if (filteredActiveGoals.length === 0) {
       queueMicrotask(() => {
         setSelectedGoalId(null);
-        setSelectedSubgoalId(null);
+        setSelectedChildGoalId(null);
         setSelectedTaskId(null);
       });
       return;
@@ -450,76 +516,76 @@ export function MigrationDataPreview({
       return;
     }
 
-    if (subgoalsForSelectedGoal.length === 0) {
+    if (childGoalsForSelectedGoal.length === 0) {
       queueMicrotask(() => {
-        setSelectedSubgoalId(null);
+        setSelectedChildGoalId(null);
         setSelectedTaskId(null);
       });
       return;
     }
 
-    if (!selectedSubgoalId || !subgoalsForSelectedGoal.some((subgoal) => subgoal.id === selectedSubgoalId)) {
+    if (!selectedChildGoalId || !childGoalsForSelectedGoal.some((childGoal) => childGoal.id === selectedChildGoalId)) {
       queueMicrotask(() => {
-        setSelectedSubgoalId(subgoalsForSelectedGoal[0].id);
+        setSelectedChildGoalId(childGoalsForSelectedGoal[0].id);
       });
       return;
     }
 
-    if (tasksForSelectedSubgoal.length === 0) {
+    if (tasksForSelectedChildGoal.length === 0) {
       queueMicrotask(() => {
         setSelectedTaskId(null);
       });
       return;
     }
 
-    if (!selectedTaskId || !tasksForSelectedSubgoal.some((task) => task.id === selectedTaskId)) {
+    if (!selectedTaskId || !tasksForSelectedChildGoal.some((task) => task.id === selectedTaskId)) {
       queueMicrotask(() => {
-        setSelectedTaskId(tasksForSelectedSubgoal[0].id);
+        setSelectedTaskId(tasksForSelectedChildGoal[0].id);
       });
     }
   }, [
     filteredActiveGoals,
     selectedGoalId,
-    selectedSubgoalId,
+    selectedChildGoalId,
     selectedTaskId,
-    subgoalsForSelectedGoal,
-    tasksForSelectedSubgoal,
+    childGoalsForSelectedGoal,
+    tasksForSelectedChildGoal,
   ]);
 
   if (isLoading || error || !user) {
     return null;
   }
 
-  async function handleSubgoalSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleChildGoalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parentGoalId = editingSubgoal?.goalId ?? targetGoalIdForSubgoal;
+    const parentGoalId = editingChildGoal?.goalId ?? targetGoalIdForChildGoal;
     if (!user || !parentGoalId) {
       return;
     }
 
-    setIsSavingSubgoal(true);
-    setSubgoalSaveError(null);
+    setIsSavingChildGoal(true);
+    setChildGoalSaveError(null);
 
     try {
-      await dataRepository.saveSubgoal({
-        subgoalId: editingSubgoal?.id,
+      await dataRepository.saveChildGoal({
+        childGoalId: editingChildGoal?.id,
         ownerUid: user.id,
         goalId: parentGoalId,
-        title: subgoalTitle,
-        description: subgoalDescription,
+        title: childGoalTitle,
+        description: childGoalDescription,
         projectedStartDate: null,
-        projectedEndDate: subgoalDueDate || null,
-        timeframeLabel: subgoalTimeframeLabel,
-        existingSubgoal: editingSubgoal ?? undefined,
+        projectedEndDate: childGoalDueDate || null,
+        timeframeLabel: childGoalTimeframeLabel,
+        existingChildGoal: editingChildGoal ?? undefined,
       });
 
-      resetSubgoalForm();
-      setIsSubgoalModalOpen(false);
+      resetChildGoalForm();
+      setIsChildGoalModalOpen(false);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
-      setSubgoalSaveError(getErrorMessage(repositoryError, "We could not save the subgoal."));
+      setChildGoalSaveError(getErrorMessage(repositoryError, "We could not save the child goal."));
     } finally {
-      setIsSavingSubgoal(false);
+      setIsSavingChildGoal(false);
     }
   }
 
@@ -539,8 +605,8 @@ export function MigrationDataPreview({
       if (!goal.deletedAt && editingGoalId === goal.id) {
         resetGoalForm();
       }
-      if (!goal.deletedAt && editingSubgoal && editingSubgoal.goalId === goal.id) {
-        resetSubgoalForm();
+      if (!goal.deletedAt && editingChildGoal && editingChildGoal.goalId === goal.id) {
+        resetChildGoalForm();
       }
       if (!goal.deletedAt && editingTask) {
         resetTaskForm();
@@ -552,29 +618,29 @@ export function MigrationDataPreview({
     }
   }
 
-  async function handleSubgoalArchiveToggle(subgoal: Subgoal) {
+  async function handleChildGoalArchiveToggle(childGoal: ChildGoal) {
     if (!user) {
       return;
     }
 
     setActionError(null);
     try {
-      if (subgoal.deletedAt) {
-        await dataRepository.restoreSubgoal(user.id, subgoal.id);
+      if (childGoal.deletedAt) {
+        await dataRepository.restoreChildGoal(user.id, childGoal.id);
       } else {
-        await dataRepository.softDeleteSubgoal(user.id, subgoal.id);
+        await dataRepository.softDeleteChildGoal(user.id, childGoal.id);
       }
 
-      if (!subgoal.deletedAt && editingSubgoalId === subgoal.id) {
-        resetSubgoalForm();
+      if (!childGoal.deletedAt && editingChildGoalId === childGoal.id) {
+        resetChildGoalForm();
       }
-      if (!subgoal.deletedAt && editingTask && editingTask.subgoalId === subgoal.id) {
+      if (!childGoal.deletedAt && editingTask && editingTask.goalId === childGoal.id) {
         resetTaskForm();
       }
 
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
-      setActionError(getErrorMessage(repositoryError, "We could not update subgoal archive state."));
+      setActionError(getErrorMessage(repositoryError, "We could not update child goal archive state."));
     }
   }
 
@@ -620,8 +686,8 @@ export function MigrationDataPreview({
       if (editingGoalId === goal.id) {
         resetGoalForm();
       }
-      if (editingSubgoal && editingSubgoal.goalId === goal.id) {
-        resetSubgoalForm();
+      if (editingChildGoal && editingChildGoal.goalId === goal.id) {
+        resetChildGoalForm();
       }
       if (editingTask) {
         resetTaskForm();
@@ -633,13 +699,13 @@ export function MigrationDataPreview({
     }
   }
 
-  async function handleSubgoalPermanentDelete(subgoal: Subgoal) {
-    if (!user || !subgoal.deletedAt) {
+  async function handleChildGoalPermanentDelete(childGoal: ChildGoal) {
+    if (!user || !childGoal.deletedAt) {
       return;
     }
 
     const shouldDelete = window.confirm(
-      `Permanently delete "${subgoal.title}"? This also permanently deletes all archived tasks under it. This cannot be undone.`,
+      `Permanently delete "${childGoal.title}"? This also permanently deletes all archived tasks under this child goal. This cannot be undone.`,
     );
     if (!shouldDelete) {
       return;
@@ -647,18 +713,18 @@ export function MigrationDataPreview({
 
     setActionError(null);
     try {
-      await dataRepository.permanentlyDeleteSubgoal(user.id, subgoal.id);
+      await dataRepository.permanentlyDeleteChildGoal(user.id, childGoal.id);
 
-      if (editingSubgoalId === subgoal.id) {
-        resetSubgoalForm();
+      if (editingChildGoalId === childGoal.id) {
+        resetChildGoalForm();
       }
-      if (editingTask && editingTask.subgoalId === subgoal.id) {
+      if (editingTask && editingTask.goalId === childGoal.id) {
         resetTaskForm();
       }
 
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
-      setActionError(getErrorMessage(repositoryError, "We could not permanently delete the sub-goal."));
+      setActionError(getErrorMessage(repositoryError, "We could not permanently delete the child goal."));
     }
   }
 
@@ -702,17 +768,17 @@ export function MigrationDataPreview({
     }
   }
 
-  async function handleSubgoalStatusChange(subgoal: Subgoal, status: ItemStatus) {
-    if (!user || subgoal.deletedAt) {
+  async function handleChildGoalStatusChange(childGoal: ChildGoal, status: ItemStatus) {
+    if (!user || childGoal.deletedAt) {
       return;
     }
 
     setActionError(null);
     try {
-      await dataRepository.updateSubgoalStatus(user.id, subgoal.id, status);
+      await dataRepository.updateChildGoalStatus(user.id, childGoal.id, status);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
-      setActionError(getErrorMessage(repositoryError, "We could not update subgoal status."));
+      setActionError(getErrorMessage(repositoryError, "We could not update child goal status."));
     }
   }
 
@@ -744,28 +810,28 @@ export function MigrationDataPreview({
     }
   }
 
-  async function handleSubgoalReorder(goalId: string, orderedSubgoalIds: string[]) {
+  async function handleChildGoalReorder(goalId: string, orderedChildGoalIds: string[]) {
     if (!user) {
       return;
     }
 
     setActionError(null);
     try {
-      await dataRepository.reorderSubgoals(user.id, goalId, orderedSubgoalIds);
+      await dataRepository.reorderChildGoals(user.id, goalId, orderedChildGoalIds);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
-      setActionError(getErrorMessage(repositoryError, "We could not reorder subgoals."));
+      setActionError(getErrorMessage(repositoryError, "We could not reorder child goals."));
     }
   }
 
-  async function handleTaskReorder(subgoalId: string, orderedTaskIds: string[]) {
+  async function handleTaskReorder(goalId: string, orderedTaskIds: string[]) {
     if (!user) {
       return;
     }
 
     setActionError(null);
     try {
-      await dataRepository.reorderTasks(user.id, subgoalId, orderedTaskIds);
+      await dataRepository.reorderTasks(user.id, goalId, orderedTaskIds);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not reorder tasks."));
@@ -799,7 +865,7 @@ export function MigrationDataPreview({
     void handleGoalReorder(type, orderedIds);
   }
 
-  function handleSubgoalDragEnd(event: DragEndEvent) {
+  function handleChildGoalDragEnd(event: DragEndEvent) {
     if (!selectedGoal) {
       return;
     }
@@ -810,7 +876,7 @@ export function MigrationDataPreview({
     }
 
     const orderedIds = reorderIds(
-      subgoalsForSelectedGoal.map((subgoal) => subgoal.id),
+      childGoalsForSelectedGoal.map((childGoal) => childGoal.id),
       String(active.id),
       String(over.id),
     );
@@ -818,11 +884,11 @@ export function MigrationDataPreview({
       return;
     }
 
-    void handleSubgoalReorder(selectedGoal.id, orderedIds);
+    void handleChildGoalReorder(selectedGoal.id, orderedIds);
   }
 
   function handleTaskDragEnd(event: DragEndEvent) {
-    if (!selectedSubgoal) {
+    if (!selectedChildGoal) {
       return;
     }
 
@@ -832,7 +898,7 @@ export function MigrationDataPreview({
     }
 
     const orderedIds = reorderIds(
-      tasksForSelectedSubgoal.map((task) => task.id),
+      tasksForSelectedChildGoal.map((task) => task.id),
       String(active.id),
       String(over.id),
     );
@@ -840,13 +906,13 @@ export function MigrationDataPreview({
       return;
     }
 
-    void handleTaskReorder(selectedSubgoal.id, orderedIds);
+    void handleTaskReorder(selectedChildGoal.id, orderedIds);
   }
 
   async function handleTaskSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parentSubgoalId = editingTask?.subgoalId ?? targetSubgoalIdForTask;
-    if (!user || !parentSubgoalId) {
+    const parentChildGoalId = editingTask?.goalId ?? targetChildGoalIdForTask;
+    if (!user || !parentChildGoalId) {
       return;
     }
 
@@ -857,7 +923,7 @@ export function MigrationDataPreview({
       await dataRepository.saveTask({
         taskId: editingTask?.id,
         ownerUid: user.id,
-        subgoalId: parentSubgoalId,
+        goalId: parentChildGoalId,
         title: taskTitle,
         notes: taskNotes,
         dueDate: taskDueDate || null,
@@ -889,7 +955,8 @@ export function MigrationDataPreview({
         goalId: editingGoal?.id,
         ownerUid: currentUser.id,
         type: goalType,
-        horizon: goalHorizon,
+        parentGoalId: goalParentGoalId || null,
+        timeframeLevel: goalTimeframeLevel,
         title: goalTitle,
         description: goalDescription,
         projectedStartDate: goalStartDate || null,
@@ -911,7 +978,8 @@ export function MigrationDataPreview({
 
   function startEditing(goal: Goal) {
     setGoalType(goal.type);
-    setGoalHorizon(goal.horizon ?? "medium_term");
+    setGoalTimeframeLevel(goal.timeframeLevel ?? "quarterly");
+    setGoalParentGoalId(goal.parentGoalId ?? "");
     setGoalTitle(goal.title);
     setGoalDescription(goal.description);
     setGoalStartDate(goal.projectedStartDate ?? "");
@@ -923,24 +991,24 @@ export function MigrationDataPreview({
     setIsGoalModalOpen(true);
   }
 
-  function startEditingSubgoal(subgoal: Subgoal) {
-    setSubgoalTitle(subgoal.title);
-    setSubgoalDescription(subgoal.description);
-    setSubgoalDueDate(subgoal.projectedEndDate ?? "");
-    setSubgoalTimeframeLabel(subgoal.timeframe === "Ongoing" ? "" : subgoal.timeframe);
-    setSubgoalSaveError(null);
-    setEditingSubgoalId(subgoal.id);
-    setIsSubgoalModalOpen(true);
+  function startEditingChildGoal(childGoal: ChildGoal) {
+    setChildGoalTitle(childGoal.title);
+    setChildGoalDescription(childGoal.description);
+    setChildGoalDueDate(childGoal.projectedEndDate ?? "");
+    setChildGoalTimeframeLabel(childGoal.timeframe === "Ongoing" ? "" : childGoal.timeframe);
+    setChildGoalSaveError(null);
+    setEditingChildGoalId(childGoal.id);
+    setIsChildGoalModalOpen(true);
   }
 
-  function resetSubgoalForm() {
-    setEditingSubgoalId(null);
-    setSubgoalTitle("");
-    setSubgoalDescription("");
-    setSubgoalDueDate("");
-    setSubgoalTimeframeLabel("");
-    setSubgoalSaveError(null);
-    setTargetGoalIdForSubgoal(null);
+  function resetChildGoalForm() {
+    setEditingChildGoalId(null);
+    setChildGoalTitle("");
+    setChildGoalDescription("");
+    setChildGoalDueDate("");
+    setChildGoalTimeframeLabel("");
+    setChildGoalSaveError(null);
+    setTargetGoalIdForChildGoal(null);
   }
 
   function startEditingTask(task: Task) {
@@ -958,13 +1026,14 @@ export function MigrationDataPreview({
     setTaskNotes("");
     setTaskDueDate("");
     setTaskSaveError(null);
-    setTargetSubgoalIdForTask(null);
+    setTargetChildGoalIdForTask(null);
   }
 
   function resetGoalForm() {
     setEditingGoalId(null);
     setGoalType("professional");
-    setGoalHorizon("short_term");
+    setGoalTimeframeLevel("weekly");
+    setGoalParentGoalId("");
     setGoalTitle("");
     setGoalDescription("");
     setGoalStartDate("");
@@ -979,9 +1048,9 @@ export function MigrationDataPreview({
     resetGoalForm();
   }
 
-  function closeSubgoalModal() {
-    setIsSubgoalModalOpen(false);
-    resetSubgoalForm();
+  function closeChildGoalModal() {
+    setIsChildGoalModalOpen(false);
+    resetChildGoalForm();
   }
 
   function closeTaskModal() {
@@ -989,15 +1058,15 @@ export function MigrationDataPreview({
     resetTaskForm();
   }
 
-  function openCreateSubgoalModal(goalId: string) {
-    resetSubgoalForm();
-    setTargetGoalIdForSubgoal(goalId);
-    setIsSubgoalModalOpen(true);
+  function openCreateChildGoalModal(goalId: string) {
+    resetChildGoalForm();
+    setTargetGoalIdForChildGoal(goalId);
+    setIsChildGoalModalOpen(true);
   }
 
-  function openCreateTaskModal(subgoalId: string) {
+  function openCreateTaskModal(childGoalId: string) {
     resetTaskForm();
-    setTargetSubgoalIdForTask(subgoalId);
+    setTargetChildGoalIdForTask(childGoalId);
     setIsTaskModalOpen(true);
   }
 
@@ -1053,90 +1122,140 @@ export function MigrationDataPreview({
     }
   }
 
+  const timelineNav = (
+    <div className="space-y-4">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Timeline</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {[
+            ["vision_5y", "Long-term", goalTimelineCounts.vision_5y],
+            ["annual", "Yearly", goalTimelineCounts.annual],
+            ["quarterly", "Quarterly", goalTimelineCounts.quarterly],
+            ["monthly", "Monthly", goalTimelineCounts.monthly],
+            ["weekly", "Weekly", goalTimelineCounts.weekly],
+            ["all", "All", goalTimelineCounts.all],
+          ].map(([value, label, count]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setGoalTimelineFilter(value as GoalTimeframeLevel | "all")}
+              className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition ${
+                goalTimelineFilter === value
+                  ? "bg-slate-900 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {label} ({count})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Domain</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {[
+            ["all", "All Goals", goalTypeCounts.all],
+            ["professional", "Professional", goalTypeCounts.professional],
+            ["personal", "Personal", goalTypeCounts.personal],
+          ].map(([value, label, count]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setGoalTypeFilter(value as "all" | "professional" | "personal")}
+              className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition ${
+                goalTypeFilter === value
+                  ? "bg-slate-900 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {label} ({count})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <p className="text-xs text-slate-600">Filter by timeframe level first, then drill into goals and tasks.</p>
+    </div>
+  );
+
+  const detailLaneNav = (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setMobileView("goals")}
+        className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+          mobileView === "goals"
+            ? "bg-slate-900 text-white"
+            : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+        }`}
+      >
+        Goals ({filteredActiveGoals.length})
+      </button>
+      <button
+        type="button"
+        onClick={() => setMobileView("tasks")}
+        className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+          mobileView === "tasks"
+            ? "bg-slate-900 text-white"
+            : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+        }`}
+      >
+        Tasks ({tasksForSelectedChildGoal.length})
+      </button>
+    </div>
+  );
+
   return (
     <>
       {showWorkspaceShell ? (
-        <section className="pdp-panel">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">Goals</h2>
-            <InfoPopover className="self-center sm:hidden" label="Goals help">
+        <WorkspaceShell
+          title="Goals"
+          description="Break down your professional and personal development into clear, trackable goals."
+          headerAside={
+            isRefreshing ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
+                Refreshing
+              </span>
+            ) : null
+          }
+          notices={
+            <>
+              {loadError ? <p className="mt-4 text-sm text-red-700">{loadError}</p> : null}
+              {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
+              {hasAnyArchived ? (
+                <label className="mt-5 inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={showArchivedGoals}
+                    onChange={(event) => setShowArchivedGoals(event.target.checked)}
+                    className="size-4 rounded border-slate-300"
+                  />
+                  Show archived
+                </label>
+              ) : null}
+            </>
+          }
+          mobileNav={timelineNav}
+          leftRailTitle="Timeline Filters"
+          leftRailContent={timelineNav}
+        >
+          <div className="flex items-center gap-2 lg:hidden">
+            <InfoPopover className="self-center" label="Goals help">
               Break down your professional and personal development into clear, trackable goals.
             </InfoPopover>
           </div>
-          <p className="mt-2 hidden max-w-2xl text-sm leading-6 text-slate-700 sm:block">
-            Break down your professional and personal development into clear, trackable goals.
-          </p>
-        </div>
-        {isRefreshing ? (
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
-            Refreshing
-          </span>
-        ) : null}
-      </div>
 
-      {loadError ? <p className="mt-4 text-sm text-red-700">{loadError}</p> : null}
-      {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
-
-      {hasAnyArchived ? (
-        <label className="mt-5 inline-flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={showArchivedGoals}
-            onChange={(event) => setShowArchivedGoals(event.target.checked)}
-            className="size-4 rounded border-slate-300"
-          />
-          Show archived
-        </label>
-      ) : null}
-
-      <div className="mt-5 flex items-center gap-2 lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileView("goals")}
-          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
-            mobileView === "goals"
-              ? "bg-slate-900 text-white"
-              : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-          }`}
-        >
-          Goals
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobileView("subgoals")}
-          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
-            mobileView === "subgoals"
-              ? "bg-slate-900 text-white"
-              : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-          }`}
-        >
-          Sub-goals
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobileView("tasks")}
-          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
-            mobileView === "tasks"
-              ? "bg-slate-900 text-white"
-              : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-          }`}
-        >
-          Tasks
-        </button>
-      </div>
-
-      <div className="pdp-card sticky top-2 z-10 mt-4 px-3 py-2 text-[11px] leading-5 text-slate-500 shadow-sm backdrop-blur sm:text-xs lg:static lg:shadow-none">
+          <div className="pdp-card sticky top-2 z-10 mt-4 px-3 py-2 text-[11px] leading-5 text-slate-500 shadow-sm backdrop-blur sm:text-xs lg:static lg:shadow-none">
         <span className="font-semibold uppercase tracking-wide text-slate-500">Relationship path:</span>{" "}
         <span className="font-semibold text-slate-700">{selectedGoal?.title ?? "Select a goal"}</span>{" "}
         <span>&gt;</span>{" "}
-        <span className="font-semibold text-slate-700">{selectedSubgoal?.title ?? "Select a sub-goal"}</span>{" "}
-        <span>&gt;</span>{" "}
         <span className="font-semibold text-slate-700">{selectedTask?.title ?? "Select a task"}</span>
-      </div>
+          </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <div className="mt-3 lg:hidden">{detailLaneNav}</div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <article className={`${mobileView === "goals" ? "block" : "hidden"} pdp-panel-muted lg:block`}>
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Goals</h3>
@@ -1146,7 +1265,6 @@ export function MigrationDataPreview({
                 onClick={() => {
                   resetGoalForm();
                   setGoalType("professional");
-                  setGoalHorizon("short_term");
                   setIsGoalModalOpen(true);
                 }}
                 className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
@@ -1158,7 +1276,6 @@ export function MigrationDataPreview({
                 onClick={() => {
                   resetGoalForm();
                   setGoalType("personal");
-                  setGoalHorizon("short_term");
                   setIsGoalModalOpen(true);
                 }}
                 className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
@@ -1168,29 +1285,7 @@ export function MigrationDataPreview({
             </div>
           </div>
 
-          <p className="mt-2 text-xs text-slate-500">Pick a goal to view its sub-goals and tasks.</p>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {[
-              ["short_term", "Weekly"],
-              ["medium_term", "Quarterly"],
-              ["long_term", "Long-term"],
-              ["all", "All"],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setGoalHorizonFilter(value as GoalHorizon | "all")}
-                className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition ${
-                  goalHorizonFilter === value
-                    ? "bg-slate-900 text-white"
-                    : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                {label} ({goalHorizonCounts[value as keyof typeof goalHorizonCounts]})
-              </button>
-            ))}
-          </div>
+          <p className="mt-2 text-xs text-slate-500">Pick a goal to view tasks and progress.</p>
 
           <div className="mt-3 space-y-3">
             {[
@@ -1215,9 +1310,6 @@ export function MigrationDataPreview({
                       <ul className="mt-2 space-y-2">
                         {groupGoals.map((goal) => {
                           const isSelected = goal.id === selectedGoalId;
-                          const subgoalCount = (snapshot?.subgoalsByGoalId[goal.id] ?? []).filter(
-                            (item) => item.deletedAt === null,
-                          ).length;
                           return (
                             <SortableListItem
                               key={goal.id}
@@ -1230,9 +1322,9 @@ export function MigrationDataPreview({
                                   type="button"
                                   onClick={() => {
                                     setSelectedGoalId(goal.id);
-                                    setSelectedSubgoalId(null);
+                                    setSelectedChildGoalId(null);
                                     setSelectedTaskId(null);
-                                    setMobileView("subgoals");
+                                    setMobileView("tasks");
                                   }}
                                   className="w-full text-left"
                                 >
@@ -1240,11 +1332,9 @@ export function MigrationDataPreview({
                                     <p className="font-medium text-slate-900">{goal.title}</p>
                                     <GoalTypeTag type={goal.type} />
                                   </div>
-                                  <p className="mt-1 text-xs text-slate-600">
-                                    {subgoalCount} sub-goal{subgoalCount === 1 ? "" : "s"} | {goal.percentComplete}% complete
-                                  </p>
+                                  <p className="mt-1 text-xs text-slate-600">{goal.percentComplete}% complete</p>
                                   <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                    {getGoalHorizonLabel(goal.horizon ?? "medium_term")}
+                                    {getGoalTimeframeLevelLabel(goal.timeframeLevel ?? "quarterly")}
                                   </p>
                                 </button>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1279,111 +1369,15 @@ export function MigrationDataPreview({
           </div>
         </article>
 
-        <article className={`${mobileView === "subgoals" ? "block" : "hidden"} pdp-panel-muted lg:block`}>
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Sub-goals</h3>
-            <button
-              type="button"
-              disabled={!selectedGoal}
-              onClick={() => {
-                if (selectedGoal) {
-                  openCreateSubgoalModal(selectedGoal.id);
-                }
-              }}
-              className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              + Sub-goal
-            </button>
-          </div>
-
-          {selectedGoal ? (
-            <p className="mt-2 text-xs text-slate-500">
-              Under goal: <span className="font-semibold text-slate-700">{selectedGoal.title}</span>
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-slate-500">Select a goal to view sub-goals.</p>
-          )}
-
-          <ul className="mt-3 space-y-2">
-            {subgoalsForSelectedGoal.length === 0 ? (
-              <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
-                No sub-goals yet.
-              </li>
-            ) : (
-              <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleSubgoalDragEnd}>
-                <SortableContext
-                  items={subgoalsForSelectedGoal.map((subgoal) => subgoal.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {subgoalsForSelectedGoal.map((subgoal) => {
-                    const isSelected = subgoal.id === selectedSubgoalId;
-                    const taskCount = (snapshot?.tasksBySubgoalId[subgoal.id] ?? []).filter(
-                      (item) => item.deletedAt === null,
-                    ).length;
-                    return (
-                      <SortableListItem
-                        key={subgoal.id}
-                        id={subgoal.id}
-                        label={`Drag to reorder sub-goal ${subgoal.title}`}
-                        isSelected={isSelected}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedSubgoalId(subgoal.id);
-                            setSelectedTaskId(null);
-                            setMobileView("tasks");
-                          }}
-                          className="w-full rounded-lg px-3 py-2 text-left"
-                        >
-                          <p className="font-medium text-slate-900">{subgoal.title}</p>
-                          <p className="mt-1 text-xs text-slate-600">
-                            {taskCount} task{taskCount === 1 ? "" : "s"} | {subgoal.percentComplete}% complete
-                          </p>
-                          {subgoal.projectedEndDate ? (
-                            <p className="mt-1 text-xs text-slate-500">Due {subgoal.projectedEndDate}</p>
-                          ) : null}
-                        </button>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <IconActionButton label="Edit sub-goal" onClick={() => startEditingSubgoal(subgoal)}>
-                            <PencilIcon />
-                          </IconActionButton>
-                          <IconActionButton
-                            label="Archive sub-goal"
-                            onClick={() => void handleSubgoalArchiveToggle(subgoal)}
-                          >
-                            <ArchiveIcon />
-                          </IconActionButton>
-                          <select
-                            value={subgoal.status}
-                            onChange={(event) => {
-                              void handleSubgoalStatusChange(subgoal, event.target.value as ItemStatus);
-                            }}
-                            className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
-                          >
-                            <option value="not_started">Not started</option>
-                            <option value="in_progress">In progress</option>
-                            <option value="done">Done</option>
-                          </select>
-                        </div>
-                      </SortableListItem>
-                    );
-                  })}
-                </SortableContext>
-              </DndContext>
-            )}
-          </ul>
-        </article>
-
         <article className={`${mobileView === "tasks" ? "block" : "hidden"} pdp-panel-muted lg:block`}>
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Tasks</h3>
             <button
               type="button"
-              disabled={!selectedSubgoal}
+              disabled={!selectedChildGoal}
               onClick={() => {
-                if (selectedSubgoal) {
-                  openCreateTaskModal(selectedSubgoal.id);
+                if (selectedChildGoal) {
+                  openCreateTaskModal(selectedChildGoal.id);
                 }
               }}
               className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1392,26 +1386,26 @@ export function MigrationDataPreview({
             </button>
           </div>
 
-          {selectedSubgoal ? (
+          {selectedGoal ? (
             <p className="mt-2 text-xs text-slate-500">
-              Under sub-goal: <span className="font-semibold text-slate-700">{selectedSubgoal.title}</span>
+              Under goal: <span className="font-semibold text-slate-700">{selectedGoal.title}</span>
             </p>
           ) : (
-            <p className="mt-2 text-xs text-slate-500">Select a sub-goal to view tasks.</p>
+            <p className="mt-2 text-xs text-slate-500">Select a goal to view tasks.</p>
           )}
 
           <ul className="mt-3 space-y-2">
-            {tasksForSelectedSubgoal.length === 0 ? (
+            {tasksForSelectedChildGoal.length === 0 ? (
               <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
                 No tasks yet.
               </li>
             ) : (
               <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
                 <SortableContext
-                  items={tasksForSelectedSubgoal.map((task) => task.id)}
+                  items={tasksForSelectedChildGoal.map((task) => task.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {tasksForSelectedSubgoal.map((task) => {
+                  {tasksForSelectedChildGoal.map((task) => {
                     const isSelected = task.id === selectedTaskId;
                     return (
                       <SortableListItem
@@ -1570,9 +1564,8 @@ export function MigrationDataPreview({
       {showArchivedGoals && hasAnyArchived ? (
         <article className="pdp-panel-muted mt-5">
           <h3 className="text-sm font-semibold text-slate-900">
-            Archived ({archivedGoals.length} goal{archivedGoals.length === 1 ? "" : "s"},{" "}
-            {orphanArchivedSubgoals.length} sub-goal{orphanArchivedSubgoals.length === 1 ? "" : "s"},{" "}
-            {orphanArchivedTasks.length} task{orphanArchivedTasks.length === 1 ? "" : "s"})
+            Archived ({archivedGoals.length} goal{archivedGoals.length === 1 ? "" : "s"}, {orphanArchivedTasks.length} task
+            {orphanArchivedTasks.length === 1 ? "" : "s"})
           </h3>
 
           {archivedGoals.length > 0 ? (
@@ -1613,47 +1606,6 @@ export function MigrationDataPreview({
             </div>
           ) : null}
 
-          {orphanArchivedSubgoals.length > 0 ? (
-            <div className="mt-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Sub-goals ({orphanArchivedSubgoals.length})
-              </p>
-              <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                {orphanArchivedSubgoals.map((subgoal) => {
-                  const parentGoal = allGoals.find((goal) => goal.id === subgoal.goalId);
-                  return (
-                    <li key={subgoal.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-slate-900">{subgoal.title}</p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            Under: {parentGoal?.title ?? "Unknown goal"}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleSubgoalArchiveToggle(subgoal)}
-                            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                          >
-                            Restore
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleSubgoalPermanentDelete(subgoal)}
-                            className="rounded-full border border-red-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-red-700 transition hover:border-red-400 hover:bg-red-50"
-                          >
-                            Delete permanently
-                          </button>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : null}
-
           {orphanArchivedTasks.length > 0 ? (
             <div className="mt-4">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -1661,14 +1613,14 @@ export function MigrationDataPreview({
               </p>
               <ul className="mt-2 space-y-2 text-sm text-slate-700">
                 {orphanArchivedTasks.map((task) => {
-                  const parentSubgoal = allSubgoals.find((subgoal) => subgoal.id === task.subgoalId);
+                  const parentChildGoal = allChildGoals.find((childGoal) => childGoal.id === task.goalId);
                   return (
                     <li key={task.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium text-slate-900">{task.title}</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            Under: {parentSubgoal?.title ?? "Unknown sub-goal"}
+                            Under: {parentChildGoal?.title ?? "Unknown child goal"}
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -1697,7 +1649,7 @@ export function MigrationDataPreview({
         </article>
       ) : null}
 
-        </section>
+        </WorkspaceShell>
       ) : null}
 
       <CrudModal
@@ -1719,15 +1671,33 @@ export function MigrationDataPreview({
           </label>
 
           <label className="block text-sm text-slate-700">
-            Horizon
+            Timeframe level
             <select
-              value={goalHorizon}
-              onChange={(event) => setGoalHorizon(event.target.value as GoalHorizon)}
+              value={goalTimeframeLevel}
+              onChange={(event) => setGoalTimeframeLevel(event.target.value as GoalTimeframeLevel)}
               className="pdp-control mt-1 rounded-xl"
             >
-              <option value="short_term">Weekly</option>
-              <option value="medium_term">Quarterly</option>
-              <option value="long_term">Long-term</option>
+              <option value="vision_5y">Long-term</option>
+              <option value="annual">Yearly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="monthly">Monthly</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </label>
+
+          <label className="block text-sm text-slate-700">
+            Parent goal (optional)
+            <select
+              value={goalParentGoalId}
+              onChange={(event) => setGoalParentGoalId(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+            >
+              <option value="">None</option>
+              {parentGoalCandidates.map((goal) => (
+                <option key={goal.id} value={goal.id}>
+                  {goal.title}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -1813,13 +1783,13 @@ export function MigrationDataPreview({
       </CrudModal>
 
       <CrudModal
-        isOpen={isSubgoalModalOpen}
-        title={editingSubgoal ? "Edit subgoal" : "Create subgoal"}
-        onClose={closeSubgoalModal}
+        isOpen={false}
+        title={editingChildGoal ? "Edit child goal" : "Create child goal"}
+        onClose={closeChildGoalModal}
       >
-        <form className="grid gap-4" onSubmit={handleSubgoalSubmit}>
+        <form className="grid gap-4" onSubmit={handleChildGoalSubmit}>
           {(() => {
-            const parentGoalId = editingSubgoal?.goalId ?? targetGoalIdForSubgoal;
+            const parentGoalId = editingChildGoal?.goalId ?? targetGoalIdForChildGoal;
             const parentGoal = parentGoalId ? allGoals.find((goal) => goal.id === parentGoalId) : null;
             return parentGoal ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
@@ -1833,8 +1803,8 @@ export function MigrationDataPreview({
           <label className="block text-sm text-slate-700">
             Title
             <input
-              value={subgoalTitle}
-              onChange={(event) => setSubgoalTitle(event.target.value)}
+              value={childGoalTitle}
+              onChange={(event) => setChildGoalTitle(event.target.value)}
               className="pdp-control mt-1 rounded-xl"
               placeholder="Break goal into measurable outcomes"
             />
@@ -1842,8 +1812,8 @@ export function MigrationDataPreview({
           <label className="block text-sm text-slate-700">
             Description
             <textarea
-              value={subgoalDescription}
-              onChange={(event) => setSubgoalDescription(event.target.value)}
+              value={childGoalDescription}
+              onChange={(event) => setChildGoalDescription(event.target.value)}
               className="pdp-control mt-1 min-h-20 rounded-xl"
             />
           </label>
@@ -1851,32 +1821,32 @@ export function MigrationDataPreview({
             Due date
             <input
               type="date"
-              value={subgoalDueDate}
-              onChange={(event) => setSubgoalDueDate(event.target.value)}
+              value={childGoalDueDate}
+              onChange={(event) => setChildGoalDueDate(event.target.value)}
               className="pdp-control mt-1 rounded-xl"
             />
           </label>
           <label className="block text-sm text-slate-700">
             Timeframe label
             <input
-              value={subgoalTimeframeLabel}
-              onChange={(event) => setSubgoalTimeframeLabel(event.target.value)}
+              value={childGoalTimeframeLabel}
+              onChange={(event) => setChildGoalTimeframeLabel(event.target.value)}
               className="pdp-control mt-1 rounded-xl"
               placeholder="Q4 2026"
             />
           </label>
-          {subgoalSaveError ? <p className="text-sm text-red-700">{subgoalSaveError}</p> : null}
+          {childGoalSaveError ? <p className="text-sm text-red-700">{childGoalSaveError}</p> : null}
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="submit"
-              disabled={isSavingSubgoal}
+              disabled={isSavingChildGoal}
               className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              {isSavingSubgoal ? "Saving..." : editingSubgoal ? "Update subgoal" : "Create subgoal"}
+              {isSavingChildGoal ? "Saving..." : editingChildGoal ? "Update child goal" : "Create child goal"}
             </button>
             <button
               type="button"
-              onClick={closeSubgoalModal}
+              onClick={closeChildGoalModal}
               className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
             >
               Cancel
@@ -1892,19 +1862,19 @@ export function MigrationDataPreview({
       >
         <form className="grid gap-4" onSubmit={handleTaskSubmit}>
           {(() => {
-            const parentSubgoalId = editingTask?.subgoalId ?? targetSubgoalIdForTask;
-            const parentSubgoal = parentSubgoalId
-              ? allSubgoals.find((subgoal) => subgoal.id === parentSubgoalId)
+            const parentChildGoalId = editingTask?.goalId ?? targetChildGoalIdForTask;
+            const parentChildGoal = parentChildGoalId
+              ? allChildGoals.find((childGoal) => childGoal.id === parentChildGoalId)
               : null;
-            const parentGoal = parentSubgoal
-              ? allGoals.find((goal) => goal.id === parentSubgoal.goalId)
+            const parentGoal = parentChildGoal
+              ? allGoals.find((goal) => goal.id === parentChildGoal.goalId)
               : null;
-            return parentSubgoal ? (
+            return parentChildGoal ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Parent sub-goal
                 </span>
-                <p className="mt-1 font-semibold text-slate-900">{parentSubgoal.title}</p>
+                <p className="mt-1 font-semibold text-slate-900">{parentChildGoal.title}</p>
                 {parentGoal ? (
                   <p className="mt-1 text-xs text-slate-500">Goal: {parentGoal.title}</p>
                 ) : null}
@@ -1917,7 +1887,7 @@ export function MigrationDataPreview({
               value={taskTitle}
               onChange={(event) => setTaskTitle(event.target.value)}
               className="pdp-control mt-1 rounded-xl"
-              placeholder="Define milestone and owner"
+              placeholder="Define child goal and owner"
             />
           </label>
           <label className="block text-sm text-slate-700">
@@ -1941,7 +1911,7 @@ export function MigrationDataPreview({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="submit"
-              disabled={isSavingTask || (!editingTask?.subgoalId && !targetSubgoalIdForTask)}
+              disabled={isSavingTask || (!editingTask?.goalId && !targetChildGoalIdForTask)}
               className="rounded-full bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
               {isSavingTask ? "Saving..." : editingTask ? "Update task" : "Create task"}
@@ -2083,27 +2053,27 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function buildSubgoalRollups(
-  subgoalsByGoalId: Record<string, Subgoal[]>,
-  tasksBySubgoalId: Record<string, Task[]>,
+function buildChildGoalRollups(
+  childGoalsByGoalId: Record<string, ChildGoal[]>,
+  tasksByChildGoalId: Record<string, Task[]>,
 ) {
-  const next: Record<string, Subgoal[]> = {};
+  const next: Record<string, ChildGoal[]> = {};
 
-  for (const [goalId, subgoals] of Object.entries(subgoalsByGoalId)) {
-    next[goalId] = subgoals.map((subgoal) => applySubgoalRollup(subgoal, tasksBySubgoalId[subgoal.id] ?? []));
+  for (const [goalId, childGoals] of Object.entries(childGoalsByGoalId)) {
+    next[goalId] = childGoals.map((childGoal) => applyChildGoalRollup(childGoal, tasksByChildGoalId[childGoal.id] ?? []));
   }
 
   return next;
 }
 
-function applySubgoalRollup(subgoal: Subgoal, tasks: Task[]) {
-  if (subgoal.deletedAt !== null) {
-    return subgoal;
+function applyChildGoalRollup(childGoal: ChildGoal, tasks: Task[]) {
+  if (childGoal.deletedAt !== null) {
+    return childGoal;
   }
 
   const activeTasks = tasks.filter((task) => task.deletedAt === null);
   if (activeTasks.length === 0) {
-    return subgoal;
+    return childGoal;
   }
 
   const percentComplete = Math.round(
@@ -2111,29 +2081,29 @@ function applySubgoalRollup(subgoal: Subgoal, tasks: Task[]) {
   );
 
   return {
-    ...subgoal,
+    ...childGoal,
     status: deriveRollupStatus(activeTasks.map((task) => task.status)),
     percentComplete,
   };
 }
 
-function applyGoalRollup(goal: Goal, subgoals: Subgoal[]) {
+function applyGoalRollup(goal: Goal, childGoals: ChildGoal[]) {
   if (goal.deletedAt !== null) {
     return goal;
   }
 
-  const activeSubgoals = subgoals.filter((subgoal) => subgoal.deletedAt === null);
-  if (activeSubgoals.length === 0) {
+  const activeChildGoals = childGoals.filter((childGoal) => childGoal.deletedAt === null);
+  if (activeChildGoals.length === 0) {
     return goal;
   }
 
   const percentComplete = Math.round(
-    activeSubgoals.reduce((total, subgoal) => total + subgoal.percentComplete, 0) / activeSubgoals.length,
+    activeChildGoals.reduce((total, childGoal) => total + childGoal.percentComplete, 0) / activeChildGoals.length,
   );
 
   return {
     ...goal,
-    status: deriveRollupStatus(activeSubgoals.map((subgoal) => subgoal.status)),
+    status: deriveRollupStatus(activeChildGoals.map((childGoal) => childGoal.status)),
     percentComplete,
   };
 }
@@ -2150,12 +2120,24 @@ function deriveRollupStatus(statuses: ItemStatus[]): ItemStatus {
   return "in_progress";
 }
 
-function getGoalHorizonLabel(horizon: GoalHorizon) {
-  if (horizon === "short_term") {
+function getGoalTimeframeLevelLabel(timeframeLevel: GoalTimeframeLevel) {
+  if (timeframeLevel === "weekly") {
     return "Weekly";
   }
 
-  if (horizon === "long_term") {
+  if (timeframeLevel === "monthly") {
+    return "Monthly";
+  }
+
+  if (timeframeLevel === "quarterly") {
+    return "Quarterly";
+  }
+
+  if (timeframeLevel === "annual") {
+    return "Yearly";
+  }
+
+  if (timeframeLevel === "vision_5y") {
     return "Long-term";
   }
 

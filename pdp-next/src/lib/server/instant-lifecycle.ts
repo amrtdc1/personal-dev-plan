@@ -1,12 +1,12 @@
 import { env } from "@/lib/config/env";
-import type { Habit, Subgoal, Task } from "@/lib/domain/types";
+import type { Habit, ChildGoal, Task } from "@/lib/domain/types";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {
   findOwnedGoal,
   findOwnedHabit,
   findOwnedJournalEntry,
-  findOwnedSubgoal,
+  findOwnedChildGoal,
   findOwnedTask,
 } from "@/lib/server/instant-route";
 
@@ -17,7 +17,7 @@ type SoftDeleteLifecycle = {
 
 type PurgeSummary = {
   goals: number;
-  subgoals: number;
+  childGoals: number;
   tasks: number;
   purgedAt: string;
 };
@@ -32,9 +32,9 @@ export async function archiveGoal(ownerUid: string, goalId: string) {
 
   const now = new Date().toISOString();
   const lifecycle = buildSoftDeleteLifecycle(now);
-  const subgoals = await listOwnedSubgoals(ownerUid, goalId);
+  const childGoals = await listOwnedChildGoals(ownerUid, goalId);
   const taskGroups = await Promise.all(
-    subgoals.map((subgoal) => listOwnedTasks(ownerUid, subgoal.id)),
+    childGoals.map((childGoal) => listOwnedTasks(ownerUid, childGoal.id)),
   );
   const tasks = taskGroups.flat();
 
@@ -47,10 +47,10 @@ export async function archiveGoal(ownerUid: string, goalId: string) {
     isFocus: false,
   });
 
-  const subgoalMutations = subgoals
-    .filter((subgoal) => !subgoal.deletedAt)
-    .map((subgoal) =>
-      instantAdmin.tx.subgoals[subgoal.id].update({
+  const childGoalMutations = childGoals
+    .filter((childGoal) => !childGoal.deletedAt)
+    .map((childGoal) =>
+      instantAdmin.tx.goals[childGoal.id].update({
         deletedAt: now,
         deletedBy: ownerUid,
         restoreUntil: lifecycle.restoreUntil,
@@ -71,7 +71,7 @@ export async function archiveGoal(ownerUid: string, goalId: string) {
       }),
     );
 
-  await instantAdmin.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
+  await instantAdmin.transact([goalMutation, ...childGoalMutations, ...taskMutations]);
 
   return {
     ...goal,
@@ -96,12 +96,12 @@ export async function restoreGoal(ownerUid: string, goalId: string) {
 
   const now = new Date().toISOString();
   const cascadeDeletedAt = goal.deletedAt;
-  const subgoals = await listOwnedSubgoals(ownerUid, goalId);
-  const subgoalsToRestore = subgoals.filter((subgoal) =>
-    shouldRestoreCascadeEntity(subgoal.deletedAt, cascadeDeletedAt),
+  const childGoals = await listOwnedChildGoals(ownerUid, goalId);
+  const childGoalsToRestore = childGoals.filter((childGoal) =>
+    shouldRestoreCascadeEntity(childGoal.deletedAt, cascadeDeletedAt),
   );
   const taskGroups = await Promise.all(
-    subgoalsToRestore.map((subgoal) => listOwnedTasks(ownerUid, subgoal.id)),
+    childGoalsToRestore.map((childGoal) => listOwnedTasks(ownerUid, childGoal.id)),
   );
   const tasks = taskGroups.flat();
 
@@ -113,8 +113,8 @@ export async function restoreGoal(ownerUid: string, goalId: string) {
     updatedAt: now,
   });
 
-  const subgoalMutations = subgoalsToRestore.map((subgoal) =>
-    instantAdmin.tx.subgoals[subgoal.id].update({
+  const childGoalMutations = childGoalsToRestore.map((childGoal) =>
+    instantAdmin.tx.goals[childGoal.id].update({
       deletedAt: null,
       deletedBy: null,
       restoreUntil: null,
@@ -135,7 +135,7 @@ export async function restoreGoal(ownerUid: string, goalId: string) {
       }),
     );
 
-  await instantAdmin.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
+  await instantAdmin.transact([goalMutation, ...childGoalMutations, ...taskMutations]);
 
   return {
     ...goal,
@@ -147,19 +147,19 @@ export async function restoreGoal(ownerUid: string, goalId: string) {
   };
 }
 
-export async function archiveSubgoal(ownerUid: string, subgoalId: string) {
+export async function archiveChildGoal(ownerUid: string, childGoalId: string) {
   const instantAdmin = getInstantAdmin();
-  const subgoal = await findOwnedSubgoal(ownerUid, subgoalId);
+  const childGoal = await findOwnedChildGoal(ownerUid, childGoalId);
 
-  if (subgoal.deletedAt) {
-    return subgoal;
+  if (childGoal.deletedAt) {
+    return childGoal;
   }
 
   const now = new Date().toISOString();
   const lifecycle = buildSoftDeleteLifecycle(now);
-  const tasks = await listOwnedTasks(ownerUid, subgoalId);
+  const tasks = await listOwnedTasks(ownerUid, childGoalId);
 
-  const subgoalMutation = instantAdmin.tx.subgoals[subgoalId].update({
+  const childGoalMutation = instantAdmin.tx.goals[childGoalId].update({
     deletedAt: now,
     deletedBy: ownerUid,
     restoreUntil: lifecycle.restoreUntil,
@@ -179,10 +179,10 @@ export async function archiveSubgoal(ownerUid: string, subgoalId: string) {
       }),
     );
 
-  await instantAdmin.transact([subgoalMutation, ...taskMutations]);
+  await instantAdmin.transact([childGoalMutation, ...taskMutations]);
 
   return {
-    ...subgoal,
+    ...childGoal,
     deletedAt: now,
     deletedBy: ownerUid,
     restoreUntil: lifecycle.restoreUntil,
@@ -191,21 +191,21 @@ export async function archiveSubgoal(ownerUid: string, subgoalId: string) {
   };
 }
 
-export async function restoreSubgoal(ownerUid: string, subgoalId: string) {
+export async function restoreChildGoal(ownerUid: string, childGoalId: string) {
   const instantAdmin = getInstantAdmin();
-  const subgoal = await findOwnedSubgoal(ownerUid, subgoalId);
+  const childGoal = await findOwnedChildGoal(ownerUid, childGoalId);
 
-  if (!subgoal.deletedAt) {
-    return subgoal;
+  if (!childGoal.deletedAt) {
+    return childGoal;
   }
 
-  assertRestoreWindowOpen(subgoal.restoreUntil, "Subgoal");
+  assertRestoreWindowOpen(childGoal.restoreUntil, "ChildGoal");
 
   const now = new Date().toISOString();
-  const cascadeDeletedAt = subgoal.deletedAt;
-  const tasks = await listOwnedTasks(ownerUid, subgoalId);
+  const cascadeDeletedAt = childGoal.deletedAt;
+  const tasks = await listOwnedTasks(ownerUid, childGoalId);
 
-  const subgoalMutation = instantAdmin.tx.subgoals[subgoalId].update({
+  const childGoalMutation = instantAdmin.tx.goals[childGoalId].update({
     deletedAt: null,
     deletedBy: null,
     restoreUntil: null,
@@ -225,10 +225,10 @@ export async function restoreSubgoal(ownerUid: string, subgoalId: string) {
       }),
     );
 
-  await instantAdmin.transact([subgoalMutation, ...taskMutations]);
+  await instantAdmin.transact([childGoalMutation, ...taskMutations]);
 
   return {
-    ...subgoal,
+    ...childGoal,
     deletedAt: null,
     deletedBy: null,
     restoreUntil: null,
@@ -438,15 +438,15 @@ export async function permanentlyDeleteGoal(ownerUid: string, goalId: string) {
     throw new InstantRouteBadRequestError("Goal must be archived before permanent deletion.");
   }
 
-  const subgoals = await listOwnedSubgoals(ownerUid, goalId);
+  const childGoals = await listOwnedChildGoals(ownerUid, goalId);
   const taskGroups = await Promise.all(
-    subgoals.map((subgoal) => listOwnedTasks(ownerUid, subgoal.id)),
+    childGoals.map((childGoal) => listOwnedTasks(ownerUid, childGoal.id)),
   );
   const tasks = taskGroups.flat();
 
   const deleteMutations = [
     ...tasks.map((task) => instantAdmin.tx.tasks[task.id].delete()),
-    ...subgoals.map((subgoal) => instantAdmin.tx.subgoals[subgoal.id].delete()),
+    ...childGoals.map((childGoal) => instantAdmin.tx.goals[childGoal.id].delete()),
     instantAdmin.tx.goals[goalId].delete(),
   ];
 
@@ -456,24 +456,24 @@ export async function permanentlyDeleteGoal(ownerUid: string, goalId: string) {
 
   return {
     deletedGoalId: goalId,
-    deletedSubgoals: subgoals.length,
+    deletedChildGoals: childGoals.length,
     deletedTasks: tasks.length,
   };
 }
 
-export async function permanentlyDeleteSubgoal(ownerUid: string, subgoalId: string) {
+export async function permanentlyDeleteChildGoal(ownerUid: string, childGoalId: string) {
   const instantAdmin = getInstantAdmin();
-  const subgoal = await findOwnedSubgoal(ownerUid, subgoalId);
+  const childGoal = await findOwnedChildGoal(ownerUid, childGoalId);
 
-  if (!subgoal.deletedAt) {
-    throw new InstantRouteBadRequestError("Subgoal must be archived before permanent deletion.");
+  if (!childGoal.deletedAt) {
+    throw new InstantRouteBadRequestError("ChildGoal must be archived before permanent deletion.");
   }
 
-  const tasks = await listOwnedTasks(ownerUid, subgoalId);
+  const tasks = await listOwnedTasks(ownerUid, childGoalId);
 
   const deleteMutations = [
     ...tasks.map((task) => instantAdmin.tx.tasks[task.id].delete()),
-    instantAdmin.tx.subgoals[subgoalId].delete(),
+    instantAdmin.tx.goals[childGoalId].delete(),
   ];
 
   if (deleteMutations.length > 0) {
@@ -481,7 +481,7 @@ export async function permanentlyDeleteSubgoal(ownerUid: string, subgoalId: stri
   }
 
   return {
-    deletedSubgoalId: subgoalId,
+    deletedChildGoalId: childGoalId,
     deletedTasks: tasks.length,
   };
 }
@@ -552,7 +552,7 @@ export async function purgeExpiredOwnedData(ownerUid: string): Promise<PurgeSumm
   const instantAdmin = getInstantAdmin();
   const nowIso = new Date().toISOString();
 
-  const [{ goals = [] }, { subgoals = [] }, { tasks = [] }] = await Promise.all([
+  const [{ goals = [] }, { goals: childGoals = [] }, { tasks = [] }] = await Promise.all([
     instantAdmin.query({
       goals: {
         $: {
@@ -563,7 +563,7 @@ export async function purgeExpiredOwnedData(ownerUid: string): Promise<PurgeSumm
       },
     }),
     instantAdmin.query({
-      subgoals: {
+      goals: {
         $: {
           where: {
             ownerUid,
@@ -588,26 +588,27 @@ export async function purgeExpiredOwnedData(ownerUid: string): Promise<PurgeSumm
       .map((goal) => goal.id),
   );
 
-  const expiredSubgoalIds = new Set(
-    (subgoals as Array<{ id: string; goalId: string; deletedAt: string | null; purgeAt: string | null }>).
+  const expiredChildGoalIds = new Set(
+    (childGoals as Array<{ id: string; parentGoalId: string | null; deletedAt: string | null; purgeAt: string | null }>).
       filter(
-        (subgoal) =>
-          isExpiredSoftDeletedEntity(subgoal.deletedAt, subgoal.purgeAt, nowIso) || expiredGoalIds.has(subgoal.goalId),
+        (childGoal) =>
+          isExpiredSoftDeletedEntity(childGoal.deletedAt, childGoal.purgeAt, nowIso) ||
+          (childGoal.parentGoalId ? expiredGoalIds.has(childGoal.parentGoalId) : false),
       )
-      .map((subgoal) => subgoal.id),
+      .map((childGoal) => childGoal.id),
   );
 
   const expiredTaskIds = new Set(
-    (tasks as Array<{ id: string; subgoalId: string; deletedAt: string | null; purgeAt: string | null }>).
+    (tasks as Array<{ id: string; goalId: string; deletedAt: string | null; purgeAt: string | null }>).
       filter(
-        (task) => isExpiredSoftDeletedEntity(task.deletedAt, task.purgeAt, nowIso) || expiredSubgoalIds.has(task.subgoalId),
+        (task) => isExpiredSoftDeletedEntity(task.deletedAt, task.purgeAt, nowIso) || expiredChildGoalIds.has(task.goalId),
       )
       .map((task) => task.id),
   );
 
   const deleteMutations = [
     ...Array.from(expiredTaskIds, (taskId) => instantAdmin.tx.tasks[taskId].delete()),
-    ...Array.from(expiredSubgoalIds, (subgoalId) => instantAdmin.tx.subgoals[subgoalId].delete()),
+    ...Array.from(expiredChildGoalIds, (childGoalId) => instantAdmin.tx.goals[childGoalId].delete()),
     ...Array.from(expiredGoalIds, (goalId) => instantAdmin.tx.goals[goalId].delete()),
   ];
 
@@ -617,36 +618,58 @@ export async function purgeExpiredOwnedData(ownerUid: string): Promise<PurgeSumm
 
   return {
     goals: expiredGoalIds.size,
-    subgoals: expiredSubgoalIds.size,
+    childGoals: expiredChildGoalIds.size,
     tasks: expiredTaskIds.size,
     purgedAt: nowIso,
   };
 }
 
-async function listOwnedSubgoals(ownerUid: string, goalId: string) {
+async function listOwnedChildGoals(ownerUid: string, goalId: string) {
   const instantAdmin = getInstantAdmin();
-  const { subgoals = [] } = await instantAdmin.query({
-    subgoals: {
+  const { goals = [] } = await instantAdmin.query({
+    goals: {
       $: {
         where: {
           ownerUid,
-          goalId,
+          parentGoalId: goalId,
         },
       },
     },
   });
 
-  return subgoals as Subgoal[];
+  return (goals as Array<{
+    id: string;
+    ownerUid: string;
+    title: string;
+    description: string;
+    timeframe: string;
+    projectedStartDate: string | null;
+    projectedEndDate: string | null;
+    actualStartDate: string | null;
+    actualEndDate: string | null;
+    status: Task["status"];
+    percentComplete: number;
+    orderIndex: number;
+    createdAt: string;
+    updatedAt: string;
+    deletedAt: string | null;
+    deletedBy: string | null;
+    restoreUntil: string | null;
+    purgeAt: string | null;
+  }>).map((goal) => ({
+    ...goal,
+    goalId,
+  }));
 }
 
-async function listOwnedTasks(ownerUid: string, subgoalId: string) {
+async function listOwnedTasks(ownerUid: string, goalId: string) {
   const instantAdmin = getInstantAdmin();
   const { tasks = [] } = await instantAdmin.query({
     tasks: {
       $: {
         where: {
           ownerUid,
-          subgoalId,
+          goalId,
         },
       },
     },

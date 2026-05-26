@@ -1,8 +1,7 @@
-import type { Goal, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, Task } from "@/lib/domain/types";
 
 type BuildCalendarIcsInput = {
   goals: Goal[];
-  subgoals: Subgoal[];
   tasks: Task[];
   nowIso?: string;
 };
@@ -17,8 +16,7 @@ export function buildCalendarIcs(input: BuildCalendarIcsInput) {
     "METHOD:PUBLISH",
     "X-WR-CALNAME:Personal Development Plan",
     ...buildGoalEvents(input.goals, now),
-    ...buildSubgoalEvents(input.subgoals, input.goals, now),
-    ...buildTaskEvents(input.tasks, input.subgoals, input.goals, now),
+    ...buildTaskEvents(input.tasks, input.goals, now),
     "END:VCALENDAR",
   ];
 
@@ -48,35 +46,8 @@ function buildGoalEvents(goals: Goal[], nowIso: string) {
   return events;
 }
 
-function buildSubgoalEvents(subgoals: Subgoal[], goals: Goal[], nowIso: string) {
+function buildTaskEvents(tasks: Task[], goals: Goal[], nowIso: string) {
   const events: string[] = [];
-  const goalById = new Map(goals.map((goal) => [goal.id, goal]));
-
-  for (const subgoal of subgoals) {
-    if (subgoal.deletedAt || !subgoal.projectedStartDate || !subgoal.projectedEndDate) {
-      continue;
-    }
-
-    const parentGoal = goalById.get(subgoal.goalId);
-
-    events.push(
-      ...toAllDayEvent({
-        uid: `subgoal-${subgoal.id}@pdp`,
-        stampIso: nowIso,
-        startDate: subgoal.projectedStartDate,
-        endDate: subgoal.projectedEndDate,
-        summary: `Subgoal: ${subgoal.title}`,
-        description: `${parentGoal?.title ?? "Unknown goal"} | status: ${subgoal.status}`,
-      }),
-    );
-  }
-
-  return events;
-}
-
-function buildTaskEvents(tasks: Task[], subgoals: Subgoal[], goals: Goal[], nowIso: string) {
-  const events: string[] = [];
-  const subgoalById = new Map(subgoals.map((subgoal) => [subgoal.id, subgoal]));
   const goalById = new Map(goals.map((goal) => [goal.id, goal]));
 
   for (const task of tasks) {
@@ -84,8 +55,7 @@ function buildTaskEvents(tasks: Task[], subgoals: Subgoal[], goals: Goal[], nowI
       continue;
     }
 
-    const parentSubgoal = subgoalById.get(task.subgoalId);
-    const parentGoal = parentSubgoal ? goalById.get(parentSubgoal.goalId) : undefined;
+    const parentGoal = goalById.get(task.goalId);
 
     events.push(
       ...toAllDayEvent({
@@ -94,7 +64,7 @@ function buildTaskEvents(tasks: Task[], subgoals: Subgoal[], goals: Goal[], nowI
         startDate: task.dueDate,
         endDate: task.dueDate,
         summary: `Task Due: ${task.title}`,
-        description: `${parentGoal?.title ?? "Unknown goal"} -> ${parentSubgoal?.title ?? "Unknown subgoal"} | status: ${task.status}`,
+        description: `${parentGoal?.title ?? "Unknown goal"} | status: ${task.status}`,
       }),
     );
   }

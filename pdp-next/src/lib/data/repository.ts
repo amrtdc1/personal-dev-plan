@@ -4,7 +4,7 @@ import { env } from "@/lib/config/env";
 import { statusToPercent } from "@/lib/domain/status";
 import type {
   Goal,
-  GoalHorizon,
+  GoalTimeframeLevel,
   GoalType,
   Habit,
   HabitCadence,
@@ -12,7 +12,7 @@ import type {
   HabitState,
   ItemStatus,
   JournalEntry,
-  Subgoal,
+  ChildGoal,
   Task,
   UserProfile,
 } from "@/lib/domain/types";
@@ -30,13 +30,13 @@ import { logSyncReplayFailure } from "@/lib/observability/telemetry";
 import {
   assertOwnedGoal,
   assertOwnedJournalEntry,
-  assertOwnedSubgoal,
+  assertOwnedChildGoal,
   assertOwnedTask,
   validateGoalWrite,
   validateJournalEntryWrite,
   validateReorderIds,
   validateStatusUpdate,
-  validateSubgoalWrite,
+  validateChildGoalWrite,
   validateTaskWrite,
 } from "@/lib/data/validation";
 
@@ -47,8 +47,6 @@ type ListOptions = {
 type TransactionMutation =
   | ReturnType<(typeof db.tx.goals)[string]["update"]>
   | ReturnType<(typeof db.tx.goals)[string]["delete"]>
-  | ReturnType<(typeof db.tx.subgoals)[string]["update"]>
-  | ReturnType<(typeof db.tx.subgoals)[string]["delete"]>
   | ReturnType<(typeof db.tx.tasks)[string]["update"]>
   | ReturnType<(typeof db.tx.tasks)[string]["delete"]>
   | ReturnType<(typeof db.tx.journalEntries)[string]["update"]>
@@ -58,7 +56,8 @@ export type SaveGoalInput = {
   goalId?: string;
   ownerUid: string;
   type: GoalType;
-  horizon?: GoalHorizon;
+  parentGoalId?: string | null;
+  timeframeLevel: GoalTimeframeLevel;
   title: string;
   description: string;
   projectedStartDate: string | null;
@@ -68,8 +67,8 @@ export type SaveGoalInput = {
   existingGoal?: Goal;
 };
 
-export type SaveSubgoalInput = {
-  subgoalId?: string;
+export type SaveChildGoalInput = {
+  childGoalId?: string;
   ownerUid: string;
   goalId: string;
   title: string;
@@ -77,16 +76,17 @@ export type SaveSubgoalInput = {
   projectedStartDate: string | null;
   projectedEndDate: string | null;
   timeframeLabel?: string;
-  existingSubgoal?: Subgoal;
+  existingChildGoal?: ChildGoal;
 };
 
 export type SaveTaskInput = {
   taskId?: string;
   ownerUid: string;
-  subgoalId: string;
+  goalId: string;
   title: string;
   notes: string;
   dueDate: string | null;
+  unplanned?: boolean;
   existingTask?: Task;
 };
 
@@ -126,9 +126,9 @@ type GoalStatusUpdateInput = {
   status: ItemStatus;
 };
 
-type SubgoalStatusUpdateInput = {
+type ChildGoalStatusUpdateInput = {
   ownerUid: string;
-  subgoalId: string;
+  childGoalId: string;
   status: ItemStatus;
 };
 
@@ -144,15 +144,15 @@ type GoalReorderInput = {
   orderedGoalIds: string[];
 };
 
-type SubgoalReorderInput = {
+type ChildGoalReorderInput = {
   ownerUid: string;
   goalId: string;
-  orderedSubgoalIds: string[];
+  orderedChildGoalIds: string[];
 };
 
 type TaskReorderInput = {
   ownerUid: string;
-  subgoalId: string;
+  goalId: string;
   orderedTaskIds: string[];
 };
 
@@ -161,9 +161,9 @@ type GoalArchiveInput = {
   goalId: string;
 };
 
-type SubgoalArchiveInput = {
+type ChildGoalArchiveInput = {
   ownerUid: string;
-  subgoalId: string;
+  childGoalId: string;
 };
 
 type TaskArchiveInput = {
@@ -176,9 +176,9 @@ type GoalPermanentDeleteInput = {
   goalId: string;
 };
 
-type SubgoalPermanentDeleteInput = {
+type ChildGoalPermanentDeleteInput = {
   ownerUid: string;
-  subgoalId: string;
+  childGoalId: string;
 };
 
 type TaskPermanentDeleteInput = {
@@ -220,23 +220,23 @@ export type DataRepository = {
   softDeleteGoal: (ownerUid: string, goalId: string) => Promise<Goal>;
   restoreGoal: (ownerUid: string, goalId: string) => Promise<Goal>;
   permanentlyDeleteGoal: (ownerUid: string, goalId: string) => Promise<void>;
-  listSubgoals: (ownerUid: string, goalId: string, options?: ListOptions) => Promise<Subgoal[]>;
-  saveSubgoal: (input: SaveSubgoalInput) => Promise<Subgoal>;
-  updateSubgoalStatus: (ownerUid: string, subgoalId: string, status: ItemStatus) => Promise<Subgoal>;
-  reorderSubgoals: (ownerUid: string, goalId: string, orderedSubgoalIds: string[]) => Promise<Subgoal[]>;
-  softDeleteSubgoal: (ownerUid: string, subgoalId: string) => Promise<Subgoal>;
-  restoreSubgoal: (ownerUid: string, subgoalId: string) => Promise<Subgoal>;
-  permanentlyDeleteSubgoal: (ownerUid: string, subgoalId: string) => Promise<void>;
-  listTasks: (ownerUid: string, subgoalId: string, options?: ListOptions) => Promise<Task[]>;
+  listChildGoals: (ownerUid: string, goalId: string, options?: ListOptions) => Promise<ChildGoal[]>;
+  saveChildGoal: (input: SaveChildGoalInput) => Promise<ChildGoal>;
+  updateChildGoalStatus: (ownerUid: string, childGoalId: string, status: ItemStatus) => Promise<ChildGoal>;
+  reorderChildGoals: (ownerUid: string, goalId: string, orderedChildGoalIds: string[]) => Promise<ChildGoal[]>;
+  softDeleteChildGoal: (ownerUid: string, childGoalId: string) => Promise<ChildGoal>;
+  restoreChildGoal: (ownerUid: string, childGoalId: string) => Promise<ChildGoal>;
+  permanentlyDeleteChildGoal: (ownerUid: string, childGoalId: string) => Promise<void>;
+  listTasks: (ownerUid: string, goalId: string, options?: ListOptions) => Promise<Task[]>;
   saveTask: (input: SaveTaskInput) => Promise<Task>;
   updateTaskStatus: (ownerUid: string, taskId: string, status: ItemStatus) => Promise<Task>;
-  reorderTasks: (ownerUid: string, subgoalId: string, orderedTaskIds: string[]) => Promise<Task[]>;
+  reorderTasks: (ownerUid: string, goalId: string, orderedTaskIds: string[]) => Promise<Task[]>;
   softDeleteTask: (ownerUid: string, taskId: string) => Promise<Task>;
   restoreTask: (ownerUid: string, taskId: string) => Promise<Task>;
   permanentlyDeleteTask: (ownerUid: string, taskId: string) => Promise<void>;
   purgeExpiredDeletedEntities: (ownerUid: string) => Promise<{
     goals: number;
-    subgoals: number;
+    childGoals: number;
     tasks: number;
     purgedAt: string;
   }>;
@@ -313,7 +313,8 @@ export const dataRepository: DataRepository = {
       id: goalId,
       ownerUid: input.ownerUid,
       type: input.type,
-      horizon: input.horizon ?? input.existingGoal?.horizon ?? "medium_term",
+      parentGoalId: input.parentGoalId ?? input.existingGoal?.parentGoalId ?? null,
+      timeframeLevel: input.timeframeLevel,
       title: trimmedTitle,
       description: trimmedDescription,
       timeframe: buildGoalTimeframe(
@@ -354,7 +355,8 @@ export const dataRepository: DataRepository = {
               db.tx.goals[goalId].update({
                 ownerUid: goal.ownerUid,
                 type: goal.type,
-                horizon: goal.horizon,
+                parentGoalId: goal.parentGoalId,
+                timeframeLevel: goal.timeframeLevel,
                 title: goal.title,
                 description: goal.description,
                 timeframe: goal.timeframe,
@@ -453,9 +455,9 @@ export const dataRepository: DataRepository = {
 
     const now = new Date().toISOString();
     const lifecycle = buildSoftDeleteLifecycle(now);
-    const subgoals = await dataRepository.listSubgoals(ownerUid, goalId, { includeDeleted: true });
+    const childGoals = await dataRepository.listChildGoals(ownerUid, goalId, { includeDeleted: true });
     const taskGroups = await Promise.all(
-      subgoals.map((subgoal) => dataRepository.listTasks(ownerUid, subgoal.id, { includeDeleted: true })),
+      childGoals.map((childGoal) => dataRepository.listTasks(ownerUid, childGoal.id, { includeDeleted: true })),
     );
     const tasks = taskGroups.flat();
 
@@ -468,10 +470,10 @@ export const dataRepository: DataRepository = {
       isFocus: false,
     });
 
-    const subgoalMutations = subgoals
-      .filter((subgoal) => !subgoal.deletedAt)
-      .map((subgoal) =>
-        db.tx.subgoals[subgoal.id].update({
+    const childGoalMutations = childGoals
+      .filter((childGoal) => !childGoal.deletedAt)
+      .map((childGoal) =>
+        db.tx.goals[childGoal.id].update({
           deletedAt: now,
           deletedBy: ownerUid,
           restoreUntil: lifecycle.restoreUntil,
@@ -501,7 +503,7 @@ export const dataRepository: DataRepository = {
           return;
         }
 
-        await db.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
+        await db.transact([goalMutation, ...childGoalMutations, ...taskMutations]);
       },
     );
 
@@ -528,13 +530,13 @@ export const dataRepository: DataRepository = {
 
     const now = new Date().toISOString();
     const cascadeDeletedAt = goal.deletedAt;
-    const subgoals = await dataRepository.listSubgoals(ownerUid, goalId, { includeDeleted: true });
-    const subgoalsToRestore = subgoals.filter((subgoal) =>
-      shouldRestoreCascadeEntity(subgoal.deletedAt, cascadeDeletedAt),
+    const childGoals = await dataRepository.listChildGoals(ownerUid, goalId, { includeDeleted: true });
+    const childGoalsToRestore = childGoals.filter((childGoal) =>
+      shouldRestoreCascadeEntity(childGoal.deletedAt, cascadeDeletedAt),
     );
     const taskGroups = await Promise.all(
-      subgoalsToRestore.map((subgoal) =>
-        dataRepository.listTasks(ownerUid, subgoal.id, { includeDeleted: true }),
+      childGoalsToRestore.map((childGoal) =>
+        dataRepository.listTasks(ownerUid, childGoal.id, { includeDeleted: true }),
       ),
     );
     const tasks = taskGroups.flat();
@@ -547,8 +549,8 @@ export const dataRepository: DataRepository = {
       updatedAt: now,
     });
 
-    const subgoalMutations = subgoalsToRestore.map((subgoal) =>
-        db.tx.subgoals[subgoal.id].update({
+    const childGoalMutations = childGoalsToRestore.map((childGoal) =>
+        db.tx.goals[childGoal.id].update({
           deletedAt: null,
           deletedBy: null,
           restoreUntil: null,
@@ -578,7 +580,7 @@ export const dataRepository: DataRepository = {
           return;
         }
 
-        await db.transact([goalMutation, ...subgoalMutations, ...taskMutations]);
+        await db.transact([goalMutation, ...childGoalMutations, ...taskMutations]);
       },
     );
 
@@ -599,15 +601,15 @@ export const dataRepository: DataRepository = {
       throw new Error("Goal must be archived before permanent deletion.");
     }
 
-    const subgoals = await dataRepository.listSubgoals(ownerUid, goalId, { includeDeleted: true });
+    const childGoals = await dataRepository.listChildGoals(ownerUid, goalId, { includeDeleted: true });
     const taskGroups = await Promise.all(
-      subgoals.map((subgoal) => dataRepository.listTasks(ownerUid, subgoal.id, { includeDeleted: true })),
+      childGoals.map((childGoal) => dataRepository.listTasks(ownerUid, childGoal.id, { includeDeleted: true })),
     );
     const tasks = taskGroups.flat();
 
     const mutations: TransactionMutation[] = [
       ...tasks.map((task) => db.tx.tasks[task.id].delete()),
-      ...subgoals.map((subgoal) => db.tx.subgoals[subgoal.id].delete()),
+      ...childGoals.map((childGoal) => db.tx.goals[childGoal.id].delete()),
       db.tx.goals[goalId].delete(),
     ];
 
@@ -624,129 +626,99 @@ export const dataRepository: DataRepository = {
       },
     );
   },
-  async listSubgoals(ownerUid, goalId, options) {
-    if (canUseProtectedApiRoutes()) {
-      const searchParams = new URLSearchParams({
-        includeDeleted: String(Boolean(options?.includeDeleted)),
-        goalId,
-      });
-      const response = await invokeProtectedRead<{ subgoals?: Subgoal[] }>(`/api/subgoals?${searchParams.toString()}`);
-      return filterDeleted(response.subgoals ?? [], options).sort(compareSubgoals);
-    }
-
-    const data = await runClientQuery<{ subgoals?: Subgoal[] }>({
-      subgoals: {
+  async listChildGoals(ownerUid, goalId, options) {
+    const data = await runClientQuery<{ goals?: Goal[] }>({
+      goals: {
         $: {
           where: {
             ownerUid,
-            goalId,
+            parentGoalId: goalId,
           },
         },
       },
     });
 
-    return filterDeleted(data.subgoals ?? [], options).sort(compareSubgoals);
+    const childGoals = (data.goals ?? [])
+      .map((goal) => ({
+        id: goal.id,
+        ownerUid: goal.ownerUid,
+        goalId,
+        title: goal.title,
+        description: goal.description,
+        timeframe: goal.timeframe,
+        projectedStartDate: goal.projectedStartDate,
+        projectedEndDate: goal.projectedEndDate,
+        actualStartDate: goal.actualStartDate,
+        actualEndDate: goal.actualEndDate,
+        status: goal.status,
+        percentComplete: goal.percentComplete,
+        orderIndex: goal.orderIndex,
+        createdAt: goal.createdAt,
+        updatedAt: goal.updatedAt,
+        deletedAt: goal.deletedAt,
+        deletedBy: goal.deletedBy,
+        restoreUntil: goal.restoreUntil,
+        purgeAt: goal.purgeAt,
+      }));
+
+    return filterDeleted(childGoals, options).sort(compareChildGoals);
   },
-  async saveSubgoal(input) {
-    ensureClientMutationSupport();
+  async saveChildGoal(input) {
+    const parentGoal = assertOwnedGoal(await findGoalById(input.ownerUid, input.goalId), input.ownerUid);
+    const { trimmedTitle, trimmedDescription } = validateChildGoalWrite(input);
 
-    const now = new Date().toISOString();
-    const { trimmedTitle, trimmedDescription } = validateSubgoalWrite(input);
-
-    const nextOrderIndex = input.existingSubgoal
-      ? input.existingSubgoal.goalId === input.goalId
-        ? input.existingSubgoal.orderIndex
-        : await getNextSubgoalOrderIndex(input.ownerUid, input.goalId)
-      : await getNextSubgoalOrderIndex(input.ownerUid, input.goalId);
-
-    const subgoalId = input.existingSubgoal?.id ?? input.subgoalId ?? id();
-    const subgoal: Subgoal = {
-      id: subgoalId,
+    const goal = await dataRepository.saveGoal({
+      goalId: input.existingChildGoal?.id ?? input.childGoalId,
       ownerUid: input.ownerUid,
-      goalId: input.goalId,
+      type: parentGoal.type,
+      parentGoalId: input.goalId,
+      timeframeLevel: parentGoal.timeframeLevel,
       title: trimmedTitle,
       description: trimmedDescription,
-      timeframe: buildGoalTimeframe(
-        input.timeframeLabel,
-        input.projectedStartDate,
-        input.projectedEndDate,
-      ),
       projectedStartDate: input.projectedStartDate,
       projectedEndDate: input.projectedEndDate,
-      actualStartDate: input.existingSubgoal?.actualStartDate ?? null,
-      actualEndDate: input.existingSubgoal?.actualEndDate ?? null,
-      status: input.existingSubgoal?.status ?? "not_started",
-      percentComplete:
-        input.existingSubgoal?.percentComplete ??
-        statusToPercent(input.existingSubgoal?.status ?? "not_started"),
-      orderIndex: nextOrderIndex,
-      createdAt: input.existingSubgoal?.createdAt ?? now,
-      updatedAt: now,
-      deletedAt: input.existingSubgoal?.deletedAt ?? null,
-      deletedBy: input.existingSubgoal?.deletedBy ?? null,
-      restoreUntil: input.existingSubgoal?.restoreUntil ?? null,
-      purgeAt: input.existingSubgoal?.purgeAt ?? null,
+      timeframeLabel: input.timeframeLabel,
+      isFocus: false,
+    });
+
+    return {
+      id: goal.id,
+      ownerUid: goal.ownerUid,
+      goalId: input.goalId,
+      title: goal.title,
+      description: goal.description,
+      timeframe: goal.timeframe,
+      projectedStartDate: goal.projectedStartDate,
+      projectedEndDate: goal.projectedEndDate,
+      actualStartDate: goal.actualStartDate,
+      actualEndDate: goal.actualEndDate,
+      status: goal.status,
+      percentComplete: goal.percentComplete,
+      orderIndex: goal.orderIndex,
+      createdAt: goal.createdAt,
+      updatedAt: goal.updatedAt,
+      deletedAt: goal.deletedAt,
+      deletedBy: goal.deletedBy,
+      restoreUntil: goal.restoreUntil,
+      purgeAt: goal.purgeAt,
     };
-
-    await commitOrQueueMutation(
-      "saveSubgoal",
-      input,
-      async () => {
-        if (canUseProtectedApiRoutes()) {
-          await saveSubgoalViaApi(subgoal, Boolean(input.existingSubgoal));
-          return;
-        }
-
-        await runClientMutationWithServerFallback(
-          async () => {
-            await db.transact(
-              db.tx.subgoals[subgoalId].update({
-                ownerUid: subgoal.ownerUid,
-                goalId: subgoal.goalId,
-                title: subgoal.title,
-                description: subgoal.description,
-                timeframe: subgoal.timeframe,
-                projectedStartDate: subgoal.projectedStartDate,
-                projectedEndDate: subgoal.projectedEndDate,
-                actualStartDate: subgoal.actualStartDate,
-                actualEndDate: subgoal.actualEndDate,
-                status: subgoal.status,
-                percentComplete: subgoal.percentComplete,
-                orderIndex: subgoal.orderIndex,
-                createdAt: subgoal.createdAt,
-                updatedAt: subgoal.updatedAt,
-                deletedAt: subgoal.deletedAt,
-                deletedBy: subgoal.deletedBy,
-                restoreUntil: subgoal.restoreUntil,
-                purgeAt: subgoal.purgeAt,
-              }),
-            );
-          },
-          async () => {
-            await saveSubgoalViaApi(subgoal, Boolean(input.existingSubgoal));
-          },
-        );
-      },
-    );
-
-    return subgoal;
   },
-  async updateSubgoalStatus(ownerUid, subgoalId, status) {
+  async updateChildGoalStatus(ownerUid, childGoalId, status) {
     ensureClientMutationSupport();
 
     validateStatusUpdate(status);
 
-    const subgoal = assertOwnedSubgoal(await findSubgoalById(ownerUid, subgoalId), ownerUid);
+    const childGoal = assertOwnedChildGoal(await findChildGoalById(ownerUid, childGoalId), ownerUid);
 
     const now = new Date().toISOString();
     const percentComplete = statusToPercent(status);
 
     await commitOrQueueMutation(
-      "updateSubgoalStatus",
-      { ownerUid, subgoalId, status } as SubgoalStatusUpdateInput,
+      "updateChildGoalStatus",
+      { ownerUid, childGoalId, status } as ChildGoalStatusUpdateInput,
       async () => {
         await db.transact(
-          db.tx.subgoals[subgoalId].update({
+          db.tx.goals[childGoalId].update({
             status,
             percentComplete,
             updatedAt: now,
@@ -756,31 +728,31 @@ export const dataRepository: DataRepository = {
     );
 
     return {
-      ...subgoal,
+      ...childGoal,
       status,
       percentComplete,
       updatedAt: now,
     };
   },
-  async reorderSubgoals(ownerUid, goalId, orderedSubgoalIds) {
+  async reorderChildGoals(ownerUid, goalId, orderedChildGoalIds) {
     ensureClientMutationSupport();
 
-    const subgoals = await dataRepository.listSubgoals(ownerUid, goalId);
-    validateReorderIds(subgoals, orderedSubgoalIds, "subgoal");
+    const childGoals = await dataRepository.listChildGoals(ownerUid, goalId);
+    validateReorderIds(childGoals, orderedChildGoalIds, "childGoal");
 
     const reordered = buildReorderedEntities({
-      entities: subgoals,
-      orderedIds: orderedSubgoalIds,
-      updateMutation: (subgoalId, orderIndex, updatedAt) =>
-        db.tx.subgoals[subgoalId].update({
+      entities: childGoals,
+      orderedIds: orderedChildGoalIds,
+      updateMutation: (childGoalId, orderIndex, updatedAt) =>
+        db.tx.goals[childGoalId].update({
           orderIndex,
           updatedAt,
         }),
     });
 
     await commitOrQueueMutation(
-      "reorderSubgoals",
-      { ownerUid, goalId, orderedSubgoalIds } as SubgoalReorderInput,
+      "reorderChildGoals",
+      { ownerUid, goalId, orderedChildGoalIds } as ChildGoalReorderInput,
       async () => {
         await db.transact(reordered.mutations);
       },
@@ -788,20 +760,20 @@ export const dataRepository: DataRepository = {
 
     return reordered.entities;
   },
-  async softDeleteSubgoal(ownerUid, subgoalId) {
+  async softDeleteChildGoal(ownerUid, childGoalId) {
     ensureClientMutationSupport();
 
-    const subgoal = assertOwnedSubgoal(await findSubgoalById(ownerUid, subgoalId), ownerUid);
+    const childGoal = assertOwnedChildGoal(await findChildGoalById(ownerUid, childGoalId), ownerUid);
 
-    if (subgoal.deletedAt) {
-      return subgoal;
+    if (childGoal.deletedAt) {
+      return childGoal;
     }
 
     const now = new Date().toISOString();
     const lifecycle = buildSoftDeleteLifecycle(now);
-    const tasks = await dataRepository.listTasks(ownerUid, subgoalId, { includeDeleted: true });
+    const tasks = await dataRepository.listTasks(ownerUid, childGoalId, { includeDeleted: true });
 
-    const subgoalMutation = db.tx.subgoals[subgoalId].update({
+    const childGoalMutation = db.tx.goals[childGoalId].update({
       deletedAt: now,
       deletedBy: ownerUid,
       restoreUntil: lifecycle.restoreUntil,
@@ -822,20 +794,20 @@ export const dataRepository: DataRepository = {
       );
 
     await commitOrQueueMutation(
-      "softDeleteSubgoal",
-      { ownerUid, subgoalId } as SubgoalArchiveInput,
+      "softDeleteChildGoal",
+      { ownerUid, childGoalId } as ChildGoalArchiveInput,
       async () => {
         if (canUseProtectedApiRoutes()) {
-          await archiveSubgoalViaApi(subgoalId);
+          await archiveChildGoalViaApi(childGoalId);
           return;
         }
 
-        await db.transact([subgoalMutation, ...taskMutations]);
+        await db.transact([childGoalMutation, ...taskMutations]);
       },
     );
 
     return {
-      ...subgoal,
+      ...childGoal,
       deletedAt: now,
       deletedBy: ownerUid,
       restoreUntil: lifecycle.restoreUntil,
@@ -843,22 +815,22 @@ export const dataRepository: DataRepository = {
       updatedAt: now,
     };
   },
-  async restoreSubgoal(ownerUid, subgoalId) {
+  async restoreChildGoal(ownerUid, childGoalId) {
     ensureClientMutationSupport();
 
-    const subgoal = assertOwnedSubgoal(await findSubgoalById(ownerUid, subgoalId), ownerUid);
+    const childGoal = assertOwnedChildGoal(await findChildGoalById(ownerUid, childGoalId), ownerUid);
 
-    if (!subgoal.deletedAt) {
-      return subgoal;
+    if (!childGoal.deletedAt) {
+      return childGoal;
     }
 
-    assertRestoreWindowOpen(subgoal.restoreUntil, "Subgoal");
+    assertRestoreWindowOpen(childGoal.restoreUntil, "ChildGoal");
 
     const now = new Date().toISOString();
-    const cascadeDeletedAt = subgoal.deletedAt;
-    const tasks = await dataRepository.listTasks(ownerUid, subgoalId, { includeDeleted: true });
+    const cascadeDeletedAt = childGoal.deletedAt;
+    const tasks = await dataRepository.listTasks(ownerUid, childGoalId, { includeDeleted: true });
 
-    const subgoalMutation = db.tx.subgoals[subgoalId].update({
+    const childGoalMutation = db.tx.goals[childGoalId].update({
       deletedAt: null,
       deletedBy: null,
       restoreUntil: null,
@@ -879,20 +851,20 @@ export const dataRepository: DataRepository = {
       );
 
     await commitOrQueueMutation(
-      "restoreSubgoal",
-      { ownerUid, subgoalId } as SubgoalArchiveInput,
+      "restoreChildGoal",
+      { ownerUid, childGoalId } as ChildGoalArchiveInput,
       async () => {
         if (canUseProtectedApiRoutes()) {
-          await restoreSubgoalViaApi(subgoalId);
+          await restoreChildGoalViaApi(childGoalId);
           return;
         }
 
-        await db.transact([subgoalMutation, ...taskMutations]);
+        await db.transact([childGoalMutation, ...taskMutations]);
       },
     );
 
     return {
-      ...subgoal,
+      ...childGoal,
       deletedAt: null,
       deletedBy: null,
       restoreUntil: null,
@@ -900,26 +872,26 @@ export const dataRepository: DataRepository = {
       updatedAt: now,
     };
   },
-  async permanentlyDeleteSubgoal(ownerUid, subgoalId) {
+  async permanentlyDeleteChildGoal(ownerUid, childGoalId) {
     ensureClientMutationSupport();
 
-    const subgoal = assertOwnedSubgoal(await findSubgoalById(ownerUid, subgoalId), ownerUid);
-    if (!subgoal.deletedAt) {
-      throw new Error("Subgoal must be archived before permanent deletion.");
+    const childGoal = assertOwnedChildGoal(await findChildGoalById(ownerUid, childGoalId), ownerUid);
+    if (!childGoal.deletedAt) {
+      throw new Error("ChildGoal must be archived before permanent deletion.");
     }
 
-    const tasks = await dataRepository.listTasks(ownerUid, subgoalId, { includeDeleted: true });
+    const tasks = await dataRepository.listTasks(ownerUid, childGoalId, { includeDeleted: true });
     const mutations: TransactionMutation[] = [
       ...tasks.map((task) => db.tx.tasks[task.id].delete()),
-      db.tx.subgoals[subgoalId].delete(),
+      db.tx.goals[childGoalId].delete(),
     ];
 
     await commitOrQueueMutation(
-      "permanentlyDeleteSubgoal",
-      { ownerUid, subgoalId } as SubgoalPermanentDeleteInput,
+      "permanentlyDeleteChildGoal",
+      { ownerUid, childGoalId } as ChildGoalPermanentDeleteInput,
       async () => {
         if (canUseProtectedApiRoutes()) {
-          await permanentlyDeleteSubgoalViaApi(subgoalId);
+          await permanentlyDeleteChildGoalViaApi(childGoalId);
           return;
         }
 
@@ -927,14 +899,14 @@ export const dataRepository: DataRepository = {
       },
     );
   },
-  async listTasks(ownerUid, subgoalId, options) {
+  async listTasks(ownerUid, goalId, options) {
     if (canUseProtectedApiRoutes()) {
       const searchParams = new URLSearchParams({
         includeDeleted: String(Boolean(options?.includeDeleted)),
-        subgoalId,
+        goalId,
       });
       const response = await invokeProtectedRead<{ tasks?: Task[] }>(`/api/tasks?${searchParams.toString()}`);
-      return filterDeleted(response.tasks ?? [], options).sort(compareTasks);
+      return filterDeleted((response.tasks ?? []).map(normalizeTaskDefaults), options).sort(compareTasks);
     }
 
     const data = await runClientQuery<{ tasks?: Task[] }>({
@@ -942,34 +914,37 @@ export const dataRepository: DataRepository = {
         $: {
           where: {
             ownerUid,
-            subgoalId,
+            goalId,
           },
         },
       },
     });
 
-    return filterDeleted(data.tasks ?? [], options).sort(compareTasks);
+    return filterDeleted((data.tasks ?? []).map(normalizeTaskDefaults), options).sort(compareTasks);
   },
   async saveTask(input) {
     ensureClientMutationSupport();
+    const normalizedGoalId = input.goalId;
 
     const now = new Date().toISOString();
     const { trimmedTitle, trimmedNotes } = validateTaskWrite(input);
+    const existingTaskGoalId = input.existingTask?.goalId;
 
     const nextOrderIndex = input.existingTask
-      ? input.existingTask.subgoalId === input.subgoalId
+      ? existingTaskGoalId === normalizedGoalId
         ? input.existingTask.orderIndex
-        : await getNextTaskOrderIndex(input.ownerUid, input.subgoalId)
-      : await getNextTaskOrderIndex(input.ownerUid, input.subgoalId);
+        : await getNextTaskOrderIndex(input.ownerUid, normalizedGoalId)
+      : await getNextTaskOrderIndex(input.ownerUid, normalizedGoalId);
 
     const taskId = input.existingTask?.id ?? input.taskId ?? id();
     const task: Task = {
       id: taskId,
       ownerUid: input.ownerUid,
-      subgoalId: input.subgoalId,
+      goalId: normalizedGoalId,
       title: trimmedTitle,
       notes: trimmedNotes,
       dueDate: input.dueDate,
+      unplanned: input.unplanned ?? input.existingTask?.unplanned ?? false,
       status: input.existingTask?.status ?? "not_started",
       percentComplete:
         input.existingTask?.percentComplete ??
@@ -997,10 +972,11 @@ export const dataRepository: DataRepository = {
             await db.transact(
               db.tx.tasks[taskId].update({
                 ownerUid: task.ownerUid,
-                subgoalId: task.subgoalId,
+                goalId: task.goalId,
                 title: task.title,
                 notes: task.notes,
                 dueDate: task.dueDate,
+                unplanned: task.unplanned,
                 status: task.status,
                 percentComplete: task.percentComplete,
                 orderIndex: task.orderIndex,
@@ -1053,10 +1029,10 @@ export const dataRepository: DataRepository = {
       updatedAt: now,
     };
   },
-  async reorderTasks(ownerUid, subgoalId, orderedTaskIds) {
+  async reorderTasks(ownerUid, goalId, orderedTaskIds) {
     ensureClientMutationSupport();
 
-    const tasks = await dataRepository.listTasks(ownerUid, subgoalId);
+    const tasks = await dataRepository.listTasks(ownerUid, goalId);
     validateReorderIds(tasks, orderedTaskIds, "task");
 
     const reordered = buildReorderedEntities({
@@ -1071,7 +1047,7 @@ export const dataRepository: DataRepository = {
 
     await commitOrQueueMutation(
       "reorderTasks",
-      { ownerUid, subgoalId, orderedTaskIds } as TaskReorderInput,
+      { ownerUid, goalId, orderedTaskIds } as TaskReorderInput,
       async () => {
         await db.transact(reordered.mutations);
       },
@@ -1189,12 +1165,12 @@ export const dataRepository: DataRepository = {
     ensureClientMutationSupport();
 
     const nowIso = new Date().toISOString();
-    const [goals, subgoals, tasks] = await Promise.all([
+    const [goals, childGoals, tasks] = await Promise.all([
       dataRepository.listGoals(ownerUid, "professional", { includeDeleted: true }).then(async (professionalGoals) => {
         const personalGoals = await dataRepository.listGoals(ownerUid, "personal", { includeDeleted: true });
         return [...professionalGoals, ...personalGoals];
       }),
-      listAllSubgoalsForOwner(ownerUid),
+      listAllChildGoalsForOwner(ownerUid),
       listAllTasksForOwner(ownerUid),
     ]);
 
@@ -1204,27 +1180,28 @@ export const dataRepository: DataRepository = {
         .map((goal) => goal.id),
     );
 
-    const expiredSubgoalIds = new Set(
-      subgoals
+    const expiredChildGoalIds = new Set(
+      childGoals
         .filter(
-          (subgoal) =>
-            isExpiredSoftDeletedEntity(subgoal.deletedAt, subgoal.purgeAt, nowIso) || expiredGoalIds.has(subgoal.goalId),
+          (childGoal) =>
+            isExpiredSoftDeletedEntity(childGoal.deletedAt, childGoal.purgeAt, nowIso) || expiredGoalIds.has(childGoal.goalId),
         )
-        .map((subgoal) => subgoal.id),
+        .map((childGoal) => childGoal.id),
     );
 
     const expiredTaskIds = new Set(
       tasks
         .filter(
           (task) =>
-            isExpiredSoftDeletedEntity(task.deletedAt, task.purgeAt, nowIso) || expiredSubgoalIds.has(task.subgoalId),
+            isExpiredSoftDeletedEntity(task.deletedAt, task.purgeAt, nowIso) ||
+            expiredChildGoalIds.has(task.goalId),
         )
         .map((task) => task.id),
     );
 
     const mutations: TransactionMutation[] = [
       ...Array.from(expiredTaskIds, (taskId) => db.tx.tasks[taskId].delete()),
-      ...Array.from(expiredSubgoalIds, (subgoalId) => db.tx.subgoals[subgoalId].delete()),
+      ...Array.from(expiredChildGoalIds, (childGoalId) => db.tx.goals[childGoalId].delete()),
       ...Array.from(expiredGoalIds, (goalId) => db.tx.goals[goalId].delete()),
     ];
 
@@ -1234,7 +1211,7 @@ export const dataRepository: DataRepository = {
 
     return {
       goals: expiredGoalIds.size,
-      subgoals: expiredSubgoalIds.size,
+      childGoals: expiredChildGoalIds.size,
       tasks: expiredTaskIds.size,
       purgedAt: nowIso,
     };
@@ -1745,22 +1722,9 @@ async function findGoalById(ownerUid: string, goalId: string) {
   return (data.goals ?? []).find((goal) => goal.id === goalId) ?? null;
 }
 
-async function findSubgoalById(ownerUid: string, subgoalId: string) {
-  if (canUseProtectedApiRoutes()) {
-    try {
-      const response = await invokeProtectedRead<{ subgoal?: Subgoal }>(`/api/subgoals/${subgoalId}`);
-      return response.subgoal ?? null;
-    } catch (error) {
-      if (isProtectedNotFoundError(error)) {
-        return null;
-      }
-
-      throw error;
-    }
-  }
-
-  const data = await runClientQuery<{ subgoals?: Subgoal[] }>({
-    subgoals: {
+async function findChildGoalById(ownerUid: string, childGoalId: string) {
+  const data = await runClientQuery<{ goals?: Goal[] }>({
+    goals: {
       $: {
         where: {
           ownerUid,
@@ -1769,7 +1733,33 @@ async function findSubgoalById(ownerUid: string, subgoalId: string) {
     },
   });
 
-  return (data.subgoals ?? []).find((subgoal) => subgoal.id === subgoalId) ?? null;
+  const matched = (data.goals ?? []).find((goal) => goal.id === childGoalId && Boolean(goal.parentGoalId));
+
+  if (!matched || !matched.parentGoalId) {
+    return null;
+  }
+
+  return {
+    id: matched.id,
+    ownerUid: matched.ownerUid,
+    goalId: matched.parentGoalId,
+    title: matched.title,
+    description: matched.description,
+    timeframe: matched.timeframe,
+    projectedStartDate: matched.projectedStartDate,
+    projectedEndDate: matched.projectedEndDate,
+    actualStartDate: matched.actualStartDate,
+    actualEndDate: matched.actualEndDate,
+    status: matched.status,
+    percentComplete: matched.percentComplete,
+    orderIndex: matched.orderIndex,
+    createdAt: matched.createdAt,
+    updatedAt: matched.updatedAt,
+    deletedAt: matched.deletedAt,
+    deletedBy: matched.deletedBy,
+    restoreUntil: matched.restoreUntil,
+    purgeAt: matched.purgeAt,
+  };
 }
 
 async function findTaskById(ownerUid: string, taskId: string) {
@@ -1907,9 +1897,9 @@ function isExpiredSoftDeletedEntity(deletedAt: string | null, purgeAt: string | 
   return purgeAtMs <= Date.parse(nowIso);
 }
 
-async function listAllSubgoalsForOwner(ownerUid: string) {
-  const data = await runClientQuery<{ subgoals?: Subgoal[] }>({
-    subgoals: {
+async function listAllChildGoalsForOwner(ownerUid: string) {
+  const data = await runClientQuery<{ goals?: Goal[] }>({
+    goals: {
       $: {
         where: {
           ownerUid,
@@ -1918,7 +1908,29 @@ async function listAllSubgoalsForOwner(ownerUid: string) {
     },
   });
 
-  return data.subgoals ?? [];
+  return (data.goals ?? [])
+    .filter((goal) => Boolean(goal.parentGoalId))
+    .map((goal) => ({
+      id: goal.id,
+      ownerUid: goal.ownerUid,
+      goalId: goal.parentGoalId ?? "",
+      title: goal.title,
+      description: goal.description,
+      timeframe: goal.timeframe,
+      projectedStartDate: goal.projectedStartDate,
+      projectedEndDate: goal.projectedEndDate,
+      actualStartDate: goal.actualStartDate,
+      actualEndDate: goal.actualEndDate,
+      status: goal.status,
+      percentComplete: goal.percentComplete,
+      orderIndex: goal.orderIndex,
+      createdAt: goal.createdAt,
+      updatedAt: goal.updatedAt,
+      deletedAt: goal.deletedAt,
+      deletedBy: goal.deletedBy,
+      restoreUntil: goal.restoreUntil,
+      purgeAt: goal.purgeAt,
+    }));
 }
 
 async function listAllTasksForOwner(ownerUid: string) {
@@ -1972,14 +1984,14 @@ async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {
   return maxIndex + 1;
 }
 
-async function getNextSubgoalOrderIndex(ownerUid: string, goalId: string) {
-  const subgoals = await dataRepository.listSubgoals(ownerUid, goalId, { includeDeleted: true });
-  const maxIndex = subgoals.reduce((max, subgoal) => Math.max(max, subgoal.orderIndex), -1);
+async function getNextChildGoalOrderIndex(ownerUid: string, goalId: string) {
+  const childGoals = await dataRepository.listChildGoals(ownerUid, goalId, { includeDeleted: true });
+  const maxIndex = childGoals.reduce((max, childGoal) => Math.max(max, childGoal.orderIndex), -1);
   return maxIndex + 1;
 }
 
-async function getNextTaskOrderIndex(ownerUid: string, subgoalId: string) {
-  const tasks = await dataRepository.listTasks(ownerUid, subgoalId, { includeDeleted: true });
+async function getNextTaskOrderIndex(ownerUid: string, goalId: string) {
+  const tasks = await dataRepository.listTasks(ownerUid, goalId, { includeDeleted: true });
   const maxIndex = tasks.reduce((max, task) => Math.max(max, task.orderIndex), -1);
   return maxIndex + 1;
 }
@@ -2014,7 +2026,7 @@ function compareGoals(left: Goal, right: Goal) {
   return right.updatedAt.localeCompare(left.updatedAt);
 }
 
-function compareSubgoals(left: Subgoal, right: Subgoal) {
+function compareChildGoals(left: ChildGoal, right: ChildGoal) {
   if (left.orderIndex !== right.orderIndex) {
     return left.orderIndex - right.orderIndex;
   }
@@ -2086,7 +2098,8 @@ async function saveGoalViaApi(goal: Goal, isUpdate: boolean) {
 
   await invokeProtectedWrite(path, method, {
     type: goal.type,
-    horizon: goal.horizon,
+    parentGoalId: goal.parentGoalId,
+    timeframeLevel: goal.timeframeLevel,
     title: goal.title,
     description: goal.description,
     projectedStartDate: goal.projectedStartDate,
@@ -2097,23 +2110,35 @@ async function saveGoalViaApi(goal: Goal, isUpdate: boolean) {
 }
 
 function normalizeGoalDefaults(goal: Goal): Goal {
+  if (!goal.timeframeLevel) {
+    throw new Error("Goal timeframe level is required.");
+  }
+
   return {
     ...goal,
-    horizon: goal.horizon ?? "medium_term",
+    parentGoalId: goal.parentGoalId ?? null,
+    timeframeLevel: goal.timeframeLevel,
   };
 }
 
-async function saveSubgoalViaApi(subgoal: Subgoal, isUpdate: boolean) {
-  const path = isUpdate ? `/api/subgoals/${subgoal.id}` : "/api/subgoals";
+function normalizeTaskDefaults(task: Task): Task {
+  return {
+    ...task,
+    unplanned: task.unplanned ?? false,
+  };
+}
+
+async function saveChildGoalViaApi(childGoal: ChildGoal, isUpdate: boolean) {
+  const path = isUpdate ? `/api/childGoals/${childGoal.id}` : "/api/childGoals";
   const method = isUpdate ? "PATCH" : "POST";
 
   await invokeProtectedWrite(path, method, {
-    goalId: subgoal.goalId,
-    title: subgoal.title,
-    description: subgoal.description,
-    projectedStartDate: subgoal.projectedStartDate,
-    projectedEndDate: subgoal.projectedEndDate,
-    timeframeLabel: subgoal.timeframe,
+    goalId: childGoal.goalId,
+    title: childGoal.title,
+    description: childGoal.description,
+    projectedStartDate: childGoal.projectedStartDate,
+    projectedEndDate: childGoal.projectedEndDate,
+    timeframeLabel: childGoal.timeframe,
   });
 }
 
@@ -2122,10 +2147,11 @@ async function saveTaskViaApi(task: Task, isUpdate: boolean) {
   const method = isUpdate ? "PATCH" : "POST";
 
   await invokeProtectedWrite(path, method, {
-    subgoalId: task.subgoalId,
+    goalId: task.goalId,
     title: task.title,
     notes: task.notes,
     dueDate: task.dueDate,
+    unplanned: task.unplanned ?? false,
   });
 }
 
@@ -2169,16 +2195,16 @@ async function permanentlyDeleteGoalViaApi(goalId: string) {
   await invokeProtectedWrite(`/api/goals/${goalId}`, "DELETE");
 }
 
-async function archiveSubgoalViaApi(subgoalId: string) {
-  await invokeProtectedWrite(`/api/subgoals/${subgoalId}/archive`, "PATCH", {});
+async function archiveChildGoalViaApi(childGoalId: string) {
+  await invokeProtectedWrite(`/api/childGoals/${childGoalId}/archive`, "PATCH", {});
 }
 
-async function restoreSubgoalViaApi(subgoalId: string) {
-  await invokeProtectedWrite(`/api/subgoals/${subgoalId}/restore`, "PATCH", {});
+async function restoreChildGoalViaApi(childGoalId: string) {
+  await invokeProtectedWrite(`/api/childGoals/${childGoalId}/restore`, "PATCH", {});
 }
 
-async function permanentlyDeleteSubgoalViaApi(subgoalId: string) {
-  await invokeProtectedWrite(`/api/subgoals/${subgoalId}`, "DELETE");
+async function permanentlyDeleteChildGoalViaApi(childGoalId: string) {
+  await invokeProtectedWrite(`/api/childGoals/${childGoalId}`, "DELETE");
 }
 
 async function archiveTaskViaApi(taskId: string) {
@@ -2407,32 +2433,32 @@ async function replayOfflineMutation(mutation: OfflineMutation) {
         await dataRepository.permanentlyDeleteGoal(payload.ownerUid, payload.goalId);
         return;
       }
-      case "saveSubgoal":
-        await dataRepository.saveSubgoal(mutation.payload as SaveSubgoalInput);
+      case "saveChildGoal":
+        await dataRepository.saveChildGoal(mutation.payload as SaveChildGoalInput);
         return;
-      case "updateSubgoalStatus": {
-        const payload = mutation.payload as SubgoalStatusUpdateInput;
-        await dataRepository.updateSubgoalStatus(payload.ownerUid, payload.subgoalId, payload.status);
-        return;
-      }
-      case "reorderSubgoals": {
-        const payload = mutation.payload as SubgoalReorderInput;
-        await dataRepository.reorderSubgoals(payload.ownerUid, payload.goalId, payload.orderedSubgoalIds);
+      case "updateChildGoalStatus": {
+        const payload = mutation.payload as ChildGoalStatusUpdateInput;
+        await dataRepository.updateChildGoalStatus(payload.ownerUid, payload.childGoalId, payload.status);
         return;
       }
-      case "softDeleteSubgoal": {
-        const payload = mutation.payload as SubgoalArchiveInput;
-        await dataRepository.softDeleteSubgoal(payload.ownerUid, payload.subgoalId);
+      case "reorderChildGoals": {
+        const payload = mutation.payload as ChildGoalReorderInput;
+        await dataRepository.reorderChildGoals(payload.ownerUid, payload.goalId, payload.orderedChildGoalIds);
         return;
       }
-      case "restoreSubgoal": {
-        const payload = mutation.payload as SubgoalArchiveInput;
-        await dataRepository.restoreSubgoal(payload.ownerUid, payload.subgoalId);
+      case "softDeleteChildGoal": {
+        const payload = mutation.payload as ChildGoalArchiveInput;
+        await dataRepository.softDeleteChildGoal(payload.ownerUid, payload.childGoalId);
         return;
       }
-      case "permanentlyDeleteSubgoal": {
-        const payload = mutation.payload as SubgoalPermanentDeleteInput;
-        await dataRepository.permanentlyDeleteSubgoal(payload.ownerUid, payload.subgoalId);
+      case "restoreChildGoal": {
+        const payload = mutation.payload as ChildGoalArchiveInput;
+        await dataRepository.restoreChildGoal(payload.ownerUid, payload.childGoalId);
+        return;
+      }
+      case "permanentlyDeleteChildGoal": {
+        const payload = mutation.payload as ChildGoalPermanentDeleteInput;
+        await dataRepository.permanentlyDeleteChildGoal(payload.ownerUid, payload.childGoalId);
         return;
       }
       case "saveTask":
@@ -2445,7 +2471,7 @@ async function replayOfflineMutation(mutation: OfflineMutation) {
       }
       case "reorderTasks": {
         const payload = mutation.payload as TaskReorderInput;
-        await dataRepository.reorderTasks(payload.ownerUid, payload.subgoalId, payload.orderedTaskIds);
+        await dataRepository.reorderTasks(payload.ownerUid, payload.goalId, payload.orderedTaskIds);
         return;
       }
       case "softDeleteTask": {
@@ -2536,3 +2562,4 @@ function isOfflineReplayConflict(error: unknown) {
     message.includes("reorder request")
   );
 }
+

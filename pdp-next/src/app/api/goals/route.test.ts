@@ -48,10 +48,10 @@ describe("api/goals route", () => {
     instantRouteErrorResponseMock.mockReset();
   });
 
-  it("creates a goal with horizon for authenticated user", async () => {
+  it("creates a goal with timeframe level for authenticated user", async () => {
     const payload = {
       type: "professional",
-      horizon: "short_term",
+      timeframeLevel: "weekly",
       title: "Weekly delivery plan",
       description: "Keep scope and delivery focused.",
       projectedStartDate: null,

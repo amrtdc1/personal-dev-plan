@@ -8,7 +8,7 @@ const {
   authState,
   getUserProfileMock,
   listGoalsMock,
-  listSubgoalsMock,
+  listChildGoalsMock,
   listTasksMock,
   listHabitsMock,
   listHabitCheckinsMock,
@@ -22,7 +22,7 @@ const {
   },
   getUserProfileMock: vi.fn(),
   listGoalsMock: vi.fn(),
-  listSubgoalsMock: vi.fn(),
+  listChildGoalsMock: vi.fn(),
   listTasksMock: vi.fn(),
   listHabitsMock: vi.fn(),
   listHabitCheckinsMock: vi.fn(),
@@ -40,7 +40,7 @@ vi.mock("@/lib/data/repository", () => ({
   dataRepository: {
     getUserProfile: getUserProfileMock,
     listGoals: listGoalsMock,
-    listSubgoals: listSubgoalsMock,
+    listChildGoals: listChildGoalsMock,
     listTasks: listTasksMock,
     listHabits: listHabitsMock,
     listHabitCheckins: listHabitCheckinsMock,
@@ -56,7 +56,7 @@ function buildGoal(overrides: Partial<Goal>): Goal {
     id: "goal-1",
     ownerUid: "user-1",
     type: "professional",
-    horizon: "medium_term",
+    timeframeLevel: "quarterly",
     title: "Goal",
     description: "Desc",
     timeframe: "Q2",
@@ -79,16 +79,16 @@ function buildGoal(overrides: Partial<Goal>): Goal {
   };
 }
 
-describe("migration data preview horizon filtering", () => {
+describe("migration data preview timeline filtering", () => {
   beforeEach(() => {
     window.localStorage.clear();
     getUserProfileMock.mockReset();
     listGoalsMock.mockReset();
-    listSubgoalsMock.mockReset();
+    listChildGoalsMock.mockReset();
     listTasksMock.mockReset();
 
     getUserProfileMock.mockResolvedValue(null);
-    listSubgoalsMock.mockResolvedValue([]);
+    listChildGoalsMock.mockResolvedValue([]);
     listTasksMock.mockResolvedValue([]);
     listHabitsMock.mockResolvedValue([
       {
@@ -123,8 +123,8 @@ describe("migration data preview horizon filtering", () => {
     listGoalsMock.mockImplementation(async (_ownerUid: string, type: "professional" | "personal") => {
       if (type === "professional") {
         return [
-          buildGoal({ id: "goal-weekly", title: "Weekly planning goal", horizon: "short_term", orderIndex: 0 }),
-          buildGoal({ id: "goal-quarterly", title: "Quarterly roadmap goal", horizon: "medium_term", orderIndex: 1 }),
+          buildGoal({ id: "goal-weekly", title: "Weekly planning goal", timeframeLevel: "weekly", orderIndex: 0 }),
+          buildGoal({ id: "goal-quarterly", title: "Quarterly roadmap goal", timeframeLevel: "quarterly", orderIndex: 1 }),
         ];
       }
 
@@ -133,7 +133,7 @@ describe("migration data preview horizon filtering", () => {
           id: "goal-long-term",
           type: "personal",
           title: "Long-term personal goal",
-          horizon: "long_term",
+          timeframeLevel: "vision_5y",
           orderIndex: 0,
         }),
       ];
@@ -146,29 +146,29 @@ describe("migration data preview horizon filtering", () => {
     render(<MigrationDataPreview />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Weekly (1)" }).className).toContain("bg-slate-900");
+      expect(screen.getAllByRole("button", { name: "Weekly (1)" })[0]?.className).toContain("bg-slate-900");
     });
 
-    expect(screen.getByRole("button", { name: "Quarterly (1)" }).className).not.toContain("bg-slate-900");
-    expect(screen.getByRole("button", { name: "All (3)" }).className).not.toContain("bg-slate-900");
+    expect(screen.getAllByRole("button", { name: "Quarterly (1)" })[0]?.className).not.toContain("bg-slate-900");
+    expect(screen.getAllByRole("button", { name: "All (3)" })[0]?.className).not.toContain("bg-slate-900");
 
-    expect(screen.getByRole("button", { name: "Weekly (1)" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Quarterly (1)" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Long-term (1)" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "All (3)" })).not.toBeNull();
+    expect(screen.getAllByRole("button", { name: "Weekly (1)" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Quarterly (1)" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Long-term (1)" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "All (3)" }).length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("button", { name: "Quarterly (1)" }));
+    await user.click(screen.getAllByRole("button", { name: "Quarterly (1)" })[0]);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Quarterly (1)" }).className).toContain("bg-slate-900");
+      expect(screen.getAllByRole("button", { name: "Quarterly (1)" })[0]?.className).toContain("bg-slate-900");
     });
 
-    expect(screen.getByRole("button", { name: "Weekly (1)" }).className).not.toContain("bg-slate-900");
+    expect(screen.getAllByRole("button", { name: "Weekly (1)" })[0]?.className).not.toContain("bg-slate-900");
 
-    await user.click(screen.getByRole("button", { name: "All (3)" }));
+    await user.click(screen.getAllByRole("button", { name: "All (3)" })[0]);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "All (3)" }).className).toContain("bg-slate-900");
+      expect(screen.getAllByRole("button", { name: "All (3)" })[0]?.className).toContain("bg-slate-900");
     });
 
     expect(listGoalsMock).toHaveBeenCalledWith("user-1", "professional", { includeDeleted: true });
@@ -176,15 +176,15 @@ describe("migration data preview horizon filtering", () => {
   });
 
   it("initializes filter from persisted preference", async () => {
-    window.localStorage.setItem("pdp.goalHorizonFilter", "long_term");
+    window.localStorage.setItem("pdp.goalTimelineFilter", "vision_5y");
 
     render(<MigrationDataPreview />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Long-term (1)" }).className).toContain("bg-slate-900");
+      expect(screen.getAllByRole("button", { name: "Long-term (1)" })[0]?.className).toContain("bg-slate-900");
     });
 
-    expect(screen.getByRole("button", { name: "Weekly (1)" }).className).not.toContain("bg-slate-900");
+    expect(screen.getAllByRole("button", { name: "Weekly (1)" })[0]?.className).not.toContain("bg-slate-900");
   });
 
   it("renders habits and supports creating today check-in", async () => {

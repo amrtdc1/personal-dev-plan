@@ -3,7 +3,6 @@ import {
   parseIncludeDeleted,
   parseRequiredGoalId,
   parseRequiredHabitId,
-  parseRequiredSubgoalId,
 } from "@/lib/server/instant-read-params";
 
 describe("instant-read query parsing", () => {
@@ -27,10 +26,8 @@ describe("instant-read query parsing", () => {
 
   it("requires nested parent ids", () => {
     expect(parseRequiredGoalId(new URLSearchParams("goalId=goal-1"))).toBe("goal-1");
-    expect(parseRequiredSubgoalId(new URLSearchParams("subgoalId=subgoal-1"))).toBe("subgoal-1");
     expect(parseRequiredHabitId(new URLSearchParams("habitId=habit-1"))).toBe("habit-1");
     expect(() => parseRequiredGoalId(new URLSearchParams())).toThrow("Goal id is required.");
-    expect(() => parseRequiredSubgoalId(new URLSearchParams())).toThrow("Subgoal id is required.");
     expect(() => parseRequiredHabitId(new URLSearchParams())).toThrow("Habit id is required.");
   });
 });

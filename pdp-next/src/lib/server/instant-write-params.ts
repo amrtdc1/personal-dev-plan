@@ -1,9 +1,15 @@
-import type { GoalHorizon, GoalType, HabitCadence, HabitState } from "@/lib/domain/types";
+import type {
+  GoalTimeframeLevel,
+  GoalType,
+  HabitCadence,
+  HabitState,
+} from "@/lib/domain/types";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 
 type GoalWritePayload = {
   type?: GoalType;
-  horizon?: GoalHorizon;
+  parentGoalId?: string | null;
+  timeframeLevel?: GoalTimeframeLevel;
   title?: string;
   description?: string;
   projectedStartDate?: string | null;
@@ -12,20 +18,12 @@ type GoalWritePayload = {
   isFocus?: boolean;
 };
 
-type SubgoalWritePayload = {
-  goalId?: string;
-  title?: string;
-  description?: string;
-  projectedStartDate?: string | null;
-  projectedEndDate?: string | null;
-  timeframeLabel?: string;
-};
-
 type TaskWritePayload = {
-  subgoalId?: string;
+  goalId?: string;
   title?: string;
   notes?: string;
   dueDate?: string | null;
+  unplanned?: boolean;
 };
 
 type JournalWritePayload = {
@@ -50,7 +48,8 @@ type HabitCheckinWritePayload = {
 
 export type ParsedGoalWritePayload = {
   type: GoalType;
-  horizon: GoalHorizon;
+  parentGoalId: string | null;
+  timeframeLevel: GoalTimeframeLevel;
   title: string;
   description: string;
   projectedStartDate: string | null;
@@ -59,20 +58,12 @@ export type ParsedGoalWritePayload = {
   isFocus: boolean;
 };
 
-export type ParsedSubgoalWritePayload = {
-  goalId: string;
-  title: string;
-  description: string;
-  projectedStartDate: string | null;
-  projectedEndDate: string | null;
-  timeframeLabel: string | undefined;
-};
-
 export type ParsedTaskWritePayload = {
-  subgoalId: string;
+  goalId: string;
   title: string;
   notes: string;
   dueDate: string | null;
+  unplanned: boolean;
 };
 
 export type ParsedJournalWritePayload = {
@@ -114,9 +105,18 @@ export async function parseGoalWritePayload(request: Request): Promise<ParsedGoa
     throw new InstantRouteBadRequestError("Goal focus flag is required.");
   }
 
+  if (payload.timeframeLevel === undefined || payload.timeframeLevel === null) {
+    throw new InstantRouteBadRequestError("Goal timeframe level is required.");
+  }
+
+  if (typeof payload.timeframeLevel !== "string" || !isGoalTimeframeLevel(payload.timeframeLevel)) {
+    throw new InstantRouteBadRequestError("Goal timeframe level is not supported.");
+  }
+
   return {
     type: payload.type,
-    horizon: parseGoalHorizon(payload.horizon),
+    parentGoalId: parseOptionalTrimmedString(payload.parentGoalId),
+    timeframeLevel: payload.timeframeLevel,
     title: payload.title,
     description: payload.description,
     projectedStartDate: parseOptionalString(payload.projectedStartDate),
@@ -126,36 +126,11 @@ export async function parseGoalWritePayload(request: Request): Promise<ParsedGoa
   };
 }
 
-export async function parseSubgoalWritePayload(request: Request): Promise<ParsedSubgoalWritePayload> {
-  const payload = await parseJsonPayload<SubgoalWritePayload>(request);
-
-  if (!payload.goalId) {
-    throw new InstantRouteBadRequestError("Goal id is required.");
-  }
-
-  if (typeof payload.title !== "string") {
-    throw new InstantRouteBadRequestError("Subgoal title is required.");
-  }
-
-  if (typeof payload.description !== "string") {
-    throw new InstantRouteBadRequestError("Subgoal description is required.");
-  }
-
-  return {
-    goalId: payload.goalId,
-    title: payload.title,
-    description: payload.description,
-    projectedStartDate: parseOptionalString(payload.projectedStartDate),
-    projectedEndDate: parseOptionalString(payload.projectedEndDate),
-    timeframeLabel: payload.timeframeLabel,
-  };
-}
-
 export async function parseTaskWritePayload(request: Request): Promise<ParsedTaskWritePayload> {
   const payload = await parseJsonPayload<TaskWritePayload>(request);
 
-  if (!payload.subgoalId) {
-    throw new InstantRouteBadRequestError("Subgoal id is required.");
+  if (!payload.goalId) {
+    throw new InstantRouteBadRequestError("Goal id is required.");
   }
 
   if (typeof payload.title !== "string") {
@@ -166,11 +141,16 @@ export async function parseTaskWritePayload(request: Request): Promise<ParsedTas
     throw new InstantRouteBadRequestError("Task notes are required.");
   }
 
+  if (payload.unplanned !== undefined && typeof payload.unplanned !== "boolean") {
+    throw new InstantRouteBadRequestError("Task unplanned flag must be a boolean when provided.");
+  }
+
   return {
-    subgoalId: payload.subgoalId,
+    goalId: payload.goalId,
     title: payload.title,
     notes: payload.notes,
     dueDate: parseOptionalString(payload.dueDate),
+    unplanned: payload.unplanned ?? false,
   };
 }
 
@@ -268,25 +248,33 @@ function parseOptionalString(value: unknown) {
   return value;
 }
 
+function parseOptionalTrimmedString(value: unknown) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new InstantRouteBadRequestError("Optional string fields must be strings when provided.");
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function isGoalType(value: string): value is GoalType {
   return value === "professional" || value === "personal";
 }
 
-function isGoalHorizon(value: string): value is GoalHorizon {
-  return value === "long_term" || value === "medium_term" || value === "short_term";
+function isGoalTimeframeLevel(value: string): value is GoalTimeframeLevel {
+  return (
+    value === "vision_5y" ||
+    value === "annual" ||
+    value === "quarterly" ||
+    value === "monthly" ||
+    value === "weekly"
+  );
 }
 
-function parseGoalHorizon(value: unknown): GoalHorizon {
-  if (value === undefined || value === null || value === "") {
-    return "medium_term";
-  }
-
-  if (typeof value !== "string" || !isGoalHorizon(value)) {
-    throw new InstantRouteBadRequestError("Goal horizon is not supported.");
-  }
-
-  return value;
-}
 
 function isHabitCadence(value: string): value is HabitCadence {
   return value === "daily" || value === "weekly";

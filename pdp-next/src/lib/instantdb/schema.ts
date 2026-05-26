@@ -1,5 +1,5 @@
 import { i } from "@instantdb/react";
-import type { GoalHorizon, GoalType, ItemStatus } from "@/lib/domain/types";
+import type { GoalTimeframeLevel, GoalType, ItemStatus } from "@/lib/domain/types";
 
 export const appSchema = i.schema({
   entities: {
@@ -23,7 +23,8 @@ export const appSchema = i.schema({
     goals: i.entity({
       ownerUid: i.string().indexed(),
       type: i.string<GoalType>().indexed(),
-      horizon: i.string<GoalHorizon>().optional().indexed(),
+      parentGoalId: i.string().optional().indexed(),
+      timeframeLevel: i.string<GoalTimeframeLevel>().indexed(),
       title: i.string(),
       description: i.string(),
       timeframe: i.string(),
@@ -43,32 +44,13 @@ export const appSchema = i.schema({
       restoreUntil: i.string().optional().indexed(),
       purgeAt: i.string().optional().indexed(),
     }),
-    subgoals: i.entity({
+    tasks: i.entity({
       ownerUid: i.string().indexed(),
       goalId: i.string().indexed(),
       title: i.string(),
-      description: i.string(),
-      timeframe: i.string(),
-      projectedStartDate: i.string().optional(),
-      projectedEndDate: i.string().optional(),
-      actualStartDate: i.string().optional(),
-      actualEndDate: i.string().optional(),
-      status: i.string<ItemStatus>().indexed(),
-      percentComplete: i.number(),
-      orderIndex: i.number(),
-      createdAt: i.string(),
-      updatedAt: i.string(),
-      deletedAt: i.string().optional().indexed(),
-      deletedBy: i.string().optional(),
-      restoreUntil: i.string().optional().indexed(),
-      purgeAt: i.string().optional().indexed(),
-    }),
-    tasks: i.entity({
-      ownerUid: i.string().indexed(),
-      subgoalId: i.string().indexed(),
-      title: i.string(),
       notes: i.string(),
       dueDate: i.string().optional().indexed(),
+      unplanned: i.boolean().optional(),
       status: i.string<ItemStatus>().indexed(),
       percentComplete: i.number(),
       orderIndex: i.number(),

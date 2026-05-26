@@ -1,4 +1,4 @@
-import type { Goal, Habit, HabitCheckin, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, Habit, HabitCheckin, JournalEntry, ChildGoal, Task } from "@/lib/domain/types";
 
 // Keep mocks in vi.hoisted so they are initialized before hoisted vi.mock factories run.
 const { queryOnceMock, transactMock } = vi.hoisted(() => ({
@@ -43,7 +43,7 @@ vi.mock("@/lib/instantdb/client", () => ({
     transact: transactMock,
     tx: {
       goals: createTxTable("goals"),
-      subgoals: createTxTable("subgoals"),
+      childGoals: createTxTable("childGoals"),
       tasks: createTxTable("tasks"),
       journalEntries: createTxTable("journalEntries"),
     },
@@ -61,7 +61,8 @@ function buildGoal(overrides: Partial<Goal> = {}): Goal {
     id: "goal-1",
     ownerUid: "user-1",
     type: "professional",
-    horizon: "medium_term",
+    parentGoalId: null,
+    timeframeLevel: "quarterly",
     title: "Goal",
     description: "Desc",
     timeframe: "Q2",
@@ -84,12 +85,12 @@ function buildGoal(overrides: Partial<Goal> = {}): Goal {
   };
 }
 
-function buildSubgoal(overrides: Partial<Subgoal> = {}): Subgoal {
+function buildChildGoal(overrides: Partial<ChildGoal> = {}): ChildGoal {
   return {
-    id: "subgoal-1",
+    id: "childGoal-1",
     ownerUid: "user-1",
     goalId: "goal-1",
-    title: "Subgoal",
+    title: "ChildGoal",
     description: "Desc",
     timeframe: "Q2",
     projectedStartDate: null,
@@ -110,13 +111,16 @@ function buildSubgoal(overrides: Partial<Subgoal> = {}): Subgoal {
 }
 
 function buildTask(overrides: Partial<Task> = {}): Task {
+  const normalizedGoalId = overrides.goalId ?? "childGoal-1";
+
   return {
     id: "task-1",
     ownerUid: "user-1",
-    subgoalId: "subgoal-1",
+    goalId: normalizedGoalId,
     title: "Task",
     notes: "Notes",
     dueDate: null,
+    unplanned: false,
     status: "not_started",
     percentComplete: 0,
     orderIndex: 0,
@@ -203,19 +207,19 @@ describe("dataRepository soft-delete cascade", () => {
       .mockResolvedValueOnce({ data: { goals: [buildGoal()] } })
       .mockResolvedValueOnce({
         data: {
-          subgoals: [
-            buildSubgoal({ id: "subgoal-active" }),
-            buildSubgoal({ id: "subgoal-archived", deletedAt: "2026-05-10T10:00:00.000Z" }),
+          goals: [
+            buildGoal({ id: "childGoal-active", parentGoalId: "goal-1" }),
+            buildGoal({ id: "childGoal-archived", parentGoalId: "goal-1", deletedAt: "2026-05-10T10:00:00.000Z" }),
           ],
         },
       })
       .mockResolvedValueOnce({
         data: {
           tasks: [
-            buildTask({ id: "task-active-a", subgoalId: "subgoal-active" }),
+            buildTask({ id: "task-active-a", goalId: "childGoal-active" }),
             buildTask({
               id: "task-archived-a",
-              subgoalId: "subgoal-active",
+              goalId: "childGoal-active",
               deletedAt: "2026-05-11T10:00:00.000Z",
             }),
           ],
@@ -223,7 +227,7 @@ describe("dataRepository soft-delete cascade", () => {
       })
       .mockResolvedValueOnce({
         data: {
-          tasks: [buildTask({ id: "task-active-b", subgoalId: "subgoal-archived" })],
+          tasks: [buildTask({ id: "task-active-b", goalId: "childGoal-archived" })],
         },
       });
 
@@ -241,13 +245,13 @@ describe("dataRepository soft-delete cascade", () => {
     expect(mutations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ table: "goals", entityId: "goal-1" }),
-        expect.objectContaining({ table: "subgoals", entityId: "subgoal-active" }),
+        expect.objectContaining({ table: "goals", entityId: "childGoal-active" }),
         expect.objectContaining({ table: "tasks", entityId: "task-active-a" }),
         expect.objectContaining({ table: "tasks", entityId: "task-active-b" }),
       ]),
     );
     expect(mutations).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ entityId: "subgoal-archived" })]),
+      expect.arrayContaining([expect.objectContaining({ entityId: "childGoal-archived" })]),
     );
     expect(mutations).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ entityId: "task-archived-a" })]),
@@ -263,19 +267,23 @@ describe("dataRepository soft-delete cascade", () => {
       })
       .mockResolvedValueOnce({
         data: {
-          subgoals: [
-            buildSubgoal({ id: "subgoal-restore", deletedAt: cascadeDeletedAt }),
-            buildSubgoal({ id: "subgoal-keep-archived", deletedAt: "2026-05-18T09:00:00.000Z" }),
+          goals: [
+            buildGoal({ id: "childGoal-restore", parentGoalId: "goal-1", deletedAt: cascadeDeletedAt }),
+            buildGoal({
+              id: "childGoal-keep-archived",
+              parentGoalId: "goal-1",
+              deletedAt: "2026-05-18T09:00:00.000Z",
+            }),
           ],
         },
       })
       .mockResolvedValueOnce({
         data: {
           tasks: [
-            buildTask({ id: "task-restore", subgoalId: "subgoal-restore", deletedAt: cascadeDeletedAt }),
+            buildTask({ id: "task-restore", goalId: "childGoal-restore", deletedAt: cascadeDeletedAt }),
             buildTask({
               id: "task-keep-archived",
-              subgoalId: "subgoal-restore",
+              goalId: "childGoal-restore",
               deletedAt: "2026-05-19T09:00:00.000Z",
             }),
           ],
@@ -295,12 +303,12 @@ describe("dataRepository soft-delete cascade", () => {
     expect(mutations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ table: "goals", entityId: "goal-1" }),
-        expect.objectContaining({ table: "subgoals", entityId: "subgoal-restore" }),
+        expect.objectContaining({ table: "goals", entityId: "childGoal-restore" }),
         expect.objectContaining({ table: "tasks", entityId: "task-restore" }),
       ]),
     );
     expect(mutations).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ entityId: "subgoal-keep-archived" })]),
+      expect.arrayContaining([expect.objectContaining({ entityId: "childGoal-keep-archived" })]),
     );
     expect(mutations).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ entityId: "task-keep-archived" })]),
@@ -327,19 +335,19 @@ describe("dataRepository soft-delete cascade", () => {
     expect(transactMock).not.toHaveBeenCalled();
   });
 
-  it("soft deletes a subgoal and cascades to its active tasks", async () => {
+  it("soft deletes a childGoal and cascades to its active tasks", async () => {
     queryOnceMock
-      .mockResolvedValueOnce({ data: { subgoals: [buildSubgoal({ id: "subgoal-1" })] } })
+      .mockResolvedValueOnce({ data: { goals: [buildGoal({ id: "childGoal-1", parentGoalId: "goal-1" })] } })
       .mockResolvedValueOnce({
         data: {
           tasks: [
-            buildTask({ id: "task-a", subgoalId: "subgoal-1" }),
-            buildTask({ id: "task-b", subgoalId: "subgoal-1", deletedAt: "2026-05-02T10:00:00.000Z" }),
+            buildTask({ id: "task-a", goalId: "childGoal-1" }),
+            buildTask({ id: "task-b", goalId: "childGoal-1", deletedAt: "2026-05-02T10:00:00.000Z" }),
           ],
         },
       });
 
-    const result = await dataRepository.softDeleteSubgoal("user-1", "subgoal-1");
+    const result = await dataRepository.softDeleteChildGoal("user-1", "childGoal-1");
 
     expect(result.deletedAt).toBe(NOW_ISO);
     expect(result.restoreUntil).toBe(RESTORE_ISO);
@@ -350,7 +358,7 @@ describe("dataRepository soft-delete cascade", () => {
     expect(mutations).toHaveLength(2);
     expect(mutations).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ table: "subgoals", entityId: "subgoal-1" }),
+        expect.objectContaining({ table: "goals", entityId: "childGoal-1" }),
         expect.objectContaining({ table: "tasks", entityId: "task-a" }),
       ]),
     );
@@ -359,12 +367,13 @@ describe("dataRepository soft-delete cascade", () => {
     );
   });
 
-  it("rejects restoring a subgoal when the restore window has expired", async () => {
+  it("rejects restoring a childGoal when the restore window has expired", async () => {
     queryOnceMock.mockResolvedValueOnce({
       data: {
-        subgoals: [
-          buildSubgoal({
-            id: "subgoal-expired",
+        goals: [
+          buildGoal({
+            id: "childGoal-expired",
+            parentGoalId: "goal-1",
             deletedAt: "2026-05-01T09:00:00.000Z",
             restoreUntil: "2026-05-10T09:00:00.000Z",
           }),
@@ -372,8 +381,8 @@ describe("dataRepository soft-delete cascade", () => {
       },
     });
 
-    await expect(dataRepository.restoreSubgoal("user-1", "subgoal-expired")).rejects.toThrow(
-      "Subgoal can no longer be restored because the restore window has expired.",
+    await expect(dataRepository.restoreChildGoal("user-1", "childGoal-expired")).rejects.toThrow(
+      "ChildGoal can no longer be restored because the restore window has expired.",
     );
     expect(transactMock).not.toHaveBeenCalled();
   });
@@ -400,48 +409,53 @@ describe("dataRepository soft-delete cascade", () => {
   it("purges expired deleted records and cascades purge to descendants of expired goals", async () => {
     queryOnceMock.mockImplementation(async (query: Record<string, unknown>) => {
       if ("goals" in query) {
+        const where = (query.goals as { $?: { where?: Record<string, unknown> } }).$?.where;
+
+        if (where && "type" in where) {
+          return {
+            data: {
+              goals: [
+                buildGoal({
+                  id: "goal-expired",
+                  deletedAt: "2026-05-01T09:00:00.000Z",
+                  purgeAt: "2026-05-20T09:00:00.000Z",
+                }),
+                buildGoal({
+                  id: "goal-active",
+                  deletedAt: null,
+                  purgeAt: null,
+                }),
+                buildGoal({
+                  id: "goal-not-expired",
+                  deletedAt: "2026-05-20T09:00:00.000Z",
+                  purgeAt: "2026-05-30T09:00:00.000Z",
+                }),
+              ],
+            },
+          };
+        }
+
         return {
           data: {
             goals: [
+              buildGoal({ id: "goal-expired", deletedAt: "2026-05-01T09:00:00.000Z", purgeAt: "2026-05-20T09:00:00.000Z" }),
+              buildGoal({ id: "goal-active", deletedAt: null, purgeAt: null }),
+              buildGoal({ id: "goal-not-expired", deletedAt: "2026-05-20T09:00:00.000Z", purgeAt: "2026-05-30T09:00:00.000Z" }),
               buildGoal({
-                id: "goal-expired",
-                deletedAt: "2026-05-01T09:00:00.000Z",
-                purgeAt: "2026-05-20T09:00:00.000Z",
-              }),
-              buildGoal({
-                id: "goal-active",
-                deletedAt: null,
-                purgeAt: null,
-              }),
-              buildGoal({
-                id: "goal-not-expired",
+                id: "childGoal-under-expired-goal",
+                parentGoalId: "goal-expired",
                 deletedAt: "2026-05-20T09:00:00.000Z",
                 purgeAt: "2026-05-30T09:00:00.000Z",
               }),
-            ],
-          },
-        };
-      }
-
-      if ("subgoals" in query) {
-        return {
-          data: {
-            subgoals: [
-              buildSubgoal({
-                id: "subgoal-under-expired-goal",
-                goalId: "goal-expired",
-                deletedAt: "2026-05-20T09:00:00.000Z",
-                purgeAt: "2026-05-30T09:00:00.000Z",
-              }),
-              buildSubgoal({
-                id: "subgoal-expired-direct",
-                goalId: "goal-active",
+              buildGoal({
+                id: "childGoal-expired-direct",
+                parentGoalId: "goal-active",
                 deletedAt: "2026-05-15T09:00:00.000Z",
                 purgeAt: "2026-05-20T09:00:00.000Z",
               }),
-              buildSubgoal({
-                id: "subgoal-not-expired",
-                goalId: "goal-not-expired",
+              buildGoal({
+                id: "childGoal-not-expired",
+                parentGoalId: "goal-not-expired",
                 deletedAt: "2026-05-20T09:00:00.000Z",
                 purgeAt: "2026-05-30T09:00:00.000Z",
               }),
@@ -454,20 +468,20 @@ describe("dataRepository soft-delete cascade", () => {
         data: {
           tasks: [
             buildTask({
-              id: "task-under-purged-subgoal",
-              subgoalId: "subgoal-under-expired-goal",
+              id: "task-under-purged-childGoal",
+              goalId: "childGoal-under-expired-goal",
               deletedAt: "2026-05-20T09:00:00.000Z",
               purgeAt: "2026-05-30T09:00:00.000Z",
             }),
             buildTask({
               id: "task-expired-direct",
-              subgoalId: "subgoal-not-expired",
+              goalId: "childGoal-not-expired",
               deletedAt: "2026-05-10T09:00:00.000Z",
               purgeAt: "2026-05-20T09:00:00.000Z",
             }),
             buildTask({
               id: "task-not-expired",
-              subgoalId: "subgoal-not-expired",
+              goalId: "childGoal-not-expired",
               deletedAt: "2026-05-20T09:00:00.000Z",
               purgeAt: "2026-05-30T09:00:00.000Z",
             }),
@@ -480,7 +494,7 @@ describe("dataRepository soft-delete cascade", () => {
 
     expect(summary).toEqual({
       goals: 1,
-      subgoals: 2,
+      childGoals: 2,
       tasks: 2,
       purgedAt: NOW_ISO,
     });
@@ -490,16 +504,16 @@ describe("dataRepository soft-delete cascade", () => {
     expect(mutations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ op: "delete", table: "goals", entityId: "goal-expired" }),
-        expect.objectContaining({ op: "delete", table: "subgoals", entityId: "subgoal-under-expired-goal" }),
-        expect.objectContaining({ op: "delete", table: "subgoals", entityId: "subgoal-expired-direct" }),
-        expect.objectContaining({ op: "delete", table: "tasks", entityId: "task-under-purged-subgoal" }),
+        expect.objectContaining({ op: "delete", table: "goals", entityId: "childGoal-under-expired-goal" }),
+        expect.objectContaining({ op: "delete", table: "goals", entityId: "childGoal-expired-direct" }),
+        expect.objectContaining({ op: "delete", table: "tasks", entityId: "task-under-purged-childGoal" }),
         expect.objectContaining({ op: "delete", table: "tasks", entityId: "task-expired-direct" }),
       ]),
     );
     expect(mutations).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ entityId: "goal-not-expired" }),
-        expect.objectContaining({ entityId: "subgoal-not-expired" }),
+        expect.objectContaining({ entityId: "childGoal-not-expired" }),
         expect.objectContaining({ entityId: "task-not-expired" }),
       ]),
     );
@@ -546,6 +560,7 @@ describe("dataRepository soft-delete cascade", () => {
     const result = await dataRepository.saveGoal({
       ownerUid: "user-1",
       type: "professional",
+      timeframeLevel: "quarterly",
       title: "Create via fallback",
       description: "desc",
       projectedStartDate: null,
@@ -600,7 +615,7 @@ describe("dataRepository soft-delete cascade", () => {
     fetchSpy.mockRestore();
   });
 
-  it("normalizes legacy goals without horizon to medium_term", async () => {
+  it("rejects goals missing required timeframe level from protected API", async () => {
     Object.defineProperty(globalThis, "window", {
       value: {
         location: { origin: "http://localhost:3000" },
@@ -614,7 +629,7 @@ describe("dataRepository soft-delete cascade", () => {
       ownerUid: "user-1",
       type: "professional",
       title: "Legacy goal",
-      description: "Older goal without horizon field",
+      description: "Older goal without timeframe level",
       timeframe: "Q2",
       projectedStartDate: null,
       projectedEndDate: null,
@@ -642,11 +657,147 @@ describe("dataRepository soft-delete cascade", () => {
       ),
     );
 
-    const goals = await dataRepository.listGoals("user-1", "professional");
+    await expect(dataRepository.listGoals("user-1", "professional")).rejects.toThrow(
+      "Goal timeframe level is required.",
+    );
 
-    expect(goals).toHaveLength(1);
-    expect(goals[0]?.id).toBe("goal-legacy");
-    expect(goals[0]?.horizon).toBe("medium_term");
+    fetchSpy.mockRestore();
+  });
+
+  it("persists goal hierarchy fields through protected goal save route", async () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        location: { origin: "http://localhost:3000" },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await dataRepository.saveGoal({
+      goalId: "goal-1",
+      ownerUid: "user-1",
+      type: "professional",
+      timeframeLevel: "weekly",
+      parentGoalId: "goal-parent-1",
+      title: "Weekly execution",
+      description: "Focus on near-term execution",
+      projectedStartDate: null,
+      projectedEndDate: null,
+      timeframeLabel: "Week 22",
+      isFocus: true,
+      existingGoal: buildGoal({ id: "goal-1" }),
+    });
+
+    const [, requestInit] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const parsedBody = JSON.parse(String(requestInit.body));
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/goals/goal-1",
+      expect.objectContaining({
+        method: "PATCH",
+        credentials: "include",
+      }),
+    );
+    expect(parsedBody).toEqual(
+      expect.objectContaining({
+        type: "professional",
+        timeframeLevel: "weekly",
+        parentGoalId: "goal-parent-1",
+        title: "Weekly execution",
+      }),
+    );
+
+    fetchSpy.mockRestore();
+  });
+
+  it("normalizes legacy tasks without unplanned to false from protected API", async () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        location: { origin: "http://localhost:3000" },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          tasks: [
+            {
+              id: "task-legacy",
+              ownerUid: "user-1",
+              goalId: "childGoal-1",
+              title: "Legacy task",
+              notes: "",
+              dueDate: null,
+              status: "not_started",
+              percentComplete: 0,
+              orderIndex: 0,
+              createdAt: "2026-05-01T00:00:00.000Z",
+              updatedAt: "2026-05-01T00:00:00.000Z",
+              deletedAt: null,
+              deletedBy: null,
+              restoreUntil: null,
+              purgeAt: null,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const tasks = await dataRepository.listTasks("user-1", "childGoal-1");
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.id).toBe("task-legacy");
+    expect(tasks[0]?.unplanned).toBe(false);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("persists task unplanned flag through protected task update route", async () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        location: { origin: "http://localhost:3000" },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await dataRepository.saveTask({
+      taskId: "task-1",
+      ownerUid: "user-1",
+      goalId: "childGoal-1",
+      title: "Task",
+      notes: "Notes",
+      dueDate: null,
+      unplanned: true,
+      existingTask: buildTask({ id: "task-1", unplanned: false }),
+    });
+
+    const [, requestInit] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const parsedBody = JSON.parse(String(requestInit.body));
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/tasks/task-1",
+      expect.objectContaining({
+        method: "PATCH",
+        credentials: "include",
+      }),
+    );
+    expect(parsedBody).toEqual(
+      expect.objectContaining({
+        goalId: "childGoal-1",
+        title: "Task",
+        notes: "Notes",
+        dueDate: null,
+        unplanned: true,
+      }),
+    );
 
     fetchSpy.mockRestore();
   });
@@ -685,21 +836,21 @@ describe("dataRepository soft-delete cascade", () => {
     ]);
   });
 
-  it("updates subgoal status and percent complete", async () => {
+  it("updates childGoal status and percent complete", async () => {
     queryOnceMock.mockResolvedValueOnce({
       data: {
-        subgoals: [buildSubgoal({ id: "subgoal-status", status: "not_started", percentComplete: 0 })],
+        goals: [buildGoal({ id: "childGoal-status", parentGoalId: "goal-1", status: "not_started", percentComplete: 0 })],
       },
     });
 
-    const result = await dataRepository.updateSubgoalStatus("user-1", "subgoal-status", "in_progress");
+    const result = await dataRepository.updateChildGoalStatus("user-1", "childGoal-status", "in_progress");
 
     expect(result.status).toBe("in_progress");
     expect(result.percentComplete).toBe(50);
     expect(transactMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        table: "subgoals",
-        entityId: "subgoal-status",
+        table: "goals",
+        entityId: "childGoal-status",
         payload: expect.objectContaining({
           status: "in_progress",
           percentComplete: 50,
@@ -709,21 +860,21 @@ describe("dataRepository soft-delete cascade", () => {
     );
   });
 
-  it("reorders subgoals using the supplied id order", async () => {
+  it("reorders childGoals using the supplied id order", async () => {
     queryOnceMock.mockResolvedValueOnce({
       data: {
-        subgoals: [
-          buildSubgoal({ id: "subgoal-a", orderIndex: 0 }),
-          buildSubgoal({ id: "subgoal-b", orderIndex: 1 }),
+        goals: [
+          buildGoal({ id: "childGoal-a", parentGoalId: "goal-1", orderIndex: 0 }),
+          buildGoal({ id: "childGoal-b", parentGoalId: "goal-1", orderIndex: 1 }),
         ],
       },
     });
 
-    const result = await dataRepository.reorderSubgoals("user-1", "goal-1", ["subgoal-b", "subgoal-a"]);
+    const result = await dataRepository.reorderChildGoals("user-1", "goal-1", ["childGoal-b", "childGoal-a"]);
 
-    expect(result.map((subgoal) => [subgoal.id, subgoal.orderIndex])).toEqual([
-      ["subgoal-b", 0],
-      ["subgoal-a", 1],
+    expect(result.map((childGoal) => [childGoal.id, childGoal.orderIndex])).toEqual([
+      ["childGoal-b", 0],
+      ["childGoal-a", 1],
     ]);
   });
 
@@ -761,7 +912,7 @@ describe("dataRepository soft-delete cascade", () => {
       },
     });
 
-    const result = await dataRepository.reorderTasks("user-1", "subgoal-1", ["task-b", "task-a"]);
+    const result = await dataRepository.reorderTasks("user-1", "childGoal-1", ["task-b", "task-a"]);
 
     expect(result.map((task) => [task.id, task.orderIndex])).toEqual([
       ["task-b", 0],

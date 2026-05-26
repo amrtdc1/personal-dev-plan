@@ -39,15 +39,6 @@ export function parseRequiredGoalId(searchParams: URLSearchParams) {
   return goalId;
 }
 
-export function parseRequiredSubgoalId(searchParams: URLSearchParams) {
-  const subgoalId = searchParams.get("subgoalId");
-  if (!subgoalId) {
-    throw new InstantRouteBadRequestError("Subgoal id is required.");
-  }
-
-  return subgoalId;
-}
-
 export function parseRequiredHabitId(searchParams: URLSearchParams) {
   const habitId = searchParams.get("habitId");
   if (!habitId) {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { Goal, Habit, HabitCheckin, ItemStatus, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, Habit, HabitCheckin, ItemStatus, JournalEntry, ChildGoal, Task } from "@/lib/domain/types";
 import { validateStatusUpdate } from "@/lib/data/validation";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { resolveInstantRouteError } from "@/lib/server/instant-error-response";
@@ -72,10 +72,10 @@ export async function findOwnedGoal(ownerUid: string, goalId: string) {
   return goal;
 }
 
-export async function findOwnedSubgoal(ownerUid: string, subgoalId: string) {
+export async function findOwnedChildGoal(ownerUid: string, childGoalId: string) {
   const instantAdmin = getInstantAdmin();
-  const { subgoals = [] } = await instantAdmin.query({
-    subgoals: {
+  const { goals = [] } = await instantAdmin.query({
+    goals: {
       $: {
         where: {
           ownerUid,
@@ -84,27 +84,70 @@ export async function findOwnedSubgoal(ownerUid: string, subgoalId: string) {
     },
   });
 
-  const scopedSubgoal = (subgoals as Subgoal[]).find((entry) => entry.id === subgoalId);
-  if (scopedSubgoal && scopedSubgoal.ownerUid === ownerUid) {
-    return scopedSubgoal;
+  const scopedChildGoalGoal = (goals as Goal[]).find((entry) => entry.id === childGoalId && Boolean(entry.parentGoalId));
+  const scopedChildGoal = scopedChildGoalGoal
+    ? {
+        id: scopedChildGoalGoal.id,
+        ownerUid: scopedChildGoalGoal.ownerUid,
+        goalId: scopedChildGoalGoal.parentGoalId ?? "",
+        title: scopedChildGoalGoal.title,
+        description: scopedChildGoalGoal.description,
+        timeframe: scopedChildGoalGoal.timeframe,
+        projectedStartDate: scopedChildGoalGoal.projectedStartDate,
+        projectedEndDate: scopedChildGoalGoal.projectedEndDate,
+        actualStartDate: scopedChildGoalGoal.actualStartDate,
+        actualEndDate: scopedChildGoalGoal.actualEndDate,
+        status: scopedChildGoalGoal.status,
+        percentComplete: scopedChildGoalGoal.percentComplete,
+        orderIndex: scopedChildGoalGoal.orderIndex,
+        createdAt: scopedChildGoalGoal.createdAt,
+        updatedAt: scopedChildGoalGoal.updatedAt,
+        deletedAt: scopedChildGoalGoal.deletedAt,
+        deletedBy: scopedChildGoalGoal.deletedBy,
+        restoreUntil: scopedChildGoalGoal.restoreUntil,
+        purgeAt: scopedChildGoalGoal.purgeAt,
+      }
+    : null;
+  if (scopedChildGoal && scopedChildGoal.ownerUid === ownerUid) {
+    return scopedChildGoal;
   }
 
-  const { subgoals: subgoalById = [] } = await instantAdmin.query({
-    subgoals: {
+  const { goals: childGoalById = [] } = await instantAdmin.query({
+    goals: {
       $: {
         where: {
-          id: subgoalId,
+          id: childGoalId,
         },
       },
     },
   });
 
-  const subgoal = subgoalById[0] as Subgoal | undefined;
-  if (!subgoal || subgoal.ownerUid !== ownerUid) {
-    throw new InstantRouteNotFoundError("Subgoal was not found for this user.");
+  const childGoalGoal = childGoalById[0] as Goal | undefined;
+  if (!childGoalGoal || childGoalGoal.ownerUid !== ownerUid || !childGoalGoal.parentGoalId) {
+    throw new InstantRouteNotFoundError("ChildGoal was not found for this user.");
   }
 
-  return subgoal;
+  return {
+    id: childGoalGoal.id,
+    ownerUid: childGoalGoal.ownerUid,
+    goalId: childGoalGoal.parentGoalId,
+    title: childGoalGoal.title,
+    description: childGoalGoal.description,
+    timeframe: childGoalGoal.timeframe,
+    projectedStartDate: childGoalGoal.projectedStartDate,
+    projectedEndDate: childGoalGoal.projectedEndDate,
+    actualStartDate: childGoalGoal.actualStartDate,
+    actualEndDate: childGoalGoal.actualEndDate,
+    status: childGoalGoal.status,
+    percentComplete: childGoalGoal.percentComplete,
+    orderIndex: childGoalGoal.orderIndex,
+    createdAt: childGoalGoal.createdAt,
+    updatedAt: childGoalGoal.updatedAt,
+    deletedAt: childGoalGoal.deletedAt,
+    deletedBy: childGoalGoal.deletedBy,
+    restoreUntil: childGoalGoal.restoreUntil,
+    purgeAt: childGoalGoal.purgeAt,
+  };
 }
 
 export async function findOwnedTask(ownerUid: string, taskId: string) {
@@ -119,7 +162,7 @@ export async function findOwnedTask(ownerUid: string, taskId: string) {
     },
   });
 
-  const scopedTask = (tasks as Task[]).find((entry) => entry.id === taskId);
+  const scopedTask = (tasks as Task[]).map(normalizeTaskDefaults).find((entry) => entry.id === taskId);
   if (scopedTask && scopedTask.ownerUid === ownerUid) {
     return scopedTask;
   }
@@ -134,12 +177,12 @@ export async function findOwnedTask(ownerUid: string, taskId: string) {
     },
   });
 
-  const task = taskById[0] as Task | undefined;
+  const task = (taskById[0] as Task | undefined);
   if (!task || task.ownerUid !== ownerUid) {
     throw new InstantRouteNotFoundError("Task was not found for this user.");
   }
 
-  return task;
+  return normalizeTaskDefaults(task);
 }
 
 export async function findOwnedJournalEntry(ownerUid: string, journalEntryId: string) {
@@ -263,4 +306,11 @@ export function instantRouteErrorResponse(
   });
 
   return NextResponse.json(response.payload, { status: response.status });
+}
+
+function normalizeTaskDefaults(task: Task): Task {
+  return {
+    ...task,
+    unplanned: task.unplanned ?? false,
+  };
 }

@@ -9,19 +9,21 @@ import listPlugin from "@fullcalendar/list";
 import type { EventResizeDoneArg } from "@fullcalendar/interaction";
 import type {
   DateSelectArg,
+  DatesSetArg,
   EventClickArg,
   EventDropArg,
   EventInput,
 } from "@fullcalendar/core";
-import type { Goal, GoalType, ItemStatus, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, GoalTimeframeLevel, GoalType, ItemStatus, ChildGoal, Task } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
 import { InfoPopover } from "@/components/ui/info-popover";
 
-type CalendarItemKind = "goal" | "subgoal" | "task";
-type CreateType = "goal" | "subgoal" | "task";
+type CalendarItemKind = "goal" | "childGoal" | "task";
+type CreateType = "goal" | "task";
 type StatusFilter = "all" | ItemStatus;
+type CalendarViewPreference = "dayGridMonth" | "dayGridWeek" | "dayGridDay" | "listWeek";
 
 type CalendarSelection = {
   startDate: string;
@@ -60,19 +62,27 @@ type EventPreview = {
 
 type CalendarFilterPreferences = {
   showGoals: boolean;
-  showSubgoals: boolean;
   showTasks: boolean;
   statusFilter: StatusFilter;
   scopeGoalType: "all" | GoalType;
 };
 
+type CalendarDensityPreference = "compact" | "comfortable";
+
 const DEFAULT_SELECTION = getTodaySelection();
 const CALENDAR_FILTER_PREFERENCES_STORAGE_KEY = "pdp.calendarFilterPreferences";
+const CALENDAR_DENSITY_PREFERENCE_STORAGE_KEY = "pdp.calendarDensityPreference";
+const CALENDAR_VIEW_PREFERENCE_STORAGE_KEY = "pdp.calendarViewPreference";
+const CALENDAR_CREATE_TYPE_STORAGE_KEY = "pdp.calendarCreateType";
+const CALENDAR_GOAL_TYPE_STORAGE_KEY = "pdp.calendarGoalType";
+// Keep existing key name for backward compatibility with prior localStorage values.
+const CALENDAR_PARENT_CHILD_GOAL_STORAGE_KEY = "pdp.calendarParentChildGoalId";
+const CALENDAR_FILTER_PANEL_OPEN_STORAGE_KEY = "pdp.calendarFilterPanelOpen";
 
 export function CalendarWorkspace() {
   const { isLoading, user, error } = db.useAuth();
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [subgoals, setSubgoals] = useState<Subgoal[]>([]);
+  const [childGoals, setChildGoals] = useState<ChildGoal[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -80,12 +90,11 @@ export function CalendarWorkspace() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [selection, setSelection] = useState<CalendarSelection>(DEFAULT_SELECTION);
-  const [createType, setCreateType] = useState<CreateType>("task");
-  const [goalType, setGoalType] = useState<GoalType>("professional");
+  const [createType, setCreateType] = useState<CreateType>(() => readCalendarCreateTypePreference());
+  const [goalType, setGoalType] = useState<GoalType>(() => readCalendarGoalTypePreference());
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDetails, setDraftDetails] = useState("");
-  const [draftGoalId, setDraftGoalId] = useState<string>("");
-  const [draftSubgoalId, setDraftSubgoalId] = useState<string>("");
+  const [draftChildGoalId, setDraftChildGoalId] = useState<string>(() => readCalendarParentChildGoalPreference());
   const [selectedEventRef, setSelectedEventRef] = useState<SelectedEventRef | null>(null);
 
   const [editTitle, setEditTitle] = useState("");
@@ -93,17 +102,20 @@ export function CalendarWorkspace() {
   const [editStatus, setEditStatus] = useState<ItemStatus>("not_started");
   const [editGoalType, setEditGoalType] = useState<GoalType>("professional");
   const [editParentGoalId, setEditParentGoalId] = useState("");
-  const [editParentSubgoalId, setEditParentSubgoalId] = useState("");
+  const [editParentChildGoalId, setEditParentChildGoalId] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const persistedFilters = useMemo(() => readCalendarFilterPreferences(), []);
   const [showGoals, setShowGoals] = useState(persistedFilters.showGoals);
-  const [showSubgoals, setShowSubgoals] = useState(persistedFilters.showSubgoals);
   const [showTasks, setShowTasks] = useState(persistedFilters.showTasks);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(persistedFilters.statusFilter);
   const [scopeGoalType, setScopeGoalType] = useState<"all" | GoalType>(persistedFilters.scopeGoalType);
-  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
+  const [densityPreference, setDensityPreference] = useState<CalendarDensityPreference | null>(() => readCalendarDensityPreference());
+  const [calendarViewPreference, setCalendarViewPreference] = useState<CalendarViewPreference>(() =>
+    readCalendarViewPreference(),
+  );
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(() => readCalendarFilterPanelOpenPreference());
   const [eventPreview, setEventPreview] = useState<EventPreview | null>(null);
 
   const [isCompactToolbar, setIsCompactToolbar] = useState(false);
@@ -114,7 +126,7 @@ export function CalendarWorkspace() {
   const previewCloseTimerRef = useRef<number | null>(null);
 
   const goalMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
-  const subgoalMap = useMemo(() => new Map(subgoals.map((subgoal) => [subgoal.id, subgoal])), [subgoals]);
+  const childGoalMap = useMemo(() => new Map(childGoals.map((childGoal) => [childGoal.id, childGoal])), [childGoals]);
   const eventColors = getCalendarEventColors();
 
   useEffect(() => {
@@ -125,7 +137,7 @@ export function CalendarWorkspace() {
     const mediaQuery = window.matchMedia("(max-width: 1024px)");
     const updateCompactToolbar = () => {
       setIsCompactToolbar(mediaQuery.matches);
-      setIsTouchFriendly((current) => (current ? current : mediaQuery.matches));
+      setIsTouchFriendly(densityPreference ? densityPreference === "comfortable" : mediaQuery.matches);
     };
 
     updateCompactToolbar();
@@ -143,7 +155,65 @@ export function CalendarWorkspace() {
         mediaQuery.removeListener(updateCompactToolbar);
       }
     };
-  }, []);
+  }, [densityPreference]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(CALENDAR_VIEW_PREFERENCE_STORAGE_KEY, calendarViewPreference);
+  }, [calendarViewPreference]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(CALENDAR_CREATE_TYPE_STORAGE_KEY, createType);
+  }, [createType]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(CALENDAR_GOAL_TYPE_STORAGE_KEY, goalType);
+  }, [goalType]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!draftChildGoalId) {
+      window.localStorage.removeItem(CALENDAR_PARENT_CHILD_GOAL_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(CALENDAR_PARENT_CHILD_GOAL_STORAGE_KEY, draftChildGoalId);
+  }, [draftChildGoalId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!densityPreference) {
+      window.localStorage.removeItem(CALENDAR_DENSITY_PREFERENCE_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(CALENDAR_DENSITY_PREFERENCE_STORAGE_KEY, densityPreference);
+  }, [densityPreference]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(CALENDAR_FILTER_PANEL_OPEN_STORAGE_KEY, isFilterPanelOpen ? "true" : "false");
+  }, [isFilterPanelOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -152,14 +222,13 @@ export function CalendarWorkspace() {
 
     const preferences: CalendarFilterPreferences = {
       showGoals,
-      showSubgoals,
       showTasks,
       statusFilter,
       scopeGoalType,
     };
 
     window.localStorage.setItem(CALENDAR_FILTER_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
-  }, [scopeGoalType, showGoals, showSubgoals, showTasks, statusFilter]);
+  }, [scopeGoalType, showGoals, showTasks, statusFilter]);
 
   useEffect(() => {
     if (!eventPreview || !previewCardRef.current) {
@@ -236,6 +305,79 @@ export function CalendarWorkspace() {
   }, []);
 
   useEffect(() => {
+    if (!eventPreview || typeof window === "undefined") {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (previewCloseTimerRef.current !== null) {
+        window.clearTimeout(previewCloseTimerRef.current);
+        previewCloseTimerRef.current = null;
+      }
+
+      setEventPreview(null);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [eventPreview]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isCreateModalOpen || isEditModalOpen) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "n") {
+        return;
+      }
+
+      if (isTypingTarget(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+      setActionError(null);
+      setIsCreateModalOpen(true);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isCreateModalOpen, isEditModalOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isCreateModalOpen || isEditModalOpen) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "f") {
+        return;
+      }
+
+      if (isTypingTarget(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+      setIsFilterPanelOpen((current) => !current);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isCreateModalOpen, isEditModalOpen]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -308,22 +450,27 @@ export function CalendarWorkspace() {
         ]);
         const loadedGoals = [...professionalGoals, ...personalGoals].filter((goal) => !goal.deletedAt);
 
-        const subgoalGroups = await Promise.all(
-          loadedGoals.map((goal) => dataRepository.listSubgoals(currentUser.id, goal.id, { includeDeleted: true })),
+        const childGoalGroups = await Promise.all(
+          loadedGoals.map((goal) => dataRepository.listChildGoals(currentUser.id, goal.id, { includeDeleted: true })),
         );
-        const loadedSubgoals = subgoalGroups.flat().filter((subgoal) => !subgoal.deletedAt);
+        const loadedChildGoals = childGoalGroups.flat().filter((childGoal) => !childGoal.deletedAt);
 
         const taskGroups = await Promise.all(
-          loadedSubgoals.map((subgoal) => dataRepository.listTasks(currentUser.id, subgoal.id, { includeDeleted: true })),
+          loadedChildGoals.map((childGoal) => dataRepository.listTasks(currentUser.id, childGoal.id, { includeDeleted: true })),
         );
         const loadedTasks = taskGroups.flat().filter((task) => !task.deletedAt);
 
         if (!isCancelled) {
           setGoals(loadedGoals);
-          setSubgoals(loadedSubgoals);
+          setChildGoals(loadedChildGoals);
           setTasks(loadedTasks);
-          setDraftGoalId((current) => current || loadedGoals[0]?.id || "");
-          setDraftSubgoalId((current) => current || loadedSubgoals[0]?.id || "");
+          setDraftChildGoalId((current) => {
+            if (current && loadedChildGoals.some((childGoal) => childGoal.id === current)) {
+              return current;
+            }
+
+            return loadedChildGoals[0]?.id || "";
+          });
         }
       } catch (loadCalendarError) {
         if (!isCancelled) {
@@ -381,35 +528,35 @@ export function CalendarWorkspace() {
       });
     }
 
-    for (const subgoal of subgoals) {
-      if (!showSubgoals || !statusMatch(subgoal.status)) {
+    for (const childGoal of childGoals) {
+      if (!statusMatch(childGoal.status)) {
         continue;
       }
 
-      const parentGoal = goalMap.get(subgoal.goalId);
+      const parentGoal = goalMap.get(childGoal.goalId);
       if (scopeGoalType !== "all" && parentGoal?.type !== scopeGoalType) {
         continue;
       }
 
-      const range = normalizeDateRange(subgoal.projectedStartDate, subgoal.projectedEndDate);
+      const range = normalizeDateRange(childGoal.projectedStartDate, childGoal.projectedEndDate);
       if (!range) {
         continue;
       }
 
       builtEvents.push({
-        id: `subgoal:${subgoal.id}`,
-        title: `SG | ${subgoal.title}`,
+        id: `childGoal:${childGoal.id}`,
+        title: `SG | ${childGoal.title}`,
         start: range.start,
         end: toExclusiveEndDate(range.end),
         allDay: true,
         editable: true,
         durationEditable: true,
-        backgroundColor: eventColors.subgoalBackground,
-        borderColor: eventColors.subgoalBorder,
+        backgroundColor: eventColors.childGoalBackground,
+        borderColor: eventColors.childGoalBorder,
         extendedProps: {
-          kind: "subgoal" as CalendarItemKind,
-          hierarchy: parentGoal ? `${parentGoal.title} -> ${subgoal.title}` : "Subgoal",
-          status: subgoal.status,
+          kind: "childGoal" as CalendarItemKind,
+          hierarchy: parentGoal ? `${parentGoal.title} -> ${childGoal.title}` : "Child goal",
+          status: childGoal.status,
         },
       });
     }
@@ -423,8 +570,8 @@ export function CalendarWorkspace() {
         continue;
       }
 
-      const parentSubgoal = subgoalMap.get(task.subgoalId);
-      const parentGoal = parentSubgoal ? goalMap.get(parentSubgoal.goalId) : null;
+      const parentChildGoal = childGoalMap.get(task.goalId);
+      const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : null;
 
       if (scopeGoalType !== "all" && parentGoal?.type !== scopeGoalType) {
         continue;
@@ -432,7 +579,7 @@ export function CalendarWorkspace() {
 
       const hierarchyBits = [
         parentGoal ? `Goal: ${parentGoal.title}` : null,
-        parentSubgoal ? `Subgoal: ${parentSubgoal.title}` : null,
+        parentChildGoal ? `Child goal: ${parentChildGoal.title}` : null,
       ].filter((bit): bit is string => Boolean(bit));
 
       builtEvents.push({
@@ -458,11 +605,10 @@ export function CalendarWorkspace() {
     goals,
     scopeGoalType,
     showGoals,
-    showSubgoals,
     showTasks,
     statusFilter,
-    subgoalMap,
-    subgoals,
+    childGoalMap,
+    childGoals,
     eventColors,
     tasks,
   ]);
@@ -509,27 +655,27 @@ export function CalendarWorkspace() {
       });
     }
 
-    for (const subgoal of subgoals) {
-      if (!showSubgoals || !statusMatch(subgoal.status)) {
+    for (const childGoal of childGoals) {
+      if (!statusMatch(childGoal.status)) {
         continue;
       }
 
-      const parentGoal = goalMap.get(subgoal.goalId);
+      const parentGoal = goalMap.get(childGoal.goalId);
       if (scopeGoalType !== "all" && parentGoal?.type !== scopeGoalType) {
         continue;
       }
 
-      const range = normalizeDateRange(subgoal.projectedStartDate, subgoal.projectedEndDate);
+      const range = normalizeDateRange(childGoal.projectedStartDate, childGoal.projectedEndDate);
       if (!range || todayDate < range.start || todayDate > range.end) {
         continue;
       }
 
       agendaItems.push({
-        id: `subgoal:${subgoal.id}`,
-        kind: "subgoal",
-        title: subgoal.title,
-        status: subgoal.status,
-        hierarchy: parentGoal ? `${parentGoal.title} -> ${subgoal.title}` : "Subgoal",
+        id: `childGoal:${childGoal.id}`,
+        kind: "childGoal",
+        title: childGoal.title,
+        status: childGoal.status,
+        hierarchy: parentGoal ? `${parentGoal.title} -> ${childGoal.title}` : "Child goal",
       });
     }
 
@@ -538,8 +684,8 @@ export function CalendarWorkspace() {
         continue;
       }
 
-      const parentSubgoal = subgoalMap.get(task.subgoalId);
-      const parentGoal = parentSubgoal ? goalMap.get(parentSubgoal.goalId) : null;
+      const parentChildGoal = childGoalMap.get(task.goalId);
+      const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : null;
 
       if (scopeGoalType !== "all" && parentGoal?.type !== scopeGoalType) {
         continue;
@@ -547,7 +693,7 @@ export function CalendarWorkspace() {
 
       const hierarchyBits = [
         parentGoal ? `Goal: ${parentGoal.title}` : null,
-        parentSubgoal ? `Subgoal: ${parentSubgoal.title}` : null,
+        parentChildGoal ? `Child goal: ${parentChildGoal.title}` : null,
       ].filter((bit): bit is string => Boolean(bit));
 
       agendaItems.push({
@@ -561,7 +707,7 @@ export function CalendarWorkspace() {
 
     const kindOrder: Record<CalendarItemKind, number> = {
       goal: 0,
-      subgoal: 1,
+      childGoal: 1,
       task: 2,
     };
 
@@ -578,11 +724,10 @@ export function CalendarWorkspace() {
     goals,
     scopeGoalType,
     showGoals,
-    showSubgoals,
     showTasks,
     statusFilter,
-    subgoalMap,
-    subgoals,
+    childGoalMap,
+    childGoals,
     tasks,
   ]);
 
@@ -604,17 +749,17 @@ export function CalendarWorkspace() {
         dataRepository.listGoals(currentUser.id, "personal", { includeDeleted: true }),
       ]);
       const loadedGoals = [...professionalGoals, ...personalGoals].filter((goal) => !goal.deletedAt);
-      const subgoalGroups = await Promise.all(
-        loadedGoals.map((goal) => dataRepository.listSubgoals(currentUser.id, goal.id, { includeDeleted: true })),
+      const childGoalGroups = await Promise.all(
+        loadedGoals.map((goal) => dataRepository.listChildGoals(currentUser.id, goal.id, { includeDeleted: true })),
       );
-      const loadedSubgoals = subgoalGroups.flat().filter((subgoal) => !subgoal.deletedAt);
+      const loadedChildGoals = childGoalGroups.flat().filter((childGoal) => !childGoal.deletedAt);
       const taskGroups = await Promise.all(
-        loadedSubgoals.map((subgoal) => dataRepository.listTasks(currentUser.id, subgoal.id, { includeDeleted: true })),
+        loadedChildGoals.map((childGoal) => dataRepository.listTasks(currentUser.id, childGoal.id, { includeDeleted: true })),
       );
       const loadedTasks = taskGroups.flat().filter((task) => !task.deletedAt);
 
       setGoals(loadedGoals);
-      setSubgoals(loadedSubgoals);
+      setChildGoals(loadedChildGoals);
       setTasks(loadedTasks);
     } catch (reloadError) {
       setActionError(getErrorMessage(reloadError, "We could not refresh calendar data."));
@@ -633,6 +778,25 @@ export function CalendarWorkspace() {
     });
     setActionError(null);
     setIsCreateModalOpen(true);
+  }
+
+  function handleDatesSet(datesArg: DatesSetArg) {
+    const nextView = datesArg.view.type;
+    if (
+      nextView === "dayGridMonth" ||
+      nextView === "dayGridWeek" ||
+      nextView === "dayGridDay" ||
+      nextView === "listWeek"
+    ) {
+      setCalendarViewPreference(nextView);
+    }
+  }
+
+  function resetCalendarFilters() {
+    setShowGoals(true);
+    setShowTasks(true);
+    setStatusFilter("all");
+    setScopeGoalType("all");
   }
 
   function handleEventClick(clickArg: EventClickArg) {
@@ -656,20 +820,20 @@ export function CalendarWorkspace() {
       setEditStatus(selectedGoal.status);
       setEditGoalType(selectedGoal.type);
       setEditParentGoalId("");
-      setEditParentSubgoalId("");
-    } else if (kind === "subgoal") {
-      const selectedSubgoal = subgoals.find((subgoal) => subgoal.id === id);
-      if (!selectedSubgoal) {
-        setActionError("The selected subgoal no longer exists.");
+      setEditParentChildGoalId("");
+    } else if (kind === "childGoal") {
+      const selectedChildGoal = childGoals.find((childGoal) => childGoal.id === id);
+      if (!selectedChildGoal) {
+        setActionError("The selected child goal no longer exists.");
         return;
       }
 
-      setEditTitle(selectedSubgoal.title);
-      setEditDetails(selectedSubgoal.description);
-      setEditStatus(selectedSubgoal.status);
+      setEditTitle(selectedChildGoal.title);
+      setEditDetails(selectedChildGoal.description);
+      setEditStatus(selectedChildGoal.status);
       setEditGoalType("professional");
-      setEditParentGoalId(selectedSubgoal.goalId);
-      setEditParentSubgoalId("");
+      setEditParentGoalId(selectedChildGoal.goalId);
+      setEditParentChildGoalId("");
     } else {
       const selectedTask = tasks.find((task) => task.id === id);
       if (!selectedTask) {
@@ -682,7 +846,7 @@ export function CalendarWorkspace() {
       setEditStatus(selectedTask.status);
       setEditGoalType("professional");
       setEditParentGoalId("");
-      setEditParentSubgoalId(selectedTask.subgoalId);
+      setEditParentChildGoalId(selectedTask.goalId);
     }
 
     setSelectedEventRef({ kind, id });
@@ -767,21 +931,21 @@ export function CalendarWorkspace() {
       };
     }
 
-    if (kind === "subgoal") {
-      const subgoal = subgoals.find((item) => item.id === id);
-      if (!subgoal) {
+    if (kind === "childGoal") {
+      const childGoal = childGoals.find((item) => item.id === id);
+      if (!childGoal) {
         return null;
       }
 
-      const parentGoal = goalMap.get(subgoal.goalId);
+      const parentGoal = goalMap.get(childGoal.goalId);
 
       return {
         kind,
-        title: subgoal.title,
-        status: subgoal.status,
-        hierarchy: parentGoal ? `${parentGoal.title} -> ${subgoal.title}` : "Subgoal",
-        dateSummary: formatPreviewDateSummary(subgoal.projectedStartDate, subgoal.projectedEndDate),
-        details: subgoal.description || "No description provided.",
+        title: childGoal.title,
+        status: childGoal.status,
+        hierarchy: parentGoal ? `${parentGoal.title} -> ${childGoal.title}` : "Child goal",
+        dateSummary: formatPreviewDateSummary(childGoal.projectedStartDate, childGoal.projectedEndDate),
+        details: childGoal.description || "No description provided.",
         pinned,
         position,
       };
@@ -792,11 +956,11 @@ export function CalendarWorkspace() {
       return null;
     }
 
-    const parentSubgoal = subgoalMap.get(task.subgoalId);
-    const parentGoal = parentSubgoal ? goalMap.get(parentSubgoal.goalId) : null;
+    const parentChildGoal = childGoalMap.get(task.goalId);
+    const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : null;
     const hierarchyBits = [
       parentGoal ? `Goal: ${parentGoal.title}` : null,
-      parentSubgoal ? `Subgoal: ${parentSubgoal.title}` : null,
+      parentChildGoal ? `Child goal: ${parentChildGoal.title}` : null,
     ].filter((bit): bit is string => Boolean(bit));
 
     return {
@@ -888,6 +1052,7 @@ export function CalendarWorkspace() {
           goalId: existingGoal.id,
           ownerUid: user.id,
           type: existingGoal.type,
+          timeframeLevel: existingGoal.timeframeLevel,
           title: existingGoal.title,
           description: existingGoal.description,
           projectedStartDate: nextStart,
@@ -896,22 +1061,22 @@ export function CalendarWorkspace() {
           isFocus: existingGoal.isFocus,
           existingGoal,
         });
-      } else if (kind === "subgoal") {
-        const existingSubgoal = subgoals.find((subgoal) => subgoal.id === itemId);
-        if (!existingSubgoal) {
-          throw new Error("Subgoal was not found for drag update.");
+      } else if (kind === "childGoal") {
+        const existingChildGoal = childGoals.find((childGoal) => childGoal.id === itemId);
+        if (!existingChildGoal) {
+          throw new Error("Child goal was not found for drag update.");
         }
 
-        await dataRepository.saveSubgoal({
-          subgoalId: existingSubgoal.id,
+        await dataRepository.saveChildGoal({
+          childGoalId: existingChildGoal.id,
           ownerUid: user.id,
-          goalId: existingSubgoal.goalId,
-          title: existingSubgoal.title,
-          description: existingSubgoal.description,
+          goalId: existingChildGoal.goalId,
+          title: existingChildGoal.title,
+          description: existingChildGoal.description,
           projectedStartDate: nextStart,
           projectedEndDate: nextEndInclusive,
-          timeframeLabel: existingSubgoal.timeframe === "Ongoing" ? "" : existingSubgoal.timeframe,
-          existingSubgoal,
+          timeframeLabel: existingChildGoal.timeframe === "Ongoing" ? "" : existingChildGoal.timeframe,
+          existingChildGoal,
         });
       } else if (kind === "task") {
         const existingTask = tasks.find((task) => task.id === itemId);
@@ -922,7 +1087,7 @@ export function CalendarWorkspace() {
         await dataRepository.saveTask({
           taskId: existingTask.id,
           ownerUid: user.id,
-          subgoalId: existingTask.subgoalId,
+          goalId: existingTask.goalId,
           title: existingTask.title,
           notes: existingTask.notes,
           dueDate: nextStart,
@@ -960,6 +1125,7 @@ export function CalendarWorkspace() {
         await dataRepository.saveGoal({
           ownerUid: user.id,
           type: goalType,
+          timeframeLevel: inferGoalTimeframeLevel(selection.startDate, selection.endDate),
           title: draftTitle,
           description: draftDetails,
           projectedStartDate: selection.startDate,
@@ -967,28 +1133,14 @@ export function CalendarWorkspace() {
           timeframeLabel: "",
           isFocus: false,
         });
-      } else if (createType === "subgoal") {
-        if (!draftGoalId) {
-          throw new Error("Select a parent goal before creating a subgoal.");
-        }
-
-        await dataRepository.saveSubgoal({
-          ownerUid: user.id,
-          goalId: draftGoalId,
-          title: draftTitle,
-          description: draftDetails,
-          projectedStartDate: selection.startDate,
-          projectedEndDate: selection.endDate,
-          timeframeLabel: "",
-        });
       } else {
-        if (!draftSubgoalId) {
-          throw new Error("Select a parent subgoal before creating a task.");
+        if (!draftChildGoalId) {
+          throw new Error("Select a parent child goal before creating a task.");
         }
 
         await dataRepository.saveTask({
           ownerUid: user.id,
-          subgoalId: draftSubgoalId,
+          goalId: draftChildGoalId,
           title: draftTitle,
           notes: draftDetails,
           dueDate: selection.startDate,
@@ -1032,6 +1184,7 @@ export function CalendarWorkspace() {
           goalId: existingGoal.id,
           ownerUid: user.id,
           type: editGoalType,
+          timeframeLevel: existingGoal.timeframeLevel,
           title: normalizedTitle,
           description: editDetails,
           projectedStartDate: existingGoal.projectedStartDate,
@@ -1044,30 +1197,30 @@ export function CalendarWorkspace() {
         if (updatedGoal.status !== editStatus) {
           await dataRepository.updateGoalStatus(user.id, updatedGoal.id, editStatus);
         }
-      } else if (selectedEventRef.kind === "subgoal") {
-        const existingSubgoal = subgoals.find((subgoal) => subgoal.id === selectedEventRef.id);
-        if (!existingSubgoal) {
-          throw new Error("The selected subgoal no longer exists.");
+      } else if (selectedEventRef.kind === "childGoal") {
+        const existingChildGoal = childGoals.find((childGoal) => childGoal.id === selectedEventRef.id);
+        if (!existingChildGoal) {
+          throw new Error("The selected child goal no longer exists.");
         }
 
         if (!editParentGoalId) {
-          throw new Error("Select a parent goal for this subgoal.");
+          throw new Error("Select a parent goal for this child goal.");
         }
 
-        const updatedSubgoal = await dataRepository.saveSubgoal({
-          subgoalId: existingSubgoal.id,
+        const updatedChildGoal = await dataRepository.saveChildGoal({
+          childGoalId: existingChildGoal.id,
           ownerUid: user.id,
           goalId: editParentGoalId,
           title: normalizedTitle,
           description: editDetails,
-          projectedStartDate: existingSubgoal.projectedStartDate,
-          projectedEndDate: existingSubgoal.projectedEndDate,
-          timeframeLabel: existingSubgoal.timeframe === "Ongoing" ? "" : existingSubgoal.timeframe,
-          existingSubgoal,
+          projectedStartDate: existingChildGoal.projectedStartDate,
+          projectedEndDate: existingChildGoal.projectedEndDate,
+          timeframeLabel: existingChildGoal.timeframe === "Ongoing" ? "" : existingChildGoal.timeframe,
+          existingChildGoal,
         });
 
-        if (updatedSubgoal.status !== editStatus) {
-          await dataRepository.updateSubgoalStatus(user.id, updatedSubgoal.id, editStatus);
+        if (updatedChildGoal.status !== editStatus) {
+          await dataRepository.updateChildGoalStatus(user.id, updatedChildGoal.id, editStatus);
         }
       } else {
         const existingTask = tasks.find((task) => task.id === selectedEventRef.id);
@@ -1075,14 +1228,14 @@ export function CalendarWorkspace() {
           throw new Error("The selected task no longer exists.");
         }
 
-        if (!editParentSubgoalId) {
-          throw new Error("Select a parent subgoal for this task.");
+        if (!editParentChildGoalId) {
+          throw new Error("Select a parent child goal for this task.");
         }
 
         const updatedTask = await dataRepository.saveTask({
           taskId: existingTask.id,
           ownerUid: user.id,
-          subgoalId: editParentSubgoalId,
+          goalId: editParentChildGoalId,
           title: normalizedTitle,
           notes: editDetails,
           dueDate: existingTask.dueDate,
@@ -1109,15 +1262,15 @@ export function CalendarWorkspace() {
     setEditDetails("");
     setEditStatus("not_started");
     setEditParentGoalId("");
-    setEditParentSubgoalId("");
+    setEditParentChildGoalId("");
     setIsEditModalOpen(false);
   }
 
   const selectedEventLabel = selectedEventRef
     ? selectedEventRef.kind === "goal"
       ? "Goal"
-      : selectedEventRef.kind === "subgoal"
-        ? "Subgoal"
+      : selectedEventRef.kind === "childGoal"
+        ? "Child goal"
         : "Task"
     : null;
 
@@ -1162,7 +1315,7 @@ export function CalendarWorkspace() {
             className="text-[11px] font-semibold uppercase tracking-wide"
             style={{ color: "var(--pdp-text-muted)" }}
           >
-            {eventPreview.kind === "goal" ? "Goal" : eventPreview.kind === "subgoal" ? "Sub-goal" : "Task"}
+            {eventPreview.kind === "goal" ? "Goal" : eventPreview.kind === "childGoal" ? "Child goal" : "Task"}
           </p>
           <p className="mt-1 text-sm font-semibold" style={{ color: "var(--pdp-text-strong)" }}>
             {eventPreview.title}
@@ -1206,11 +1359,11 @@ export function CalendarWorkspace() {
               className="self-center sm:hidden"
               label="Calendar help"
             >
-              Select dates to create goals/subgoals/tasks, drag events to reschedule, and inspect hierarchy links directly in the calendar.
+              Select dates to create goals/tasks, drag events to reschedule, and inspect hierarchy links directly in the calendar.
             </InfoPopover>
           </div>
           <p className="mt-2 hidden max-w-3xl text-sm leading-6 text-slate-700 sm:block">
-            Select dates to create goals/subgoals/tasks, drag events to reschedule, and inspect hierarchy links directly in the calendar.
+            Select dates to create goals/tasks, drag events to reschedule, and inspect hierarchy links directly in the calendar.
           </p>
         </div>
         {isRefreshing || isSaving ? (
@@ -1244,14 +1397,6 @@ export function CalendarWorkspace() {
                   <label className="inline-flex items-center gap-2 text-xs text-slate-700">
                     <input type="checkbox" checked={showGoals} onChange={(event) => setShowGoals(event.target.checked)} />
                     Goals
-                  </label>
-                  <label className="inline-flex items-center gap-2 text-xs text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={showSubgoals}
-                      onChange={(event) => setShowSubgoals(event.target.checked)}
-                    />
-                    Subgoals
                   </label>
                   <label className="inline-flex items-center gap-2 text-xs text-slate-700">
                     <input type="checkbox" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} />
@@ -1291,12 +1436,26 @@ export function CalendarWorkspace() {
                     Interaction density
                     <button
                       type="button"
-                      onClick={() => setIsTouchFriendly((current) => !current)}
+                      onClick={() => {
+                        const nextPreference: CalendarDensityPreference = isTouchFriendly ? "compact" : "comfortable";
+                        setDensityPreference(nextPreference);
+                        setIsTouchFriendly(nextPreference === "comfortable");
+                      }}
                       className="pdp-btn-secondary mt-1 w-full rounded-lg px-2 py-2 text-xs font-medium"
                     >
                       {isTouchFriendly ? "Comfortable taps enabled" : "Compact controls"}
                     </button>
                   </label>
+                </div>
+
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={resetCalendarFilters}
+                    className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                  >
+                    Reset filters
+                  </button>
                 </div>
               </>
             ) : null}
@@ -1305,12 +1464,13 @@ export function CalendarWorkspace() {
           <div className="pdp-calendar">
               <FullCalendar
                 plugins={[dayGridPlugin, interactionPlugin, listPlugin]}
-                initialView="dayGridMonth"
+                initialView={calendarViewPreference}
                 height="auto"
                 headerToolbar={calendarToolbar}
                 editable
                 selectable
                 selectMirror
+                datesSet={handleDatesSet}
                 dayMaxEventRows={isMobileCalendar ? 2 : 4}
                 dayMaxEvents={isMobileCalendar ? 2 : false}
                 fixedWeekCount={false}
@@ -1424,10 +1584,10 @@ export function CalendarWorkspace() {
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span
-                    className="pdp-calendar-event-dot-marker pdp-calendar-event-dot-marker-subgoal"
-                    style={{ backgroundColor: eventColors.subgoalBackground }}
+                    className="pdp-calendar-event-dot-marker pdp-calendar-event-dot-marker-goal"
+                    style={{ backgroundColor: eventColors.goalPersonalBackground }}
                   />
-                  Sub-goal
+                  Goal child
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span
@@ -1441,7 +1601,7 @@ export function CalendarWorkspace() {
           ) : (
             <div className="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 sm:grid-cols-3">
               <p><span className="font-semibold text-blue-700">G</span> Goal range events</p>
-              <p><span className="font-semibold text-amber-600">SG</span> Subgoal child events</p>
+              <p><span className="font-semibold text-amber-600">H</span> Goal hierarchy links</p>
               <p><span className="font-semibold text-emerald-600">T</span> Task due-date markers</p>
             </div>
           )}
@@ -1486,7 +1646,6 @@ export function CalendarWorkspace() {
                   className="pdp-control mt-1"
                 >
                   <option value="goal">Goal</option>
-                  <option value="subgoal">Subgoal</option>
                   <option value="task">Task</option>
                 </select>
               </label>
@@ -1505,36 +1664,18 @@ export function CalendarWorkspace() {
                 </label>
               ) : null}
 
-              {createType === "subgoal" ? (
-                <label className="block text-sm text-slate-700">
-                  Parent goal
-                  <select
-                    value={draftGoalId}
-                    onChange={(event) => setDraftGoalId(event.target.value)}
-                    className="pdp-control mt-1"
-                  >
-                    <option value="">Select goal</option>
-                    {goals.map((goal) => (
-                      <option key={goal.id} value={goal.id}>
-                        {goal.title}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-
               {createType === "task" ? (
                 <label className="block text-sm text-slate-700">
-                  Parent subgoal
+                  Parent child goal
                   <select
-                    value={draftSubgoalId}
-                    onChange={(event) => setDraftSubgoalId(event.target.value)}
+                    value={draftChildGoalId}
+                    onChange={(event) => setDraftChildGoalId(event.target.value)}
                     className="pdp-control mt-1"
                   >
-                    <option value="">Select subgoal</option>
-                    {subgoals.map((subgoal) => (
-                      <option key={subgoal.id} value={subgoal.id}>
-                        {subgoal.title}
+                    <option value="">Select child goal</option>
+                    {childGoals.map((childGoal) => (
+                      <option key={childGoal.id} value={childGoal.id}>
+                        {childGoal.title}
                       </option>
                     ))}
                   </select>
@@ -1633,7 +1774,7 @@ export function CalendarWorkspace() {
                     </label>
                   ) : null}
 
-                  {selectedEventRef.kind === "subgoal" ? (
+                  {selectedEventRef.kind === "childGoal" ? (
                     <label className="block text-sm text-slate-700">
                       Parent goal
                       <select
@@ -1653,16 +1794,16 @@ export function CalendarWorkspace() {
 
                   {selectedEventRef.kind === "task" ? (
                     <label className="block text-sm text-slate-700">
-                      Parent subgoal
+                      Parent child goal
                       <select
-                        value={editParentSubgoalId}
-                        onChange={(event) => setEditParentSubgoalId(event.target.value)}
+                        value={editParentChildGoalId}
+                        onChange={(event) => setEditParentChildGoalId(event.target.value)}
                         className="pdp-control mt-1"
                       >
-                        <option value="">Select subgoal</option>
-                        {subgoals.map((subgoal) => (
-                          <option key={subgoal.id} value={subgoal.id}>
-                            {subgoal.title}
+                        <option value="">Select child goal</option>
+                        {childGoals.map((childGoal) => (
+                          <option key={childGoal.id} value={childGoal.id}>
+                            {childGoal.title}
                           </option>
                         ))}
                       </select>
@@ -1744,6 +1885,31 @@ function getErrorMessage(error: unknown, fallbackMessage: string) {
   return fallbackMessage;
 }
 
+function inferGoalTimeframeLevel(startDate: string, endDate: string): GoalTimeframeLevel {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const diffMs = Math.abs(end.getTime() - start.getTime());
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+
+  if (diffDays <= 7) {
+    return "weekly";
+  }
+
+  if (diffDays <= 31) {
+    return "monthly";
+  }
+
+  if (diffDays <= 120) {
+    return "quarterly";
+  }
+
+  if (diffDays <= 370) {
+    return "annual";
+  }
+
+  return "vision_5y";
+}
+
 function statusChipClass(status: ItemStatus) {
   if (status === "done") {
     return "pdp-status-done";
@@ -1761,7 +1927,7 @@ function agendaLabel(kind: CalendarItemKind) {
     return "G";
   }
 
-  if (kind === "subgoal") {
+  if (kind === "childGoal") {
     return "SG";
   }
 
@@ -1771,7 +1937,6 @@ function agendaLabel(kind: CalendarItemKind) {
 function readCalendarFilterPreferences(): CalendarFilterPreferences {
   const defaults: CalendarFilterPreferences = {
     showGoals: true,
-    showSubgoals: true,
     showTasks: true,
     statusFilter: "all",
     scopeGoalType: "all",
@@ -1791,7 +1956,6 @@ function readCalendarFilterPreferences(): CalendarFilterPreferences {
 
     return {
       showGoals: typeof parsed.showGoals === "boolean" ? parsed.showGoals : defaults.showGoals,
-      showSubgoals: typeof parsed.showSubgoals === "boolean" ? parsed.showSubgoals : defaults.showSubgoals,
       showTasks: typeof parsed.showTasks === "boolean" ? parsed.showTasks : defaults.showTasks,
       statusFilter:
         parsed.statusFilter === "all" || parsed.statusFilter === "not_started" || parsed.statusFilter === "in_progress" || parsed.statusFilter === "done"
@@ -1807,6 +1971,92 @@ function readCalendarFilterPreferences(): CalendarFilterPreferences {
   }
 }
 
+function readCalendarDensityPreference(): CalendarDensityPreference | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const stored = window.localStorage.getItem(CALENDAR_DENSITY_PREFERENCE_STORAGE_KEY);
+  if (stored === "compact" || stored === "comfortable") {
+    return stored;
+  }
+
+  return null;
+}
+
+function readCalendarViewPreference(): CalendarViewPreference {
+  if (typeof window === "undefined") {
+    return "dayGridMonth";
+  }
+
+  const stored = window.localStorage.getItem(CALENDAR_VIEW_PREFERENCE_STORAGE_KEY);
+  if (stored === "dayGridMonth" || stored === "dayGridWeek" || stored === "dayGridDay" || stored === "listWeek") {
+    return stored;
+  }
+
+  return "dayGridMonth";
+}
+
+function readCalendarCreateTypePreference(): CreateType {
+  if (typeof window === "undefined") {
+    return "task";
+  }
+
+  const stored = window.localStorage.getItem(CALENDAR_CREATE_TYPE_STORAGE_KEY);
+  if (stored === "goal" || stored === "task") {
+    return stored;
+  }
+
+  return "task";
+}
+
+function readCalendarGoalTypePreference(): GoalType {
+  if (typeof window === "undefined") {
+    return "professional";
+  }
+
+  const stored = window.localStorage.getItem(CALENDAR_GOAL_TYPE_STORAGE_KEY);
+  if (stored === "professional" || stored === "personal") {
+    return stored;
+  }
+
+  return "professional";
+}
+
+function readCalendarParentChildGoalPreference(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.localStorage.getItem(CALENDAR_PARENT_CHILD_GOAL_STORAGE_KEY) ?? "";
+}
+
+function readCalendarFilterPanelOpenPreference(): boolean {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  const stored = window.localStorage.getItem(CALENDAR_FILTER_PANEL_OPEN_STORAGE_KEY);
+  if (stored === "false") {
+    return false;
+  }
+
+  return true;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tagName = target.tagName.toLowerCase();
+  if (tagName === "input" || tagName === "textarea" || tagName === "select") {
+    return true;
+  }
+
+  return target.isContentEditable;
+}
+
 function getCalendarEventColors() {
   if (typeof document === "undefined") {
     return {
@@ -1814,8 +2064,8 @@ function getCalendarEventColors() {
       goalProfessionalBorder: "#1d4ed8",
       goalPersonalBackground: "#db2777",
       goalPersonalBorder: "#be185d",
-      subgoalBackground: "#f59e0b",
-      subgoalBorder: "#d97706",
+      childGoalBackground: "#f59e0b",
+      childGoalBorder: "#d97706",
       taskBackground: "#059669",
       taskBorder: "#047857",
     };
@@ -1827,8 +2077,8 @@ function getCalendarEventColors() {
     goalProfessionalBorder: readCssColor(computed, "--pdp-event-goal-professional-border", "#1d4ed8"),
     goalPersonalBackground: readCssColor(computed, "--pdp-event-goal-personal-bg", "#db2777"),
     goalPersonalBorder: readCssColor(computed, "--pdp-event-goal-personal-border", "#be185d"),
-    subgoalBackground: readCssColor(computed, "--pdp-event-subgoal-bg", "#f59e0b"),
-    subgoalBorder: readCssColor(computed, "--pdp-event-subgoal-border", "#d97706"),
+    childGoalBackground: readCssColor(computed, "--pdp-event-childGoal-bg", "#f59e0b"),
+    childGoalBorder: readCssColor(computed, "--pdp-event-childGoal-border", "#d97706"),
     taskBackground: readCssColor(computed, "--pdp-event-task-bg", "#059669"),
     taskBorder: readCssColor(computed, "--pdp-event-task-border", "#047857"),
   };

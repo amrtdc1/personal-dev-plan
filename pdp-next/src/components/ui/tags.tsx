@@ -2,19 +2,19 @@
 
 import type { ReactNode } from "react";
 
-type ItemKind = "goal" | "subgoal" | "task";
+type ItemKind = "goal" | "childGoal" | "task";
 
 const KIND_LABEL: Record<ItemKind, string> = {
   goal: "Goal",
-  subgoal: "Sub-goal",
+  childGoal: "Child goal",
   task: "Task",
 };
 
 // Mirrors the legacy app's `recently-updated-type` palette:
-//   goal -> blue, subgoal -> purple, task -> green.
+//   goal -> blue, child goal -> purple, task -> green.
 const KIND_CLASSES: Record<ItemKind, string> = {
   goal: "bg-blue-100 text-blue-700 border border-blue-200",
-  subgoal: "bg-purple-100 text-purple-700 border border-purple-200",
+  childGoal: "bg-purple-100 text-purple-700 border border-purple-200",
   task: "bg-emerald-100 text-emerald-700 border border-emerald-200",
 };
 

@@ -1,14 +1,14 @@
-import type { Goal, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, JournalEntry, ChildGoal, Task } from "@/lib/domain/types";
 import {
   assertOwnedGoal,
   assertOwnedJournalEntry,
-  assertOwnedSubgoal,
+  assertOwnedChildGoal,
   assertOwnedTask,
   validateGoalWrite,
   validateJournalEntryWrite,
   validateReorderIds,
   validateStatusUpdate,
-  validateSubgoalWrite,
+  validateChildGoalWrite,
   validateTaskWrite,
   validateUserProfileWrite,
 } from "@/lib/data/validation";
@@ -18,7 +18,7 @@ describe("data validation helpers", () => {
     const result = validateGoalWrite({
       ownerUid: "user-1",
       type: "professional",
-      horizon: "short_term",
+      timeframeLevel: "weekly",
       title: "  Goal title  ",
       description: "  Goal description  ",
       projectedStartDate: "2026-05-01",
@@ -32,27 +32,58 @@ describe("data validation helpers", () => {
     });
   });
 
-  it("rejects unsupported goal horizons", () => {
+  it("requires goal timeframe levels", () => {
     expect(() =>
       validateGoalWrite({
         ownerUid: "user-1",
         type: "professional",
-        horizon: "monthly" as never,
         title: "Goal title",
         description: "Goal description",
         projectedStartDate: null,
         projectedEndDate: null,
         isFocus: false,
       }),
-    ).toThrow("Goal horizon is not supported.");
+    ).toThrow("Goal timeframe level is required.");
+  });
+
+  it("rejects unsupported goal timeframe levels", () => {
+    expect(() =>
+      validateGoalWrite({
+        ownerUid: "user-1",
+        type: "professional",
+        timeframeLevel: "biweekly" as never,
+        title: "Goal title",
+        description: "Goal description",
+        projectedStartDate: null,
+        projectedEndDate: null,
+        isFocus: false,
+      }),
+    ).toThrow("Goal timeframe level is not supported.");
+  });
+
+  it("rejects goal self-parent links", () => {
+    expect(() =>
+      validateGoalWrite({
+        goalId: "goal-1",
+        ownerUid: "user-1",
+        type: "professional",
+        parentGoalId: "goal-1",
+        timeframeLevel: "weekly",
+        title: "Goal title",
+        description: "Goal description",
+        projectedStartDate: null,
+        projectedEndDate: null,
+        isFocus: false,
+      }),
+    ).toThrow("Goal cannot be its own parent.");
   });
 
   it("rejects invalid projected date ranges", () => {
     expect(() =>
-      validateSubgoalWrite({
+      validateChildGoalWrite({
         ownerUid: "user-1",
         goalId: "goal-1",
-        title: "Subgoal",
+        title: "ChildGoal",
         description: "Desc",
         projectedStartDate: "2026-06-10",
         projectedEndDate: "2026-06-01",
@@ -64,7 +95,7 @@ describe("data validation helpers", () => {
     expect(() =>
       validateTaskWrite({
         ownerUid: "user-1",
-        subgoalId: "subgoal-1",
+        goalId: "childGoal-1",
         title: "   ",
         notes: "Notes",
         dueDate: null,
@@ -73,7 +104,7 @@ describe("data validation helpers", () => {
 
     const result = validateTaskWrite({
       ownerUid: "user-1",
-      subgoalId: "subgoal-1",
+      goalId: "childGoal-1",
       title: "  Task title  ",
       notes: "  Task notes  ",
       dueDate: null,
@@ -133,17 +164,17 @@ describe("data validation helpers", () => {
 
   it("enforces owner access for supported entities", () => {
     const goal = { ownerUid: "user-1" } as Goal;
-    const subgoal = { ownerUid: "user-1" } as Subgoal;
+    const childGoal = { ownerUid: "user-1" } as ChildGoal;
     const task = { ownerUid: "user-1" } as Task;
     const entry = { ownerUid: "user-1" } as JournalEntry;
 
     expect(assertOwnedGoal(goal, "user-1")).toBe(goal);
-    expect(assertOwnedSubgoal(subgoal, "user-1")).toBe(subgoal);
+    expect(assertOwnedChildGoal(childGoal, "user-1")).toBe(childGoal);
     expect(assertOwnedTask(task, "user-1")).toBe(task);
     expect(assertOwnedJournalEntry(entry, "user-1")).toBe(entry);
 
     expect(() => assertOwnedGoal(goal, "user-2")).toThrow("Goal does not belong to this user.");
-    expect(() => assertOwnedSubgoal(null, "user-1")).toThrow("Subgoal was not found for this user.");
+    expect(() => assertOwnedChildGoal(null, "user-1")).toThrow("ChildGoal was not found for this user.");
     expect(() => assertOwnedTask(task, "user-2")).toThrow("Task does not belong to this user.");
     expect(() => assertOwnedJournalEntry(null, "user-1")).toThrow("Journal entry was not found for this user.");
   });

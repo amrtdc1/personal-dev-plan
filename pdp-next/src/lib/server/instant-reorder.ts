@@ -1,4 +1,4 @@
-import type { Goal, GoalType, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, GoalType, Task } from "@/lib/domain/types";
 import { validateReorderIds } from "@/lib/data/validation";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
@@ -8,13 +8,8 @@ type ReorderGoalsPayload = {
   orderedGoalIds?: string[];
 };
 
-type ReorderSubgoalsPayload = {
-  goalId?: string;
-  orderedSubgoalIds?: string[];
-};
-
 type ReorderTasksPayload = {
-  subgoalId?: string;
+  goalId?: string;
   orderedTaskIds?: string[];
 };
 
@@ -32,30 +27,16 @@ export async function parseGoalReorderPayload(request: Request) {
   };
 }
 
-export async function parseSubgoalReorderPayload(request: Request) {
-  const payload = await parseJsonPayload<ReorderSubgoalsPayload>(request);
+export async function parseTaskReorderPayload(request: Request) {
+  const payload = await parseJsonPayload<ReorderTasksPayload>(request);
 
   if (!payload.goalId) {
     throw new InstantRouteBadRequestError("Goal id is required.");
   }
 
-  const orderedSubgoalIds = parseOrderedIds(payload.orderedSubgoalIds, "orderedSubgoalIds");
-  return {
-    goalId: payload.goalId,
-    orderedSubgoalIds,
-  };
-}
-
-export async function parseTaskReorderPayload(request: Request) {
-  const payload = await parseJsonPayload<ReorderTasksPayload>(request);
-
-  if (!payload.subgoalId) {
-    throw new InstantRouteBadRequestError("Subgoal id is required.");
-  }
-
   const orderedTaskIds = parseOrderedIds(payload.orderedTaskIds, "orderedTaskIds");
   return {
-    subgoalId: payload.subgoalId,
+    goalId: payload.goalId,
     orderedTaskIds,
   };
 }
@@ -87,41 +68,14 @@ export async function reorderGoals(ownerUid: string, type: GoalType, orderedGoal
   });
 }
 
-export async function reorderSubgoals(ownerUid: string, goalId: string, orderedSubgoalIds: string[]) {
-  const instantAdmin = getInstantAdmin();
-  const { subgoals = [] } = await instantAdmin.query({
-    subgoals: {
-      $: {
-        where: {
-          ownerUid,
-          goalId,
-        },
-      },
-    },
-  });
-
-  const activeSubgoals = (subgoals as Subgoal[]).filter((subgoal) => subgoal.deletedAt === null);
-  validateReorderIds(activeSubgoals, orderedSubgoalIds, "subgoal");
-
-  return applyReorder({
-    entities: activeSubgoals,
-    orderedIds: orderedSubgoalIds,
-    updateMutation: (subgoalId, orderIndex, updatedAt) =>
-      instantAdmin.tx.subgoals[subgoalId].update({
-        orderIndex,
-        updatedAt,
-      }),
-  });
-}
-
-export async function reorderTasks(ownerUid: string, subgoalId: string, orderedTaskIds: string[]) {
+export async function reorderTasks(ownerUid: string, goalId: string, orderedTaskIds: string[]) {
   const instantAdmin = getInstantAdmin();
   const { tasks = [] } = await instantAdmin.query({
     tasks: {
       $: {
         where: {
           ownerUid,
-          subgoalId,
+          goalId,
         },
       },
     },

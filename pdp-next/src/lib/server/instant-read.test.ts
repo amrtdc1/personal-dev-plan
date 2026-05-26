@@ -9,7 +9,7 @@ vi.mock("@/lib/instantdb/admin", () => ({
   }),
 }));
 
-import { listOwnedGoals } from "@/lib/server/instant-read";
+import { listOwnedGoals, listOwnedTasks } from "@/lib/server/instant-read";
 
 describe("instant-read owner-scoped reads", () => {
   beforeEach(() => {
@@ -51,5 +51,33 @@ describe("instant-read owner-scoped reads", () => {
 
     expect(activeOnly.map((goal) => goal.id)).toEqual(["goal-active"]);
     expect(includingDeleted.map((goal) => goal.id)).toEqual(["goal-deleted", "goal-active"]);
+  });
+
+  it("normalizes legacy tasks without unplanned to false", async () => {
+    queryMock.mockResolvedValue({
+      tasks: [
+        {
+          id: "task-legacy",
+          ownerUid: "user-1",
+          goalId: "childGoal-1",
+          title: "Legacy task",
+          notes: "",
+          dueDate: null,
+          status: "not_started",
+          percentComplete: 0,
+          orderIndex: 0,
+          createdAt: "2026-05-01T00:00:00.000Z",
+          updatedAt: "2026-05-01T00:00:00.000Z",
+          deletedAt: null,
+          deletedBy: null,
+          restoreUntil: null,
+          purgeAt: null,
+        },
+      ],
+    });
+
+    const tasks = await listOwnedTasks("user-1", { includeDeleted: false, goalId: "childGoal-1" });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.unplanned).toBe(false);
   });
 });

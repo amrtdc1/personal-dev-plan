@@ -1,5 +1,5 @@
 export type GoalType = "professional" | "personal";
-export type GoalHorizon = "long_term" | "medium_term" | "short_term";
+export type GoalTimeframeLevel = "vision_5y" | "annual" | "quarterly" | "monthly" | "weekly";
 export type ItemStatus = "not_started" | "in_progress" | "done";
 export type HabitCadence = "daily" | "weekly";
 export type HabitState = "active" | "paused" | "archived";
@@ -15,7 +15,8 @@ export type Goal = SoftDeleteFields & {
   id: string;
   ownerUid: string;
   type: GoalType;
-  horizon?: GoalHorizon;
+  parentGoalId?: string | null;
+  timeframeLevel: GoalTimeframeLevel;
   title: string;
   description: string;
   timeframe: string;
@@ -32,7 +33,7 @@ export type Goal = SoftDeleteFields & {
   updatedAt: string;
 };
 
-export type Subgoal = SoftDeleteFields & {
+export type ChildGoal = SoftDeleteFields & {
   id: string;
   ownerUid: string;
   goalId: string;
@@ -53,10 +54,11 @@ export type Subgoal = SoftDeleteFields & {
 export type Task = SoftDeleteFields & {
   id: string;
   ownerUid: string;
-  subgoalId: string;
+  goalId: string;
   title: string;
   notes: string;
   dueDate: string | null;
+  unplanned?: boolean;
   status: ItemStatus;
   percentComplete: number;
   orderIndex: number;
@@ -117,6 +119,5 @@ export type UserProfile = {
 
 export type GoalAggregate = {
   goal: Goal;
-  subgoals: Subgoal[];
-  tasksBySubgoalId: Record<string, Task[]>;
+  tasksByGoalId: Record<string, Task[]>;
 };

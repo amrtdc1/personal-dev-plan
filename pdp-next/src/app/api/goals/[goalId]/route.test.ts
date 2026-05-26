@@ -48,10 +48,10 @@ describe("api/goals/[goalId] route", () => {
     permanentlyDeleteGoalMock.mockReset();
   });
 
-  it("updates owned goal and keeps horizon payload", async () => {
+  it("updates owned goal and keeps timeframe payload", async () => {
     const payload = {
       type: "professional",
-      horizon: "long_term",
+      timeframeLevel: "annual",
       title: "Career development",
       description: "Build capability over multiple quarters.",
       projectedStartDate: null,

@@ -2,7 +2,6 @@ import {
   parseHabitCheckinWritePayload,
   parseGoalWritePayload,
   parseHabitWritePayload,
-  parseSubgoalWritePayload,
   parseTaskWritePayload,
 } from "@/lib/server/instant-write-params";
 
@@ -21,7 +20,7 @@ describe("instant write payload parsing", () => {
     const payload = await parseGoalWritePayload(
       buildRequest({
         type: "professional",
-        horizon: "short_term",
+        timeframeLevel: "weekly",
         title: "Ship checkpoint",
         description: "Complete protected route coverage",
         projectedStartDate: "",
@@ -33,7 +32,8 @@ describe("instant write payload parsing", () => {
 
     expect(payload).toEqual({
       type: "professional",
-      horizon: "short_term",
+      parentGoalId: null,
+      timeframeLevel: "weekly",
       title: "Ship checkpoint",
       description: "Complete protected route coverage",
       projectedStartDate: null,
@@ -48,6 +48,7 @@ describe("instant write payload parsing", () => {
       parseGoalWritePayload(
         buildRequest({
           type: "professional",
+          timeframeLevel: "weekly",
           title: "Ship checkpoint",
           description: "Complete protected route coverage",
         }),
@@ -55,80 +56,99 @@ describe("instant write payload parsing", () => {
     ).rejects.toThrow("Goal focus flag is required.");
   });
 
-  it("defaults goal horizon when omitted", async () => {
-    const payload = await parseGoalWritePayload(
-      buildRequest({
-        type: "professional",
-        title: "Ship checkpoint",
-        description: "Complete protected route coverage",
-        isFocus: true,
-      }),
-    );
-
-    expect(payload.horizon).toBe("medium_term");
-  });
-
-  it("rejects unsupported goal horizon values", async () => {
+  it("requires goal timeframe level when omitted", async () => {
     await expect(
       parseGoalWritePayload(
         buildRequest({
           type: "professional",
-          horizon: "month_to_month",
           title: "Ship checkpoint",
           description: "Complete protected route coverage",
           isFocus: true,
         }),
       ),
-    ).rejects.toThrow("Goal horizon is not supported.");
+    ).rejects.toThrow("Goal timeframe level is required.");
   });
 
-  it("rejects subgoal payload when goal id is missing", async () => {
-    await expect(
-      parseSubgoalWritePayload(
-        buildRequest({
-          title: "Write docs",
-          description: "Add README section",
-        }),
-      ),
-    ).rejects.toThrow("Goal id is required.");
+  it("parses optional goal parent id and timeframe level", async () => {
+    const payload = await parseGoalWritePayload(
+      buildRequest({
+        type: "professional",
+        parentGoalId: " goal-1 ",
+        timeframeLevel: "annual",
+        title: "Grow strategic scope",
+        description: "Extend planning horizon",
+        isFocus: false,
+      }),
+    );
+
+    expect(payload.parentGoalId).toBe("goal-1");
+    expect(payload.timeframeLevel).toBe("annual");
   });
 
-  it("rejects subgoal payload when optional date field is not a string", async () => {
+  it("rejects unsupported goal timeframe level values", async () => {
     await expect(
-      parseSubgoalWritePayload(
+      parseGoalWritePayload(
         buildRequest({
-          goalId: "goal-1",
-          title: "Write docs",
-          description: "Add README section",
-          projectedStartDate: 123,
+          type: "professional",
+          timeframeLevel: "biweekly",
+          title: "Ship checkpoint",
+          description: "Complete protected route coverage",
+          isFocus: true,
         }),
       ),
-    ).rejects.toThrow("Optional date fields must be strings when provided.");
+    ).rejects.toThrow("Goal timeframe level is not supported.");
   });
 
   it("parses valid task payload", async () => {
     const payload = await parseTaskWritePayload(
       buildRequest({
-        subgoalId: "subgoal-1",
+        goalId: "goal-1",
         title: "Record smoke results",
         notes: "Paste URL and status",
         dueDate: "2026-05-30",
+        unplanned: true,
       }),
     );
 
     expect(payload).toEqual({
-      subgoalId: "subgoal-1",
+      goalId: "goal-1",
       title: "Record smoke results",
       notes: "Paste URL and status",
       dueDate: "2026-05-30",
+      unplanned: true,
     });
+  });
+
+  it("defaults task unplanned flag to false when omitted", async () => {
+    const payload = await parseTaskWritePayload(
+      buildRequest({
+        goalId: "goal-1",
+        title: "Record smoke results",
+        notes: "Paste URL and status",
+      }),
+    );
+
+    expect(payload.unplanned).toBe(false);
+  });
+
+  it("rejects task payload when unplanned is not a boolean", async () => {
+    await expect(
+      parseTaskWritePayload(
+        buildRequest({
+          goalId: "goal-1",
+          title: "Record smoke results",
+          notes: "Paste URL and status",
+          unplanned: "yes",
+        }),
+      ),
+    ).rejects.toThrow("Task unplanned flag must be a boolean when provided.");
   });
 
   it("rejects task payload when notes are missing", async () => {
     await expect(
       parseTaskWritePayload(
         buildRequest({
-          subgoalId: "subgoal-1",
+          goalId: "goal-1",
           title: "Record smoke results",
         }),
       ),

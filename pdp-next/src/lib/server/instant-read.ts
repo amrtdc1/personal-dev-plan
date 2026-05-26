@@ -1,11 +1,10 @@
-import type { Goal, GoalType, Habit, HabitCheckin, JournalEntry, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, GoalType, Habit, HabitCheckin, JournalEntry, Task } from "@/lib/domain/types";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 export {
   parseGoalType,
   parseIncludeDeleted,
   parseRequiredGoalId,
   parseRequiredHabitId,
-  parseRequiredSubgoalId,
 } from "@/lib/server/instant-read-params";
 
 export async function listOwnedGoals(ownerUid: string, input: { includeDeleted: boolean; type: GoalType | null }) {
@@ -29,10 +28,10 @@ export async function listOwnedGoals(ownerUid: string, input: { includeDeleted: 
   return filteredGoals.sort(compareByOrderIndexThenUpdatedAtDesc);
 }
 
-export async function listOwnedSubgoals(ownerUid: string, input: { includeDeleted: boolean; goalId: string }) {
+export async function listOwnedTasks(ownerUid: string, input: { includeDeleted: boolean; goalId: string }) {
   const instantAdmin = getInstantAdmin();
-  const { subgoals = [] } = await instantAdmin.query({
-    subgoals: {
+  const { tasks = [] } = await instantAdmin.query({
+    tasks: {
       $: {
         where: {
           ownerUid,
@@ -42,24 +41,7 @@ export async function listOwnedSubgoals(ownerUid: string, input: { includeDelete
     },
   });
 
-  const filteredSubgoals = filterDeleted(subgoals as Subgoal[], input.includeDeleted);
-  return filteredSubgoals.sort(compareByOrderIndexThenUpdatedAtDesc);
-}
-
-export async function listOwnedTasks(ownerUid: string, input: { includeDeleted: boolean; subgoalId: string }) {
-  const instantAdmin = getInstantAdmin();
-  const { tasks = [] } = await instantAdmin.query({
-    tasks: {
-      $: {
-        where: {
-          ownerUid,
-          subgoalId: input.subgoalId,
-        },
-      },
-    },
-  });
-
-  const filteredTasks = filterDeleted(tasks as Task[], input.includeDeleted);
+  const filteredTasks = filterDeleted((tasks as Task[]).map(normalizeTaskDefaults), input.includeDeleted);
   return filteredTasks.sort(compareByOrderIndexThenUpdatedAtDesc);
 }
 
@@ -134,4 +116,11 @@ function compareByOrderIndexThenUpdatedAtDesc<TEntity extends { orderIndex: numb
 
 function compareByUpdatedAtDesc<TEntity extends { updatedAt: string; createdAt: string }>(left: TEntity, right: TEntity) {
   return right.updatedAt.localeCompare(left.updatedAt) || right.createdAt.localeCompare(left.createdAt);
+}
+
+function normalizeTaskDefaults(task: Task): Task {
+  return {
+    ...task,
+    unplanned: task.unplanned ?? false,
+  };
 }

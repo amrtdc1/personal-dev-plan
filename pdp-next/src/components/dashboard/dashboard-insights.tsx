@@ -3,23 +3,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
-import type { Goal, Habit, HabitCheckin, ItemStatus, Subgoal, Task } from "@/lib/domain/types";
+import type { Goal, Habit, HabitCheckin, ItemStatus, ChildGoal, Task } from "@/lib/domain/types";
 import { KindTag } from "@/components/ui/tags";
+import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
 
 type RecentlyUpdatedItem = {
   id: string;
-  kind: "goal" | "subgoal" | "task";
+  kind: "goal" | "childGoal" | "task";
   title: string;
   status: ItemStatus;
   updatedAt: string;
   parentTitle?: string;
 };
 
-type DashboardInsightsView = "today" | "review";
+type DashboardInsightsMode = "today" | "plan" | "review" | "risks" | "close_day";
 type TodayQueueSortMode = "urgent" | "quick_wins";
 
 const DUE_SOON_LOOKBACK_DAYS = 7;
 const DUE_SOON_LOOKAHEAD_DAYS = 10;
+const STALE_IN_PROGRESS_DAYS = 3;
+const PARENT_INACTIVITY_DAYS = 5;
 const DASHBOARD_INSIGHTS_VIEW_STORAGE_KEY = "pdp.dashboardInsightsView";
 const DASHBOARD_TODAY_QUEUE_SORT_STORAGE_KEY = "pdp.dashboardTodayQueueSort";
 const QUICK_ACTION_BUTTON_CLASS =
@@ -27,14 +30,12 @@ const QUICK_ACTION_BUTTON_CLASS =
 
 export function DashboardInsights({
   onOpenItem,
-  onOpenGoalsWorkspace,
 }: {
-  onOpenItem?: (kind: "goal" | "subgoal" | "task", id: string) => void;
-  onOpenGoalsWorkspace?: () => void;
+  onOpenItem?: (kind: "goal" | "childGoal" | "task", id: string) => void;
 } = {}) {
   const { isLoading, user, error } = db.useAuth();
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [subgoals, setSubgoals] = useState<Subgoal[]>([]);
+  const [childGoals, setChildGoals] = useState<ChildGoal[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [habitCheckinsByHabitId, setHabitCheckinsByHabitId] = useState<Record<string, HabitCheckin[]>>({});
@@ -42,6 +43,11 @@ export function DashboardInsights({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInFlightId, setActionInFlightId] = useState<string | null>(null);
+  const [closeDaySavedAt, setCloseDaySavedAt] = useState<string | null>(null);
+  const [closeDayWhatWentRight, setCloseDayWhatWentRight] = useState("");
+  const [closeDayWhatWentWrong, setCloseDayWhatWentWrong] = useState("");
+  const [closeDayWhatToAdjust, setCloseDayWhatToAdjust] = useState("");
+  const [closeDayAdditionalThoughts, setCloseDayAdditionalThoughts] = useState("");
   const [todayQueueSortMode, setTodayQueueSortMode] = useState<TodayQueueSortMode>(() => {
     if (typeof window === "undefined") {
       return "urgent";
@@ -50,13 +56,22 @@ export function DashboardInsights({
     const stored = window.localStorage.getItem(DASHBOARD_TODAY_QUEUE_SORT_STORAGE_KEY);
     return stored === "quick_wins" ? "quick_wins" : "urgent";
   });
-  const [viewMode, setViewMode] = useState<DashboardInsightsView>(() => {
+  const [dashboardMode, setDashboardMode] = useState<DashboardInsightsMode>(() => {
     if (typeof window === "undefined") {
       return "today";
     }
 
     const stored = window.localStorage.getItem(DASHBOARD_INSIGHTS_VIEW_STORAGE_KEY);
-    return stored === "review" ? "review" : "today";
+    if (
+      stored === "plan" ||
+      stored === "review" ||
+      stored === "risks" ||
+      stored === "close_day"
+    ) {
+      return stored;
+    }
+
+    return "today";
   });
 
   useEffect(() => {
@@ -64,8 +79,8 @@ export function DashboardInsights({
       return;
     }
 
-    window.localStorage.setItem(DASHBOARD_INSIGHTS_VIEW_STORAGE_KEY, viewMode);
-  }, [viewMode]);
+    window.localStorage.setItem(DASHBOARD_INSIGHTS_VIEW_STORAGE_KEY, dashboardMode);
+  }, [dashboardMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -95,13 +110,13 @@ export function DashboardInsights({
 
         const loadedGoals = [...professionalGoals, ...personalGoals].filter((goal) => !goal.deletedAt);
 
-        const subgoalGroups = await Promise.all(
-          loadedGoals.map((goal) => dataRepository.listSubgoals(currentUser.id, goal.id, { includeDeleted: true })),
+        const childGoalGroups = await Promise.all(
+          loadedGoals.map((goal) => dataRepository.listChildGoals(currentUser.id, goal.id, { includeDeleted: true })),
         );
-        const loadedSubgoals = subgoalGroups.flat().filter((subgoal) => !subgoal.deletedAt);
+        const loadedChildGoals = childGoalGroups.flat().filter((childGoal) => !childGoal.deletedAt);
 
         const taskGroups = await Promise.all(
-          loadedSubgoals.map((subgoal) => dataRepository.listTasks(currentUser.id, subgoal.id, { includeDeleted: true })),
+          loadedChildGoals.map((childGoal) => dataRepository.listTasks(currentUser.id, childGoal.id, { includeDeleted: true })),
         );
         const loadedTasks = taskGroups.flat().filter((task) => !task.deletedAt);
 
@@ -120,7 +135,7 @@ export function DashboardInsights({
 
         if (!cancelled) {
           setGoals(loadedGoals);
-          setSubgoals(loadedSubgoals);
+          setChildGoals(loadedChildGoals);
           setTasks(loadedTasks);
           setHabits(activeHabits);
           setHabitCheckinsByHabitId(checkinsByHabitId);
@@ -144,7 +159,7 @@ export function DashboardInsights({
   }, [user]);
 
   const goalMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
-  const subgoalMap = useMemo(() => new Map(subgoals.map((subgoal) => [subgoal.id, subgoal])), [subgoals]);
+  const childGoalMap = useMemo(() => new Map(childGoals.map((childGoal) => [childGoal.id, childGoal])), [childGoals]);
   const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const tasksDueToday = useMemo(
@@ -156,6 +171,118 @@ export function DashboardInsights({
     () => tasks.filter((task) => task.status === "done" && task.updatedAt.slice(0, 10) === todayIso).length,
     [tasks, todayIso],
   );
+
+  const completedTodayTasksAll = useMemo(
+    () => tasks.filter((task) => task.status === "done" && task.updatedAt.slice(0, 10) === todayIso),
+    [tasks, todayIso],
+  );
+
+  const plannedVsUnplannedToday = useMemo(() => {
+    let planned = 0;
+    let unplanned = 0;
+
+    for (const task of completedTodayTasksAll) {
+      if (task.unplanned) {
+        unplanned += 1;
+        continue;
+      }
+
+      const createdOn = task.createdAt.slice(0, 10);
+      const isPreplanned = createdOn < todayIso || (task.dueDate ? task.dueDate <= todayIso : false);
+
+      if (isPreplanned) {
+        planned += 1;
+      } else {
+        unplanned += 1;
+      }
+    }
+
+    return {
+      planned,
+      unplanned,
+    };
+  }, [completedTodayTasksAll, todayIso]);
+
+  const overdueTasks = useMemo(
+    () =>
+      tasks
+        .filter((task) => task.status !== "done" && Boolean(task.dueDate))
+        .filter((task) => {
+          const dueDate = parseDate(task.dueDate);
+          const today = parseDate(todayIso);
+          return Boolean(dueDate && today && dueDate < today);
+        })
+        .sort(compareTasksByDueDate),
+    [tasks, todayIso],
+  );
+
+  const dueThisWeekTasks = (() => {
+    const today = parseDate(todayIso);
+    if (!today) {
+      return [] as Task[];
+    }
+
+    const dueBy = new Date(today);
+    dueBy.setDate(today.getDate() + 6);
+
+    return tasks
+      .filter((task) => task.status !== "done" && Boolean(task.dueDate))
+      .filter((task) => {
+        const dueDate = parseDate(task.dueDate);
+        return Boolean(dueDate && dueDate >= today && dueDate <= dueBy);
+      })
+      .sort(compareTasksByDueDate)
+      .slice(0, 4);
+  })();
+
+  const staleInProgressTasks = (() => {
+    const today = parseDate(todayIso);
+    if (!today) {
+      return [] as Task[];
+    }
+
+    const staleCutoff = new Date(today);
+    staleCutoff.setDate(today.getDate() - STALE_IN_PROGRESS_DAYS);
+
+    return tasks
+      .filter((task) => task.status === "in_progress")
+      .filter((task) => {
+        const updatedAt = new Date(task.updatedAt);
+        return !Number.isNaN(updatedAt.getTime()) && updatedAt < staleCutoff;
+      })
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, 4);
+  })();
+
+  const blockedByParentInactivityTasks = (() => {
+    const today = parseDate(todayIso);
+    if (!today) {
+      return [] as Task[];
+    }
+
+    const inactivityCutoff = new Date(today);
+    inactivityCutoff.setDate(today.getDate() - PARENT_INACTIVITY_DAYS);
+    const isStaleIsoDate = (isoDateTime: string) => {
+      const parsed = new Date(isoDateTime);
+      return !Number.isNaN(parsed.getTime()) && parsed < inactivityCutoff;
+    };
+
+    return tasks
+      .filter((task) => task.status === "in_progress")
+      .filter((task) => {
+        const parentChildGoal = childGoalMap.get(task.goalId);
+        if (!parentChildGoal) {
+          return false;
+        }
+
+        const isChildGoalStale = isStaleIsoDate(parentChildGoal.updatedAt);
+        const parentGoal = goalMap.get(parentChildGoal.goalId);
+        const isGoalStale = parentGoal ? isStaleIsoDate(parentGoal.updatedAt) : false;
+        return isChildGoalStale || isGoalStale;
+      })
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, 4);
+  })();
 
   const habitsCheckedInTodayCount = useMemo(
     () =>
@@ -206,6 +333,15 @@ export function DashboardInsights({
     return openTasks.slice(0, 4);
   }, [tasksDueSoon, todayQueueSortMode]);
 
+  const completedTodayTasks = useMemo(
+    () =>
+      tasks
+        .filter((task) => task.status === "done" && task.updatedAt.slice(0, 10) === todayIso)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 4),
+    [tasks, todayIso],
+  );
+
   const atRiskItems = useMemo(() => {
     const now = startOfDay(new Date());
 
@@ -222,17 +358,17 @@ export function DashboardInsights({
         dueDate: goal.projectedEndDate ?? "",
       }));
 
-    const overdueSubgoals = subgoals
-      .filter((subgoal) => subgoal.status !== "done" && subgoal.projectedEndDate)
-      .filter((subgoal) => {
-        const projectedEnd = parseDate(subgoal.projectedEndDate);
+    const overdueChildGoals = childGoals
+      .filter((childGoal) => childGoal.status !== "done" && childGoal.projectedEndDate)
+      .filter((childGoal) => {
+        const projectedEnd = parseDate(childGoal.projectedEndDate);
         return projectedEnd && projectedEnd < now;
       })
-      .map((subgoal) => ({
-        id: subgoal.id,
-        kind: "subgoal" as const,
-        title: subgoal.title,
-        dueDate: subgoal.projectedEndDate ?? "",
+      .map((childGoal) => ({
+        id: childGoal.id,
+        kind: "childGoal" as const,
+        title: childGoal.title,
+        dueDate: childGoal.projectedEndDate ?? "",
       }));
 
     const overdueTasks = tasks
@@ -248,10 +384,10 @@ export function DashboardInsights({
         dueDate: task.dueDate ?? "",
       }));
 
-    return [...overdueGoals, ...overdueSubgoals, ...overdueTasks]
+    return [...overdueGoals, ...overdueChildGoals, ...overdueTasks]
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
       .slice(0, 10);
-  }, [goals, subgoals, tasks]);
+  }, [goals, childGoals, tasks]);
 
   const overviewStats = useMemo(() => {
     const professional = goals.filter((goal) => goal.type === "professional");
@@ -286,31 +422,31 @@ export function DashboardInsights({
       updatedAt: goal.updatedAt,
     }));
 
-    const subgoalItems: RecentlyUpdatedItem[] = subgoals.map((subgoal) => ({
-      id: subgoal.id,
-      kind: "subgoal",
-      title: subgoal.title,
-      status: subgoal.status,
-      updatedAt: subgoal.updatedAt,
-      parentTitle: goalMap.get(subgoal.goalId)?.title,
+    const childGoalItems: RecentlyUpdatedItem[] = childGoals.map((childGoal) => ({
+      id: childGoal.id,
+      kind: "childGoal",
+      title: childGoal.title,
+      status: childGoal.status,
+      updatedAt: childGoal.updatedAt,
+      parentTitle: goalMap.get(childGoal.goalId)?.title,
     }));
 
     const taskItems: RecentlyUpdatedItem[] = tasks.map((task) => {
-      const parentSubgoal = subgoalMap.get(task.subgoalId);
+      const parentChildGoal = childGoalMap.get(task.goalId);
       return {
         id: task.id,
         kind: "task",
         title: task.title,
         status: task.status,
         updatedAt: task.updatedAt,
-        parentTitle: parentSubgoal?.title,
+        parentTitle: parentChildGoal?.title,
       };
     });
 
-    return [...goalItems, ...subgoalItems, ...taskItems]
+    return [...goalItems, ...childGoalItems, ...taskItems]
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, 8);
-  }, [goals, subgoals, tasks, goalMap, subgoalMap]);
+  }, [goals, childGoals, tasks, goalMap, childGoalMap]);
 
   async function handleQuickTaskDone(taskId: string) {
     if (!user) {
@@ -358,7 +494,7 @@ export function DashboardInsights({
       const updatedTask = await dataRepository.saveTask({
         taskId: task.id,
         ownerUid: user.id,
-        subgoalId: task.subgoalId,
+        goalId: task.goalId,
         title: task.title,
         notes: task.notes,
         dueDate: nextDueDateIso,
@@ -401,6 +537,96 @@ export function DashboardInsights({
     }
   }
 
+  async function handleCloseDayJournalSave() {
+    if (!user) {
+      return;
+    }
+
+    const hasGuidedInput =
+      closeDayWhatWentRight.trim().length > 0 ||
+      closeDayWhatWentWrong.trim().length > 0 ||
+      closeDayWhatToAdjust.trim().length > 0 ||
+      closeDayAdditionalThoughts.trim().length > 0;
+
+    if (!hasGuidedInput) {
+      setActionError("Add at least one close day note before saving.");
+      return;
+    }
+
+    setActionError(null);
+    setCloseDaySavedAt(null);
+    setActionInFlightId("close-day-journal");
+
+    try {
+      await dataRepository.saveJournalEntry({
+        ownerUid: user.id,
+        title: `Daily closeout - ${todayIso}`,
+        content: buildCloseDayJournalContent({
+          whatWentRight: closeDayWhatWentRight,
+          whatWentWrong: closeDayWhatWentWrong,
+          whatToAdjust: closeDayWhatToAdjust,
+          additionalThoughts: closeDayAdditionalThoughts,
+        }),
+        mood: null,
+        tags: ["daily-closeout", "guided-journal"],
+        relatedGoalId: null,
+      });
+
+      setCloseDaySavedAt(new Date().toISOString());
+      setCloseDayWhatWentRight("");
+      setCloseDayWhatWentWrong("");
+      setCloseDayWhatToAdjust("");
+      setCloseDayAdditionalThoughts("");
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not save your close day journal note."));
+    } finally {
+      setActionInFlightId(null);
+    }
+  }
+
+  async function handleTaskUnplannedToggle(taskId: string, isChecked: boolean) {
+    if (!user) {
+      return;
+    }
+
+    const task = tasks.find((entry) => entry.id === taskId);
+    if (!task) {
+      return;
+    }
+
+    setActionError(null);
+    setActionInFlightId(`task-unplanned-${taskId}`);
+
+    try {
+      const updatedTask = await dataRepository.saveTask({
+        taskId: task.id,
+        ownerUid: user.id,
+        goalId: task.goalId,
+        title: task.title,
+        notes: task.notes,
+        dueDate: task.dueDate,
+        unplanned: isChecked,
+        existingTask: task,
+      });
+
+      setTasks((current) =>
+        current.map((entry) =>
+          entry.id === taskId
+            ? {
+                ...entry,
+                ...updatedTask,
+                unplanned: isChecked,
+              }
+            : entry,
+        ),
+      );
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not update planned status for that task."));
+    } finally {
+      setActionInFlightId(null);
+    }
+  }
+
   if (isLoading || isRefreshing) {
     return (
       <section className="pdp-panel">
@@ -428,76 +654,128 @@ export function DashboardInsights({
     );
   }
 
+  const modeItems: Array<{ mode: DashboardInsightsMode; label: string; count: number | null }> = [
+    { mode: "today", label: "Today", count: tasksDueToday.length },
+    { mode: "plan", label: "Plan", count: dueThisWeekTasks.length },
+    { mode: "review", label: "Review", count: completedTodayCount },
+    { mode: "risks", label: "Risks", count: overdueTasks.length },
+    { mode: "close_day", label: "Close Day", count: null },
+  ];
+
   return (
-    <section className="pdp-panel">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-900">Dashboard Insights</h2>
-      </div>
-
-      {loadError ? <p className="mt-3 text-sm text-red-700">{loadError}</p> : null}
-      {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
-          <button
-            type="button"
-            onClick={() => setViewMode("today")}
-            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
-              viewMode === "today" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-            }`}
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("review")}
-            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
-              viewMode === "review" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-            }`}
-          >
-            Review
-          </button>
+    <WorkspaceShell
+      title="Dashboard Insights"
+      notices={
+        <>
+          {loadError ? <p className="mt-3 text-sm text-red-700">{loadError}</p> : null}
+          {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
+        </>
+      }
+      mobileNav={
+        <div className="flex w-full flex-wrap gap-2" aria-label="Dashboard modes">
+          {modeItems.map((item) => {
+            const isActive = dashboardMode === item.mode;
+            return (
+              <button
+                key={`mobile-mode-${item.mode}`}
+                type="button"
+                onClick={() => setDashboardMode(item.mode)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+                  isActive ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </div>
-        <button
-          type="button"
-          onClick={onOpenGoalsWorkspace}
-          className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-        >
-          Open Goals Workspace
-        </button>
-      </div>
+      }
+      leftRailTitle="Dashboard Modes"
+      leftRailContent={
+        <nav className="space-y-2" aria-label="Dashboard modes">
+            {modeItems.map((item) => {
+              const isActive = dashboardMode === item.mode;
+              return (
+                <button
+                  key={`mode-${item.mode}`}
+                  type="button"
+                  onClick={() => setDashboardMode(item.mode)}
+                  className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                    isActive
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold">{item.label}</span>
+                    {item.count !== null ? (
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {item.count}
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
+        </nav>
+      }
+    >
+      <article className="pdp-panel-muted">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-lg font-semibold text-slate-900">{modeItems.find((item) => item.mode === dashboardMode)?.label}</h3>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+              {formatDateLabel(todayIso)}
+            </span>
+          </div>
 
-      {viewMode === "today" ? (
-        <article className="pdp-panel-muted mt-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Today Command Center</h3>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-            {formatDateLabel(todayIso)}
-          </span>
-        </div>
+          {dashboardMode === "today" ? (
+            <>
+              <p className="mt-2 text-sm text-slate-600">Focus on what needs action now.</p>
 
-        <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <div className="pdp-card rounded-xl px-3 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Tasks due today</p>
+            <p className="text-sm font-semibold text-slate-700">Tasks due today</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{tasksDueToday.length}</p>
             <p className="text-xs text-slate-600">Need action</p>
           </div>
           <div className="pdp-card rounded-xl px-3 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Habit check-ins</p>
+            <p className="text-sm font-semibold text-slate-700">Habit check-ins</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{habitsCheckedInTodayCount}</p>
             <p className="text-xs text-slate-600">of {habits.length} active habits</p>
           </div>
           <div className="pdp-card rounded-xl px-3 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Tasks completed</p>
+            <p className="text-sm font-semibold text-slate-700">Tasks completed</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{completedTodayCount}</p>
-            <p className="text-xs text-slate-600">Today</p>
+            <p className="text-xs text-slate-600" data-testid="planned-unplanned-summary">
+              {plannedVsUnplannedToday.planned} planned | {plannedVsUnplannedToday.unplanned} unplanned
+            </p>
           </div>
-        </div>
+          <div className="pdp-card rounded-xl border border-amber-200 bg-amber-50/40 px-3 py-3">
+            <p className="text-sm font-semibold text-amber-800">Overdue now</p>
+            <p className="mt-1 text-2xl font-semibold text-amber-900">{overdueTasks.length}</p>
+            {overdueTasks.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => onOpenItem?.("task", overdueTasks[0].id)}
+                className="mt-1 rounded-full border border-amber-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 transition hover:border-amber-400 hover:bg-amber-100"
+              >
+                Review overdue
+              </button>
+            ) : (
+              <p className="text-xs text-amber-700">Clear</p>
+            )}
+          </div>
+              </div>
 
-        <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              <div className="mt-3 grid gap-3 xl:grid-cols-2">
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Quick task actions</p>
+              <p className="text-sm font-semibold text-slate-700">Quick task actions</p>
               <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
                 <button
                   type="button"
@@ -519,46 +797,93 @@ export function DashboardInsights({
                 </button>
               </div>
             </div>
-            {quickActionTasks.length === 0 ? (
+            {quickActionTasks.length === 0 && completedTodayTasks.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">No immediate task actions.</p>
             ) : (
-              <ul className="mt-2 space-y-2">
-                {quickActionTasks.map((task) => (
-                    <li key={task.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2 py-2">
-                      <button
-                        type="button"
-                        onClick={() => onOpenItem?.("task", task.id)}
-                        className="truncate text-left text-sm font-medium text-slate-900 hover:underline"
-                        data-testid={`quick-task-title-${task.id}`}
-                      >
-                        {task.title}
-                      </button>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => void handleQuickTaskDefer(task.id)}
-                          disabled={actionInFlightId === `task-defer-${task.id}`}
-                          className={`${QUICK_ACTION_BUTTON_CLASS} border-amber-300 text-amber-700 hover:border-amber-400 hover:bg-amber-50`}
-                        >
-                          {actionInFlightId === `task-defer-${task.id}` ? "Saving..." : "+1d"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleQuickTaskDone(task.id)}
-                          disabled={actionInFlightId === `task-${task.id}`}
-                          className={`${QUICK_ACTION_BUTTON_CLASS} border-emerald-300 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50`}
-                        >
-                          {actionInFlightId === `task-${task.id}` ? "Saving..." : "Mark done"}
-                        </button>
-                      </div>
-                    </li>
-                ))}
-              </ul>
+              <div className="mt-2 space-y-2">
+                {quickActionTasks.length > 0 ? (
+                  <ul className="space-y-2">
+                    {quickActionTasks.map((task) => (
+                      <li key={task.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2 py-2">
+                        <div className="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => onOpenItem?.("task", task.id)}
+                            className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
+                            data-testid={`quick-task-title-${task.id}`}
+                          >
+                            {task.title}
+                          </button>
+                          <label className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(task.unplanned)}
+                              disabled={actionInFlightId === `task-unplanned-${task.id}`}
+                              onChange={(event) => void handleTaskUnplannedToggle(task.id, event.currentTarget.checked)}
+                              data-testid={`task-unplanned-checkbox-${task.id}`}
+                            />
+                            <span>Unplanned</span>
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void handleQuickTaskDefer(task.id)}
+                            disabled={actionInFlightId === `task-defer-${task.id}`}
+                            className={`${QUICK_ACTION_BUTTON_CLASS} border-amber-300 text-amber-700 hover:border-amber-400 hover:bg-amber-50`}
+                          >
+                            {actionInFlightId === `task-defer-${task.id}` ? "Saving..." : "+1d"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleQuickTaskDone(task.id)}
+                            disabled={actionInFlightId === `task-${task.id}`}
+                            className={`${QUICK_ACTION_BUTTON_CLASS} border-emerald-300 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50`}
+                          >
+                            {actionInFlightId === `task-${task.id}` ? "Saving..." : "Mark done"}
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {completedTodayTasks.length > 0 ? (
+                  <div className="space-y-2">
+                    {quickActionTasks.length > 0 ? <div className="border-t border-slate-200" /> : null}
+                    <p className="text-xs font-semibold text-slate-500">Completed today</p>
+                    <ul className="space-y-2">
+                      {completedTodayTasks.map((task) => (
+                        <li key={task.id} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+                          <button
+                            type="button"
+                            onClick={() => onOpenItem?.("task", task.id)}
+                            className="truncate text-left text-sm text-slate-600 line-through hover:underline"
+                            data-testid={`completed-task-title-${task.id}`}
+                          >
+                            {task.title}
+                          </button>
+                          <label className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(task.unplanned)}
+                              disabled={actionInFlightId === `task-unplanned-${task.id}`}
+                              onChange={(event) => void handleTaskUnplannedToggle(task.id, event.currentTarget.checked)}
+                              data-testid={`task-unplanned-checkbox-${task.id}`}
+                            />
+                            <span>Unplanned</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
             )}
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Quick habit check-ins</p>
+            <p className="text-sm font-semibold text-slate-700">Quick habit check-ins</p>
             {habitsNeedingCheckin.slice(0, 4).length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">All tracked habits are checked in today.</p>
             ) : (
@@ -579,14 +904,216 @@ export function DashboardInsights({
               </ul>
             )}
           </div>
-        </div>
+              </div>
+            </>
+          ) : null}
 
-      </article>
-      ) : null}
+          {dashboardMode === "close_day" ? (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-700">Close day guided journal</p>
+            {closeDaySavedAt ? (
+              <p className="text-xs text-emerald-700">Saved {formatDateTimeLabel(closeDaySavedAt)}</p>
+            ) : null}
+          </div>
+          <p className="mt-1 text-xs text-slate-600">
+            End your day with prompts, then add any free-write thoughts.
+          </p>
 
-      {viewMode === "review" ? (
-        <section className="mt-4 space-y-4">
-          <article className="pdp-panel-muted">
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              What went right?
+              <textarea
+                value={closeDayWhatWentRight}
+                onChange={(event) => setCloseDayWhatWentRight(event.currentTarget.value)}
+                rows={3}
+                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm text-slate-800"
+                placeholder="Wins, momentum, completed priorities..."
+                data-testid="close-day-right"
+              />
+            </label>
+
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              What went wrong?
+              <textarea
+                value={closeDayWhatWentWrong}
+                onChange={(event) => setCloseDayWhatWentWrong(event.currentTarget.value)}
+                rows={3}
+                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm text-slate-800"
+                placeholder="Blockers, surprises, friction..."
+                data-testid="close-day-wrong"
+              />
+            </label>
+
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              What will you adjust tomorrow?
+              <textarea
+                value={closeDayWhatToAdjust}
+                onChange={(event) => setCloseDayWhatToAdjust(event.currentTarget.value)}
+                rows={3}
+                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm text-slate-800"
+                placeholder="One change to improve focus tomorrow..."
+                data-testid="close-day-adjust"
+              />
+            </label>
+
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Additional thoughts (free-write)
+              <textarea
+                value={closeDayAdditionalThoughts}
+                onChange={(event) => setCloseDayAdditionalThoughts(event.currentTarget.value)}
+                rows={3}
+                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm text-slate-800"
+                placeholder="Anything else you want to capture..."
+                data-testid="close-day-freewrite"
+              />
+            </label>
+          </div>
+
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleCloseDayJournalSave()}
+              disabled={actionInFlightId === "close-day-journal"}
+              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {actionInFlightId === "close-day-journal" ? "Saving..." : "Save close day note"}
+            </button>
+          </div>
+            </div>
+          ) : null}
+
+          {dashboardMode === "plan" ? (
+            <div className="mt-3 grid gap-3 xl:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                <p className="text-sm font-semibold text-slate-700">Due this week</p>
+                {dueThisWeekTasks.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">No open tasks due in the next 7 days.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {dueThisWeekTasks.map((task) => (
+                      <li key={task.id} className="rounded-lg border border-slate-200 px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => onOpenItem?.("task", task.id)}
+                          className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
+                          data-testid={`due-week-task-title-${task.id}`}
+                        >
+                          {task.title}
+                        </button>
+                        <p className="mt-1 text-xs text-slate-600">Due {formatDateLabel(task.dueDate)}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                <p className="text-sm font-semibold text-slate-700">Tasks due soon</p>
+                {tasksDueSoon.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">No tasks in the due-soon window.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {tasksDueSoon.slice(0, 6).map((task) => (
+                      <li key={task.id} className="rounded-lg border border-slate-200 px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => onOpenItem?.("task", task.id)}
+                          className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
+                        >
+                          {task.title}
+                        </button>
+                        <p className="mt-1 text-xs text-slate-600">Due {formatDateLabel(task.dueDate)}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {dashboardMode === "risks" ? (
+            <div className="mt-3 grid gap-2 xl:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <p className="text-sm font-semibold text-slate-700">Due this week</p>
+              {dueThisWeekTasks.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-600">No open tasks due in the next 7 days.</p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {dueThisWeekTasks.map((task) => (
+                    <li key={task.id} className="rounded-lg border border-slate-200 px-2 py-2">
+                      <button
+                        type="button"
+                        onClick={() => onOpenItem?.("task", task.id)}
+                        className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
+                        data-testid={`due-week-task-title-${task.id}`}
+                      >
+                        {task.title}
+                      </button>
+                      <p className="mt-1 text-xs text-slate-600">Due {formatDateLabel(task.dueDate)}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-3">
+              <p className="text-sm font-semibold text-rose-800">Stale in-progress</p>
+              {staleInProgressTasks.length === 0 ? (
+                <p className="mt-2 text-sm text-rose-700">No stale in-progress tasks.</p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {staleInProgressTasks.map((task) => (
+                    <li key={task.id} className="rounded-lg border border-rose-200 bg-white px-2 py-2">
+                      <button
+                        type="button"
+                        onClick={() => onOpenItem?.("task", task.id)}
+                        className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
+                        data-testid={`stale-task-title-${task.id}`}
+                      >
+                        {task.title}
+                      </button>
+                      <p className="mt-1 text-xs text-slate-600">Updated {formatDateLabel(task.updatedAt.slice(0, 10))}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-violet-200 bg-violet-50/40 px-3 py-3">
+              <p className="text-sm font-semibold text-violet-800">Blocked by parent inactivity</p>
+              {blockedByParentInactivityTasks.length === 0 ? (
+                <p className="mt-2 text-sm text-violet-700">No parent-chain blockers flagged.</p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {blockedByParentInactivityTasks.map((task) => {
+                    const parentChildGoal = childGoalMap.get(task.goalId);
+                    const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : null;
+                    const parentPath = [parentGoal?.title, parentChildGoal?.title].filter((value): value is string => Boolean(value)).join(" -> ");
+
+                    return (
+                      <li key={task.id} className="rounded-lg border border-violet-200 bg-white px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => onOpenItem?.("task", task.id)}
+                          className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
+                          data-testid={`blocked-task-title-${task.id}`}
+                        >
+                          {task.title}
+                        </button>
+                        <p className="mt-1 truncate text-xs text-slate-600">{parentPath || "Parent chain"}</p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            </div>
+          ) : null}
+
+          {dashboardMode === "review" ? (
+            <section className="mt-3 space-y-4">
+              <article className="rounded-xl border border-slate-200 bg-white p-4">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Overview</h3>
 
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -640,10 +1167,10 @@ export function DashboardInsights({
                 />
               </div>
             </div>
-          </article>
+              </article>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <article className="pdp-panel-muted">
+              <div className="grid gap-3 xl:grid-cols-2">
+                <article className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Current Focus</h3>
               {currentFocusGoals.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-600">No active focus goal yet.</p>
@@ -664,16 +1191,16 @@ export function DashboardInsights({
                   ))}
                 </ul>
               )}
-            </article>
+                </article>
 
-            <article className="pdp-panel-muted">
+                <article className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Tasks Due Soon</h3>
               {tasksDueSoon.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-600">No tasks in the due-soon window.</p>
               ) : (
                 <ul className="mt-3 space-y-2 text-sm text-slate-700">
                   {tasksDueSoon.map((task) => {
-                    const parentSubgoal = subgoalMap.get(task.subgoalId);
+                    const parentChildGoal = childGoalMap.get(task.goalId);
                     return (
                       <li key={task.id}>
                         <DashboardItemButton onClick={() => onOpenItem?.("task", task.id)}>
@@ -683,7 +1210,7 @@ export function DashboardInsights({
                           </div>
                           <p className="mt-1 text-xs text-slate-600">
                             Due {formatDateLabel(task.dueDate)}
-                            {parentSubgoal ? ` | ${parentSubgoal.title}` : ""}
+                            {parentChildGoal ? ` | ${parentChildGoal.title}` : ""}
                           </p>
                         </DashboardItemButton>
                       </li>
@@ -691,9 +1218,9 @@ export function DashboardInsights({
                   })}
                 </ul>
               )}
-            </article>
+                </article>
 
-            <article className="pdp-panel-muted rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+                <article className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-700">At-risk items</h3>
               {atRiskItems.length === 0 ? (
                 <p className="mt-3 text-sm text-amber-800">Nothing is past due. Nicely done.</p>
@@ -714,9 +1241,9 @@ export function DashboardInsights({
                   ))}
                 </ul>
               )}
-            </article>
+                </article>
 
-            <article className="pdp-panel-muted">
+                <article className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Recently Updated</h3>
               {recentlyUpdated.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-600">No recent updates yet.</p>
@@ -738,11 +1265,12 @@ export function DashboardInsights({
                   ))}
                 </ul>
               )}
-            </article>
-          </div>
-        </section>
-      ) : null}
-    </section>
+                </article>
+              </div>
+            </section>
+          ) : null}
+      </article>
+    </WorkspaceShell>
   );
 }
 
@@ -860,4 +1388,30 @@ function getErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function buildCloseDayJournalContent(input: {
+  whatWentRight: string;
+  whatWentWrong: string;
+  whatToAdjust: string;
+  additionalThoughts: string;
+}) {
+  const right = input.whatWentRight.trim() || "No notes added.";
+  const wrong = input.whatWentWrong.trim() || "No notes added.";
+  const adjust = input.whatToAdjust.trim() || "No notes added.";
+  const extra = input.additionalThoughts.trim() || "No additional thoughts.";
+
+  return [
+    "## What went right",
+    right,
+    "",
+    "## What went wrong",
+    wrong,
+    "",
+    "## What to adjust tomorrow",
+    adjust,
+    "",
+    "## Additional thoughts",
+    extra,
+  ].join("\n");
 }

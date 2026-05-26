@@ -28,8 +28,8 @@
   --pdp-event-goal-professional-border: #1d4ed8;
   --pdp-event-goal-personal-bg: #db2777;
   --pdp-event-goal-personal-border: #be185d;
-  --pdp-event-subgoal-bg: #f59e0b;
-  --pdp-event-subgoal-border: #d97706;
+  --pdp-event-childGoal-bg: #f59e0b;
+  --pdp-event-childGoal-border: #d97706;
   --pdp-event-task-bg: #059669;
   --pdp-event-task-border: #047857;
 }
@@ -218,8 +218,22 @@ h1, h2, h3, h4, h5, h6,
 }
 
 .pdp-shell .pdp-panel-muted > h3 {
-  font-size: clamp(1rem, 0.9rem + 0.45vw, 1.3rem);
+  font-size: clamp(1.08rem, 0.95rem + 0.5vw, 1.4rem);
   line-height: 1.2;
+}
+
+.pdp-section-title {
+  font-size: clamp(1.35rem, 1.1rem + 0.7vw, 1.85rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: 0.01em;
+}
+
+.pdp-section-kicker {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .pdp-panel-muted {
@@ -466,7 +480,7 @@ h1, h2, h3, h4, h5, h6,
   border-radius: 999px;
 }
 
-.pdp-calendar-event-dot-marker-subgoal {
+.pdp-calendar-event-dot-marker-childGoal {
   border-radius: 0.14rem;
 }
 

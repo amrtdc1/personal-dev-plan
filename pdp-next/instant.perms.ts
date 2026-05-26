@@ -18,9 +18,24 @@ const rules = {
       delete: "false",
     },
   },
-  goals: ownerScopedRules,
-  subgoals: ownerScopedRules,
-  tasks: ownerScopedRules,
+  goals: {
+    allow: {
+      view: "auth.id != null && data.ownerUid == auth.id",
+      create: "auth.id != null && newData.ownerUid == auth.id && newData.timeframeLevel != null",
+      update:
+        "auth.id != null && data.ownerUid == auth.id && (newData.ownerUid == null || newData.ownerUid == auth.id) && newData.timeframeLevel != null",
+      delete: "auth.id != null && data.ownerUid == auth.id",
+    },
+  },
+  tasks: {
+    allow: {
+      view: "auth.id != null && data.ownerUid == auth.id",
+      create: "auth.id != null && newData.ownerUid == auth.id && newData.goalId != null",
+      update:
+        "auth.id != null && data.ownerUid == auth.id && (newData.ownerUid == null || newData.ownerUid == auth.id) && newData.goalId != null",
+      delete: "auth.id != null && data.ownerUid == auth.id",
+    },
+  },
   journalEntries: ownerScopedRules,
   habits: ownerScopedRules,
   habitCheckins: ownerScopedRules,
