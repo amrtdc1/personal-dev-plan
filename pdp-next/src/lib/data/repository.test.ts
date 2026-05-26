@@ -1,4 +1,4 @@
-import type { Goal, Habit, HabitCheckin, JournalEntry, ChildGoal, Task } from "@/lib/domain/types";
+import type { Goal, Habit, HabitCheckin, JournalEntry, Task } from "@/lib/domain/types";
 
 // Keep mocks in vi.hoisted so they are initialized before hoisted vi.mock factories run.
 const { queryOnceMock, transactMock } = vi.hoisted(() => ({
@@ -74,31 +74,6 @@ function buildGoal(overrides: Partial<Goal> = {}): Goal {
     percentComplete: 0,
     isFocus: true,
     themeColor: "#2563eb",
-    orderIndex: 0,
-    createdAt: "2026-05-01T00:00:00.000Z",
-    updatedAt: "2026-05-01T00:00:00.000Z",
-    deletedAt: null,
-    deletedBy: null,
-    restoreUntil: null,
-    purgeAt: null,
-    ...overrides,
-  };
-}
-
-function buildChildGoal(overrides: Partial<ChildGoal> = {}): ChildGoal {
-  return {
-    id: "childGoal-1",
-    ownerUid: "user-1",
-    goalId: "goal-1",
-    title: "ChildGoal",
-    description: "Desc",
-    timeframe: "Q2",
-    projectedStartDate: null,
-    projectedEndDate: null,
-    actualStartDate: null,
-    actualEndDate: null,
-    status: "not_started",
-    percentComplete: 0,
     orderIndex: 0,
     createdAt: "2026-05-01T00:00:00.000Z",
     updatedAt: "2026-05-01T00:00:00.000Z",

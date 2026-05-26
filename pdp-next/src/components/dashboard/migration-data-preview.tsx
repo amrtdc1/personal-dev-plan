@@ -53,11 +53,13 @@ export function MigrationDataPreview({
   onPendingItemConsumed,
   showWorkspaceShell = true,
   enableDataHydration = true,
+  showHabitsSection = true,
 }: {
   pendingOpenItem?: { kind: "goal" | "childGoal" | "task"; id: string } | null;
   onPendingItemConsumed?: () => void;
   showWorkspaceShell?: boolean;
   enableDataHydration?: boolean;
+  showHabitsSection?: boolean;
 } = {}) {
   const { isLoading, user, error } = db.useAuth();
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null);
@@ -71,7 +73,7 @@ export function MigrationDataPreview({
   const [editingChildGoalId, setEditingChildGoalId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
-  const [isChildGoalModalOpen, setIsChildGoalModalOpen] = useState(false);
+  const [, setIsChildGoalModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [goalType, setGoalType] = useState<"professional" | "personal">("professional");
   const [goalTimeframeLevel, setGoalTimeframeLevel] = useState<GoalTimeframeLevel>("weekly");
@@ -618,32 +620,6 @@ export function MigrationDataPreview({
     }
   }
 
-  async function handleChildGoalArchiveToggle(childGoal: ChildGoal) {
-    if (!user) {
-      return;
-    }
-
-    setActionError(null);
-    try {
-      if (childGoal.deletedAt) {
-        await dataRepository.restoreChildGoal(user.id, childGoal.id);
-      } else {
-        await dataRepository.softDeleteChildGoal(user.id, childGoal.id);
-      }
-
-      if (!childGoal.deletedAt && editingChildGoalId === childGoal.id) {
-        resetChildGoalForm();
-      }
-      if (!childGoal.deletedAt && editingTask && editingTask.goalId === childGoal.id) {
-        resetTaskForm();
-      }
-
-      setRefreshKey((value) => value + 1);
-    } catch (repositoryError) {
-      setActionError(getErrorMessage(repositoryError, "We could not update child goal archive state."));
-    }
-  }
-
   async function handleTaskArchiveToggle(task: Task) {
     if (!user) {
       return;
@@ -699,35 +675,6 @@ export function MigrationDataPreview({
     }
   }
 
-  async function handleChildGoalPermanentDelete(childGoal: ChildGoal) {
-    if (!user || !childGoal.deletedAt) {
-      return;
-    }
-
-    const shouldDelete = window.confirm(
-      `Permanently delete "${childGoal.title}"? This also permanently deletes all archived tasks under this child goal. This cannot be undone.`,
-    );
-    if (!shouldDelete) {
-      return;
-    }
-
-    setActionError(null);
-    try {
-      await dataRepository.permanentlyDeleteChildGoal(user.id, childGoal.id);
-
-      if (editingChildGoalId === childGoal.id) {
-        resetChildGoalForm();
-      }
-      if (editingTask && editingTask.goalId === childGoal.id) {
-        resetTaskForm();
-      }
-
-      setRefreshKey((value) => value + 1);
-    } catch (repositoryError) {
-      setActionError(getErrorMessage(repositoryError, "We could not permanently delete the child goal."));
-    }
-  }
-
   async function handleTaskPermanentDelete(task: Task) {
     if (!user || !task.deletedAt) {
       return;
@@ -768,20 +715,6 @@ export function MigrationDataPreview({
     }
   }
 
-  async function handleChildGoalStatusChange(childGoal: ChildGoal, status: ItemStatus) {
-    if (!user || childGoal.deletedAt) {
-      return;
-    }
-
-    setActionError(null);
-    try {
-      await dataRepository.updateChildGoalStatus(user.id, childGoal.id, status);
-      setRefreshKey((value) => value + 1);
-    } catch (repositoryError) {
-      setActionError(getErrorMessage(repositoryError, "We could not update child goal status."));
-    }
-  }
-
   async function handleTaskStatusChange(task: Task, status: ItemStatus) {
     if (!user || task.deletedAt) {
       return;
@@ -807,20 +740,6 @@ export function MigrationDataPreview({
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not reorder goals."));
-    }
-  }
-
-  async function handleChildGoalReorder(goalId: string, orderedChildGoalIds: string[]) {
-    if (!user) {
-      return;
-    }
-
-    setActionError(null);
-    try {
-      await dataRepository.reorderChildGoals(user.id, goalId, orderedChildGoalIds);
-      setRefreshKey((value) => value + 1);
-    } catch (repositoryError) {
-      setActionError(getErrorMessage(repositoryError, "We could not reorder child goals."));
     }
   }
 
@@ -863,28 +782,6 @@ export function MigrationDataPreview({
     }
 
     void handleGoalReorder(type, orderedIds);
-  }
-
-  function handleChildGoalDragEnd(event: DragEndEvent) {
-    if (!selectedGoal) {
-      return;
-    }
-
-    const { active, over } = event;
-    if (!over) {
-      return;
-    }
-
-    const orderedIds = reorderIds(
-      childGoalsForSelectedGoal.map((childGoal) => childGoal.id),
-      String(active.id),
-      String(over.id),
-    );
-    if (!orderedIds) {
-      return;
-    }
-
-    void handleChildGoalReorder(selectedGoal.id, orderedIds);
   }
 
   function handleTaskDragEnd(event: DragEndEvent) {
@@ -991,16 +888,6 @@ export function MigrationDataPreview({
     setIsGoalModalOpen(true);
   }
 
-  function startEditingChildGoal(childGoal: ChildGoal) {
-    setChildGoalTitle(childGoal.title);
-    setChildGoalDescription(childGoal.description);
-    setChildGoalDueDate(childGoal.projectedEndDate ?? "");
-    setChildGoalTimeframeLabel(childGoal.timeframe === "Ongoing" ? "" : childGoal.timeframe);
-    setChildGoalSaveError(null);
-    setEditingChildGoalId(childGoal.id);
-    setIsChildGoalModalOpen(true);
-  }
-
   function resetChildGoalForm() {
     setEditingChildGoalId(null);
     setChildGoalTitle("");
@@ -1056,12 +943,6 @@ export function MigrationDataPreview({
   function closeTaskModal() {
     setIsTaskModalOpen(false);
     resetTaskForm();
-  }
-
-  function openCreateChildGoalModal(goalId: string) {
-    resetChildGoalForm();
-    setTargetGoalIdForChildGoal(goalId);
-    setIsChildGoalModalOpen(true);
   }
 
   function openCreateTaskModal(childGoalId: string) {
@@ -1210,8 +1091,8 @@ export function MigrationDataPreview({
     <>
       {showWorkspaceShell ? (
         <WorkspaceShell
-          title="Goals"
-          description="Break down your professional and personal development into clear, trackable goals."
+          title="Planning"
+          description="Build and organize your professional and personal goals into clear, trackable timelines."
           headerAside={
             isRefreshing ? (
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
@@ -1241,8 +1122,8 @@ export function MigrationDataPreview({
           leftRailContent={timelineNav}
         >
           <div className="flex items-center gap-2 lg:hidden">
-            <InfoPopover className="self-center" label="Goals help">
-              Break down your professional and personal development into clear, trackable goals.
+            <InfoPopover className="self-center" label="Planning help">
+              Build and organize your professional and personal goals into clear, trackable timelines.
             </InfoPopover>
           </div>
 
@@ -1456,6 +1337,7 @@ export function MigrationDataPreview({
         </article>
       </div>
 
+      {showHabitsSection ? (
       <article className="pdp-panel-muted mt-5">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Habits</h3>
@@ -1560,6 +1442,7 @@ export function MigrationDataPreview({
           </div>
         </div>
       </article>
+      ) : null}
 
       {showArchivedGoals && hasAnyArchived ? (
         <article className="pdp-panel-muted mt-5">

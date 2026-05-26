@@ -1,5 +1,5 @@
 import { env } from "@/lib/config/env";
-import type { Habit, ChildGoal, Task } from "@/lib/domain/types";
+import type { Habit, Task } from "@/lib/domain/types";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {

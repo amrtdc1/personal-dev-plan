@@ -5,6 +5,7 @@
 - Phase 0 PWA install/push foundation is now in implementation (banner UX, subscription API, schema/perms, SW handlers)
 - College theming track is now implemented end-to-end (palette/CWM/college source, logo rendering, profile persistence)
 - Protected owner-scoped API foundation is in place for goals/subgoals/tasks read and write paths, with profile writes now routed server-side
+- Today/Planning IA split is now implemented, with Habits promoted to a top-level workspace and metrics regression coverage in place
 - Release-readiness execution board is tracked in `docs/RELEASE_READINESS_TASK_BOARD.md`
 
 ## Milestones
@@ -114,6 +115,16 @@
 - [x] Replace dashboard Review toggle with Today/Review tabs, default to Today, and persist tab preference locally
 - [x] Apply dashboard density pass by trimming redundant helper copy, tightening spacing, and standardizing quick-action button styling
 - [x] Add Today Queue sorting toggle (Urgent vs Quick Wins) with local persistence and dashboard regression coverage
+- [x] Rename Dashboard shell language to Today and Goals language to Planning in signed-in UX
+- [x] Add Today -> Planning direct CTA and wire section navigation bridge in shell
+- [x] Break Habits into a dedicated top-level workspace and hide embedded habits block in Planning usage
+- [x] Extract habit streak/trend/adherence math into a testable module with focused unit coverage
+- [x] Remove unused Planning child-goal dead handlers and clear repository-level unused-symbol lint warnings
+
+## Upcoming Next Steps
+- Add pause/archive/restore controls to the top-level Habits workspace so lifecycle actions are fully available outside Planning
+- Add dashboard-level "open in habits" deep-linking from quick habit actions for faster Today -> Habits flow
+- Add component tests for Habits workspace create/check-in interactions and selection fallback behavior
 
 ## Checkpoint Packaging (Lower Commit Cadence)
 - Build and validate a full checkpoint slice before committing (lint, test, build).

@@ -1984,12 +1984,6 @@ async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {
   return maxIndex + 1;
 }
 
-async function getNextChildGoalOrderIndex(ownerUid: string, goalId: string) {
-  const childGoals = await dataRepository.listChildGoals(ownerUid, goalId, { includeDeleted: true });
-  const maxIndex = childGoals.reduce((max, childGoal) => Math.max(max, childGoal.orderIndex), -1);
-  return maxIndex + 1;
-}
-
 async function getNextTaskOrderIndex(ownerUid: string, goalId: string) {
   const tasks = await dataRepository.listTasks(ownerUid, goalId, { includeDeleted: true });
   const maxIndex = tasks.reduce((max, task) => Math.max(max, task.orderIndex), -1);
@@ -2126,20 +2120,6 @@ function normalizeTaskDefaults(task: Task): Task {
     ...task,
     unplanned: task.unplanned ?? false,
   };
-}
-
-async function saveChildGoalViaApi(childGoal: ChildGoal, isUpdate: boolean) {
-  const path = isUpdate ? `/api/childGoals/${childGoal.id}` : "/api/childGoals";
-  const method = isUpdate ? "PATCH" : "POST";
-
-  await invokeProtectedWrite(path, method, {
-    goalId: childGoal.goalId,
-    title: childGoal.title,
-    description: childGoal.description,
-    projectedStartDate: childGoal.projectedStartDate,
-    projectedEndDate: childGoal.projectedEndDate,
-    timeframeLabel: childGoal.timeframe,
-  });
 }
 
 async function saveTaskViaApi(task: Task, isUpdate: boolean) {

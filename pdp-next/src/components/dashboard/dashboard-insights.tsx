@@ -30,8 +30,10 @@ const QUICK_ACTION_BUTTON_CLASS =
 
 export function DashboardInsights({
   onOpenItem,
+  onNavigateToPlanning,
 }: {
   onOpenItem?: (kind: "goal" | "childGoal" | "task", id: string) => void;
+  onNavigateToPlanning?: () => void;
 } = {}) {
   const { isLoading, user, error } = db.useAuth();
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -630,7 +632,7 @@ export function DashboardInsights({
   if (isLoading || isRefreshing) {
     return (
       <section className="pdp-panel">
-        <h2 className="text-lg font-semibold text-slate-900">Dashboard Insights</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Today Workspace</h2>
         <p className="mt-3 text-sm text-slate-700">Loading insights...</p>
       </section>
     );
@@ -639,7 +641,7 @@ export function DashboardInsights({
   if (error) {
     return (
       <section className="pdp-panel rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-red-700">Dashboard Insights</h2>
+        <h2 className="text-lg font-semibold text-red-700">Today Workspace</h2>
         <p className="mt-2 text-sm text-red-700">{error.message}</p>
       </section>
     );
@@ -648,7 +650,7 @@ export function DashboardInsights({
   if (!user) {
     return (
       <section className="pdp-panel">
-        <h2 className="text-lg font-semibold text-slate-900">Dashboard Insights</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Today Workspace</h2>
         <p className="mt-3 text-sm text-slate-700">Sign in to see focus and risk insights.</p>
       </section>
     );
@@ -664,7 +666,7 @@ export function DashboardInsights({
 
   return (
     <WorkspaceShell
-      title="Dashboard Insights"
+      title="Today Workspace"
       notices={
         <>
           {loadError ? <p className="mt-3 text-sm text-red-700">{loadError}</p> : null}
@@ -672,7 +674,7 @@ export function DashboardInsights({
         </>
       }
       mobileNav={
-        <div className="flex w-full flex-wrap gap-2" aria-label="Dashboard modes">
+        <div className="flex w-full flex-wrap gap-2" aria-label="Today workspace modes">
           {modeItems.map((item) => {
             const isActive = dashboardMode === item.mode;
             return (
@@ -690,9 +692,9 @@ export function DashboardInsights({
           })}
         </div>
       }
-      leftRailTitle="Dashboard Modes"
+      leftRailTitle="Today Modes"
       leftRailContent={
-        <nav className="space-y-2" aria-label="Dashboard modes">
+        <nav className="space-y-2" aria-label="Today workspace modes">
             {modeItems.map((item) => {
               const isActive = dashboardMode === item.mode;
               return (
@@ -735,7 +737,18 @@ export function DashboardInsights({
 
           {dashboardMode === "today" ? (
             <>
-              <p className="mt-2 text-sm text-slate-600">Focus on what needs action now.</p>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-slate-600">Focus on what needs action now.</p>
+                {onNavigateToPlanning ? (
+                  <button
+                    type="button"
+                    onClick={onNavigateToPlanning}
+                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                  >
+                    Open Planning
+                  </button>
+                ) : null}
+              </div>
 
               <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <div className="pdp-card rounded-xl px-3 py-3">

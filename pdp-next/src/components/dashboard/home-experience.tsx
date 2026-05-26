@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { MagicCodeAuth } from "@/components/auth/magic-code-auth";
 import { CalendarWorkspace } from "@/components/dashboard/calendar-workspace";
 import { DashboardInsights } from "@/components/dashboard/dashboard-insights";
+import { HabitsWorkspace } from "@/components/dashboard/habits-workspace";
 import { JournalWorkspace } from "@/components/dashboard/journal-workspace";
 import { MigrationDataPreview as GoalsWorkspace } from "@/components/dashboard/migration-data-preview";
 import { NodeMapWorkspace } from "@/components/dashboard/node-map-workspace";
@@ -25,7 +26,7 @@ import { db } from "@/lib/instantdb/client";
 import { env } from "@/lib/config/env";
 import type { UserProfile } from "@/lib/domain/types";
 
-type AppSection = "dashboard" | "goals" | "node-map" | "calendar" | "journal" | "profile";
+type AppSection = "dashboard" | "goals" | "node-map" | "calendar" | "habits" | "journal" | "profile";
 type ThemeChoice = "light" | "dark" | "system";
 type ThemeSource = "palette" | "cwm" | "college";
 type ThemeBrandSnapshot = {
@@ -130,8 +131,8 @@ function SignedOutLanding() {
             Build momentum with goals, calendar, and journal in one workspace.
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-700 md:text-[15px]">
-            Sign in with Magic Code and pick up exactly where you left off. Your dashboard becomes the launch point
-            for planning goals, tracking your timeline, and reflecting on progress. Calendar sync support gives you a
+            Sign in with Magic Code and pick up exactly where you left off. Your Today workspace becomes the launch point
+            for daily execution, while Planning helps you build goals across timelines. Calendar sync support gives you a
             clean path to mirror childGoals into your preferred calendar tools.
           </p>
 
@@ -222,10 +223,11 @@ function SignedInShell() {
 
   const navItems = useMemo(
     () => [
-      { id: "dashboard" as const, label: "Dashboard", shortLabel: "Home", icon: "dashboard" as const },
-      { id: "goals" as const, label: "Goals", shortLabel: "Goals", icon: "goals" as const },
+      { id: "dashboard" as const, label: "Today", shortLabel: "Today", icon: "dashboard" as const },
+      { id: "goals" as const, label: "Planning", shortLabel: "Plan", icon: "goals" as const },
       { id: "node-map" as const, label: "Node Map", shortLabel: "Map", icon: "node-map" as const },
       { id: "calendar" as const, label: "Calendar", shortLabel: "Calendar", icon: "calendar" as const },
+      { id: "habits" as const, label: "Habits", shortLabel: "Habits", icon: "habits" as const },
       { id: "journal" as const, label: "Journal", shortLabel: "Journal", icon: "journal" as const },
     ],
     [],
@@ -475,6 +477,10 @@ function SignedInShell() {
     setActiveSection("goals");
   }
 
+  function handleNavigateToPlanning() {
+    setActiveSection("goals");
+  }
+
   return (
     <main className="pdp-shell relative isolate mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 pb-24 pt-4 md:px-8 md:pb-8 md:pt-8">
       <InstallAndNotifyBanner />
@@ -621,6 +627,7 @@ function SignedInShell() {
           <OfflineSyncStatus />
           <DashboardInsights
             onOpenItem={handleOpenItemFromDashboard}
+            onNavigateToPlanning={handleNavigateToPlanning}
           />
         </>
       ) : null}
@@ -630,9 +637,11 @@ function SignedInShell() {
         onPendingItemConsumed={() => setPendingOpenItem(null)}
         showWorkspaceShell={activeSection === "goals"}
         enableDataHydration={activeSection === "goals" || pendingOpenItem !== null}
+        showHabitsSection={false}
       />
       {activeSection === "node-map" ? <NodeMapWorkspace onOpenItem={handleOpenItemFromNodeMap} /> : null}
       {activeSection === "calendar" ? <CalendarWorkspace /> : null}
+      {activeSection === "habits" ? <HabitsWorkspace /> : null}
       {activeSection === "journal" ? <JournalWorkspace /> : null}
       {activeSection === "profile" ? (
         <ProfileSettings onThemeSaved={handleThemeProfileSaved} onThemePreview={handleThemeProfilePreview} />
@@ -642,7 +651,7 @@ function SignedInShell() {
         className="pdp-solid-surface fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white sm:hidden"
         aria-label="Mobile app sections"
       >
-        <div className="mx-auto grid max-w-6xl grid-cols-5">
+        <div className="mx-auto grid max-w-6xl grid-cols-6">
           {navItems.map((item) => {
             const isActive = activeSection === item.id;
             return (
@@ -2019,6 +2028,7 @@ function readActiveSectionPreference(): AppSection {
     stored === "goals" ||
     stored === "node-map" ||
     stored === "calendar" ||
+    stored === "habits" ||
     stored === "journal"
   ) {
     return stored;
@@ -2411,7 +2421,7 @@ function SectionIcon({
   type,
   className,
 }: {
-  type: "dashboard" | "goals" | "node-map" | "calendar" | "journal";
+  type: "dashboard" | "goals" | "node-map" | "calendar" | "habits" | "journal";
   className?: string;
 }) {
   if (type === "goals") {
@@ -2447,6 +2457,15 @@ function SectionIcon({
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
         <path d="M6 4h10a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2V4Z" />
         <path d="M8 8h7M8 12h7M8 16h5" />
+      </svg>
+    );
+  }
+
+  if (type === "habits") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="m8 12 3 3 5-6" />
       </svg>
     );
   }

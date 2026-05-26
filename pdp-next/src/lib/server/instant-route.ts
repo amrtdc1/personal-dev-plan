@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { Goal, Habit, HabitCheckin, ItemStatus, JournalEntry, ChildGoal, Task } from "@/lib/domain/types";
+import type { Goal, Habit, HabitCheckin, ItemStatus, JournalEntry, Task } from "@/lib/domain/types";
 import { validateStatusUpdate } from "@/lib/data/validation";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { resolveInstantRouteError } from "@/lib/server/instant-error-response";
