@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const {
@@ -34,15 +34,18 @@ vi.mock("@/components/dashboard/node-map/node-graph-canvas", () => ({
   NodeGraphCanvas: ({
     nodes,
     edges,
+    forceProfile,
     onOpenItem,
   }: {
     nodes: Array<{ id: string; data: { entityId: string; kind: "goal" | "task" } }>;
     edges: Array<{ id: string }>;
+    forceProfile?: "compact" | "balanced" | "spacious";
     onOpenItem?: (kind: "goal" | "task", id: string) => void;
   }) => (
     <div>
       <p>Graph nodes: {nodes.length}</p>
       <p>Graph edges: {edges.length}</p>
+      <p>Force profile: {forceProfile ?? "balanced"}</p>
       <button type="button" onClick={() => onOpenItem?.("goal", nodes.find((node) => node.data.kind === "goal")?.data.entityId ?? "")}>Open goal</button>
       <button type="button" onClick={() => onOpenItem?.("task", nodes.find((node) => node.data.kind === "task")?.data.entityId ?? "")}>Open task</button>
     </div>
@@ -55,6 +58,12 @@ describe("node map workspace graph integration", () => {
   beforeEach(() => {
     listGoalsMock.mockReset();
     listTasksMock.mockReset();
+    vi.restoreAllMocks();
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
 
     listGoalsMock.mockImplementation(async (_ownerUid: string, type: "professional" | "personal") => {
       if (type === "professional") {
@@ -120,6 +129,7 @@ describe("node map workspace graph integration", () => {
     });
 
     expect(screen.getByText("Graph edges: 1")).not.toBeNull();
+    expect(screen.getByText("Force profile: balanced")).not.toBeNull();
   });
 
   it("keeps open-item callback wiring for graph interactions", async () => {
@@ -137,5 +147,65 @@ describe("node map workspace graph integration", () => {
 
     expect(onOpenItem).toHaveBeenCalledWith("goal", "goal-1");
     expect(onOpenItem).toHaveBeenCalledWith("task", "task-1");
+  });
+
+  it("collapses filters by default on mobile and allows expanding them", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    const user = userEvent.setup();
+    render(<NodeMapWorkspace />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Graph nodes: 2")).not.toBeNull();
+    });
+
+    expect(screen.getByRole("button", { name: "Show filters" })).not.toBeNull();
+    expect(screen.queryByText("All levels")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Show filters" }));
+
+    expect(screen.getByText("All levels")).not.toBeNull();
+    expect(screen.getByText("Include Freestanding Tasks")).not.toBeNull();
+  });
+
+  it("keeps timeframe buckets collapsed by default and allows per-bucket expand/collapse", async () => {
+    const user = userEvent.setup();
+
+    render(<NodeMapWorkspace />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Weekly" })).not.toBeNull();
+    });
+
+    expect(screen.queryByText("Weekly focus")).toBeNull();
+
+    const weeklyHeading = screen.getAllByText("Weekly").find((element) => element.tagName === "H3");
+    expect(weeklyHeading).toBeDefined();
+    const weeklyBucket = (weeklyHeading as HTMLElement).closest("div.rounded-2xl");
+    expect(weeklyBucket).not.toBeNull();
+
+    const weeklyExpandButton = within(weeklyBucket as HTMLElement).getByRole("button", { name: "Expand" });
+    await user.click(weeklyExpandButton);
+
+    expect(screen.getByText("Weekly focus")).not.toBeNull();
+
+    const weeklyCollapseButton = within(weeklyBucket as HTMLElement).getByRole("button", { name: "Collapse" });
+    await user.click(weeklyCollapseButton);
+
+    expect(screen.queryByText("Weekly focus")).toBeNull();
+    expect(within(weeklyBucket as HTMLElement).getByRole("button", { name: "Expand" })).not.toBeNull();
   });
 });

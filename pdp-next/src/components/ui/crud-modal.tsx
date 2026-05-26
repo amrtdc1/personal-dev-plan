@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 type CrudModalProps = {
   isOpen: boolean;
@@ -10,18 +11,31 @@ type CrudModalProps = {
 };
 
 export function CrudModal({ isOpen, title, onClose, children }: CrudModalProps) {
-  if (!isOpen) {
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  if (!isOpen || typeof document === "undefined") {
     return null;
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/35 p-3 backdrop-blur-sm sm:p-4"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
+        className="w-full max-w-2xl max-h-[min(90vh,56rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-5"
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -39,6 +53,7 @@ export function CrudModal({ isOpen, title, onClose, children }: CrudModalProps) 
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

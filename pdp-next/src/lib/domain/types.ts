@@ -55,10 +55,14 @@ export type Task = SoftDeleteFields & {
   id: string;
   ownerUid: string;
   goalId: string;
+  parentGoalId?: string | null;
   title: string;
   notes: string;
   dueDate: string | null;
   unplanned?: boolean;
+  originalDueDate?: string | null;
+  snoozedDueDate?: string | null;
+  snoozeCount?: number;
   status: ItemStatus;
   percentComplete: number;
   orderIndex: number;

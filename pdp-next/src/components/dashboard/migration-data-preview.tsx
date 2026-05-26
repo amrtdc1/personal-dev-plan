@@ -143,6 +143,7 @@ export function MigrationDataPreview({
   const [habitSaveError, setHabitSaveError] = useState<string | null>(null);
   const [isSavingHabitCheckin, setIsSavingHabitCheckin] = useState(false);
   const [habitCheckinError, setHabitCheckinError] = useState<string | null>(null);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
 
   const allGoals = useMemo(
     () => [
@@ -308,6 +309,37 @@ export function MigrationDataPreview({
 
     window.localStorage.setItem(GOAL_TYPE_FILTER_STORAGE_KEY, goalTypeFilter);
   }, [goalTypeFilter]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mobileQuery = window.matchMedia("(max-width: 768px)");
+    const syncFilterPanel = () => {
+      setIsFilterPanelOpen(!mobileQuery.matches);
+    };
+
+    syncFilterPanel();
+
+    if (typeof mobileQuery.addEventListener === "function") {
+      mobileQuery.addEventListener("change", syncFilterPanel);
+    } else {
+      mobileQuery.addListener(syncFilterPanel);
+    }
+
+    return () => {
+      if (typeof mobileQuery.removeEventListener === "function") {
+        mobileQuery.removeEventListener("change", syncFilterPanel);
+      } else {
+        mobileQuery.removeListener(syncFilterPanel);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!goalParentGoalId) {
@@ -1125,10 +1157,22 @@ export function MigrationDataPreview({
               ) : null}
             </>
           }
-          mobileNav={timelineNav}
-          leftRailTitle="Timeline Filters"
-          leftRailContent={timelineNav}
         >
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">PLANNING FILTERS</p>
+              <button
+                type="button"
+                onClick={() => setIsFilterPanelOpen((current) => !current)}
+                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                {isFilterPanelOpen ? "Hide filters" : "Show filters"}
+              </button>
+            </div>
+
+            {isFilterPanelOpen ? <div className="mt-3">{timelineNav}</div> : null}
+          </div>
+
           <div className="pdp-card sticky top-2 z-10 mt-4 px-3 py-2 text-[11px] leading-5 text-slate-500 shadow-sm backdrop-blur sm:text-xs lg:static lg:shadow-none">
         <span className="font-semibold uppercase tracking-wide text-slate-500">Relationship path:</span>{" "}
         <span className="font-semibold text-slate-700">{selectedGoal?.title ?? "Select a goal"}</span>{" "}

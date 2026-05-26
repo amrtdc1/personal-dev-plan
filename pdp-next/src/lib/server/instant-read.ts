@@ -122,5 +122,8 @@ function normalizeTaskDefaults(task: Task): Task {
   return {
     ...task,
     unplanned: task.unplanned ?? false,
+    originalDueDate: task.originalDueDate ?? null,
+    snoozedDueDate: task.snoozedDueDate ?? null,
+    snoozeCount: task.snoozeCount ?? 0,
   };
 }

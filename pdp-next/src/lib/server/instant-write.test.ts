@@ -116,6 +116,9 @@ describe("instant write payload parsing", () => {
       notes: "Paste URL and status",
       dueDate: "2026-05-30",
       unplanned: true,
+      originalDueDate: null,
+      snoozedDueDate: null,
+      snoozeCount: 0,
     });
   });
 
@@ -129,6 +132,9 @@ describe("instant write payload parsing", () => {
     );
 
     expect(payload.unplanned).toBe(false);
+    expect(payload.originalDueDate).toBeNull();
+    expect(payload.snoozedDueDate).toBeNull();
+    expect(payload.snoozeCount).toBe(0);
   });
 
   it("rejects task payload when unplanned is not a boolean", async () => {

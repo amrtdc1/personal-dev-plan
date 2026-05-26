@@ -89,6 +89,40 @@ npm run instant:push:perms
 
 The app now exposes Instant's first-party auth sync route at `/api/instant` and the first protected server mutation at `/api/goals/[goalId]/status`.
 
+## Seed and Wipe Test Data
+
+Use the scripts below to run a consistent reseed and wipe loop for one user.
+
+1. Check current records:
+
+```bash
+npm run seed:check-data -- <user-id>
+```
+
+2. Seed test data (add `--clear` if you want to clear first):
+
+```bash
+npm run seed:test-data -- --userId=<user-id>
+npm run seed:test-data -- --userId=<user-id> --clear
+```
+
+3. Wipe all seeded records for the user:
+
+```bash
+npm run seed:wipe-data -- <user-id>
+```
+
+4. Verify wipe succeeded:
+
+```bash
+npm run seed:check-data -- <user-id>
+```
+
+Implementation notes:
+- Wipe operations run in batched transactions with batch size 50.
+- Wipe ordering deletes habit checkins before habits and tasks before goals.
+- Both standalone wipe scripts use the same underlying clear implementation.
+
 ## Web Push Setup (Phase 0)
 
 1. Generate a VAPID keypair:

@@ -87,6 +87,9 @@ export type SaveTaskInput = {
   notes: string;
   dueDate: string | null;
   unplanned?: boolean;
+  originalDueDate?: string | null;
+  snoozedDueDate?: string | null;
+  snoozeCount?: number;
   existingTask?: Task;
 };
 
@@ -945,6 +948,9 @@ export const dataRepository: DataRepository = {
       notes: trimmedNotes,
       dueDate: input.dueDate,
       unplanned: input.unplanned ?? input.existingTask?.unplanned ?? false,
+      originalDueDate: input.originalDueDate ?? input.existingTask?.originalDueDate ?? null,
+      snoozedDueDate: input.snoozedDueDate ?? input.existingTask?.snoozedDueDate ?? null,
+      snoozeCount: input.snoozeCount ?? input.existingTask?.snoozeCount ?? 0,
       status: input.existingTask?.status ?? "not_started",
       percentComplete:
         input.existingTask?.percentComplete ??
@@ -977,6 +983,9 @@ export const dataRepository: DataRepository = {
                 notes: task.notes,
                 dueDate: task.dueDate,
                 unplanned: task.unplanned,
+                originalDueDate: task.originalDueDate,
+                snoozedDueDate: task.snoozedDueDate,
+                snoozeCount: task.snoozeCount,
                 status: task.status,
                 percentComplete: task.percentComplete,
                 orderIndex: task.orderIndex,
@@ -2119,6 +2128,9 @@ function normalizeTaskDefaults(task: Task): Task {
   return {
     ...task,
     unplanned: task.unplanned ?? false,
+    originalDueDate: task.originalDueDate ?? null,
+    snoozedDueDate: task.snoozedDueDate ?? null,
+    snoozeCount: task.snoozeCount ?? 0,
   };
 }
 
@@ -2126,13 +2138,50 @@ async function saveTaskViaApi(task: Task, isUpdate: boolean) {
   const path = isUpdate ? `/api/tasks/${task.id}` : "/api/tasks";
   const method = isUpdate ? "PATCH" : "POST";
 
-  await invokeProtectedWrite(path, method, {
+  const basePayload = {
     goalId: task.goalId,
     title: task.title,
     notes: task.notes,
     dueDate: task.dueDate,
     unplanned: task.unplanned ?? false,
-  });
+  };
+
+  const shouldSendSnoozeMetadata =
+    Boolean(task.originalDueDate) || Boolean(task.snoozedDueDate) || (task.snoozeCount ?? 0) > 0;
+
+  if (!shouldSendSnoozeMetadata) {
+    await invokeProtectedWrite(path, method, basePayload);
+    return;
+  }
+
+  const extendedPayload = {
+    ...basePayload,
+    originalDueDate: task.originalDueDate ?? null,
+    snoozedDueDate: task.snoozedDueDate ?? null,
+    snoozeCount: task.snoozeCount ?? 0,
+  };
+
+  try {
+    await invokeProtectedWrite(path, method, extendedPayload);
+  } catch (error) {
+    if (!isMissingTaskAttributeError(error)) {
+      throw error;
+    }
+
+    // Compatibility fallback for environments where Instant schema rollout lags code deploy.
+    await invokeProtectedWrite(path, method, basePayload);
+  }
+}
+
+function isMissingTaskAttributeError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("missing") && message.includes("attribute")
+  ) || message.includes("attrs") || message.includes("schema");
 }
 
 async function createJournalEntryViaApi(input: SaveJournalEntryInput) {

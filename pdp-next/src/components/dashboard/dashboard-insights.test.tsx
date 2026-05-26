@@ -279,6 +279,7 @@ describe("dashboard insights command center", () => {
     });
 
     await user.click(within(taskRow as HTMLElement).getByRole("button", { name: "Mark done" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
       expect(updateTaskStatusMock).toHaveBeenCalledWith("user-1", "task-1", "done");
@@ -309,6 +310,7 @@ describe("dashboard insights command center", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "Check in" }));
+    await user.click(screen.getByRole("button", { name: "Confirm Check-in" }));
 
     await waitFor(() => {
       expect(saveHabitCheckinMock).toHaveBeenCalledWith(
@@ -425,7 +427,7 @@ describe("dashboard insights command center", () => {
         expect.objectContaining({
           ownerUid: "user-1",
           title: expect.stringContaining("Daily closeout - "),
-          tags: ["daily-closeout", "guided-journal"],
+          tags: expect.arrayContaining(["daily-closeout", "guided-journal"]),
         }),
       );
     });
@@ -445,7 +447,6 @@ describe("dashboard insights command center", () => {
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
     const yesterdayIso = yesterday.toISOString().slice(0, 10);
-    const onOpenItem = vi.fn();
 
     listTasksMock.mockResolvedValue([
       {
@@ -484,7 +485,7 @@ describe("dashboard insights command center", () => {
       },
     ]);
 
-    render(<DashboardInsights onOpenItem={onOpenItem} />);
+    render(<DashboardInsights />);
 
     await waitFor(() => {
       expect(screen.getByText("Overdue now")).not.toBeNull();
@@ -494,14 +495,17 @@ describe("dashboard insights command center", () => {
     expect(overdueCard?.textContent).toContain("1");
     await user.click(screen.getByRole("button", { name: "Review overdue" }));
 
-    expect(onOpenItem).toHaveBeenCalledWith("task", "task-overdue-1");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Overdue only" })).not.toBeNull();
+    });
+
+    expect(screen.getByTestId("quick-task-title-task-overdue-1")).not.toBeNull();
   });
 
-  it("shows plan mode with due-this-week lane and quick task open", async () => {
+  it("shows plan mode with due-this-week lane and opens task quick actions modal", async () => {
     const user = userEvent.setup();
-    const onOpenItem = vi.fn();
 
-    render(<DashboardInsights onOpenItem={onOpenItem} />);
+    render(<DashboardInsights />);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Plan" })).not.toBeNull();
@@ -514,7 +518,10 @@ describe("dashboard insights command center", () => {
     });
 
     await user.click(screen.getByTestId("due-week-task-title-task-2"));
-    expect(onOpenItem).toHaveBeenCalledWith("task", "task-2");
+
+    await waitFor(() => {
+      expect(screen.getByText("Snooze task")).not.toBeNull();
+    });
   });
 
   it("shows stale in-progress lane in risks mode with quick task open", async () => {

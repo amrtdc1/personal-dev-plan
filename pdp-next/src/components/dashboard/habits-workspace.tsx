@@ -3,9 +3,30 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
 import { buildHabitMetrics, type HabitMetricSnapshot } from "@/components/dashboard/habit-metrics";
+import { CrudModal } from "@/components/ui/crud-modal";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import type { Habit, HabitCadence, HabitCheckin } from "@/lib/domain/types";
+
+type DailyCheckinSummary = {
+  date: string;
+  checkins: Array<{
+    checkinId: string;
+    habitId: string;
+    habitTitle: string;
+    cadence: HabitCadence;
+    targetCount: number;
+    notes: string | null;
+  }>;
+};
+
+type HabitSortKey =
+  | "adherence_desc"
+  | "current_streak_desc"
+  | "best_streak_desc"
+  | "checkins_desc"
+  | "title_asc"
+  | "status_asc";
 
 export function HabitsWorkspace() {
   const { user, isLoading, error } = db.useAuth();
@@ -24,6 +45,10 @@ export function HabitsWorkspace() {
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const [activeActionHabitId, setActiveActionHabitId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [checkinModalHabitId, setCheckinModalHabitId] = useState<string | null>(null);
+  const [checkinDateInput, setCheckinDateInput] = useState("");
+  const [selectedDailyCheckinDate, setSelectedDailyCheckinDate] = useState<string | null>(null);
+  const [habitSortKey, setHabitSortKey] = useState<HabitSortKey>("adherence_desc");
 
   useEffect(() => {
     if (!user) {
@@ -92,11 +117,6 @@ export function HabitsWorkspace() {
     return activeHabits[0]?.id ?? null;
   }, [activeHabits, selectedHabitId]);
 
-  const selectedHabitCheckins = useMemo(
-    () => (effectiveSelectedHabitId ? habitCheckinsByHabitId[effectiveSelectedHabitId] ?? [] : []),
-    [effectiveSelectedHabitId, habitCheckinsByHabitId],
-  );
-
   const habitMetricsByHabitId = useMemo(() => {
     const metrics: Record<string, HabitMetricSnapshot> = {};
 
@@ -106,6 +126,76 @@ export function HabitsWorkspace() {
 
     return metrics;
   }, [activeHabits, habitCheckinsByHabitId]);
+
+  const selectedCheckinHabit = useMemo(
+    () => (checkinModalHabitId ? activeHabits.find((habit) => habit.id === checkinModalHabitId) ?? null : null),
+    [activeHabits, checkinModalHabitId],
+  );
+
+  const recentDailyCheckins = useMemo<DailyCheckinSummary[]>(() => {
+    const habitById = new Map(activeHabits.map((habit) => [habit.id, habit]));
+    const byDate = new Map<string, DailyCheckinSummary>();
+
+    for (const [habitId, checkins] of Object.entries(habitCheckinsByHabitId)) {
+      const habit = habitById.get(habitId);
+      if (!habit) {
+        continue;
+      }
+
+      for (const checkin of checkins) {
+        const existing = byDate.get(checkin.checkInDate) ?? { date: checkin.checkInDate, checkins: [] };
+        existing.checkins.push({
+          checkinId: checkin.id,
+          habitId,
+          habitTitle: habit.title,
+          cadence: habit.cadence,
+          targetCount: habit.targetCount,
+          notes: checkin.notes,
+        });
+        byDate.set(checkin.checkInDate, existing);
+      }
+    }
+
+    return Array.from(byDate.values())
+      .map((day) => ({
+        ...day,
+        checkins: day.checkins.sort((left, right) => left.habitTitle.localeCompare(right.habitTitle)),
+      }))
+      .sort((left, right) => right.date.localeCompare(left.date));
+  }, [activeHabits, habitCheckinsByHabitId]);
+
+  const selectedDailyCheckinSummary = useMemo(
+    () => recentDailyCheckins.find((summary) => summary.date === selectedDailyCheckinDate) ?? null,
+    [recentDailyCheckins, selectedDailyCheckinDate],
+  );
+
+  const sortedActiveHabits = useMemo(() => {
+    const sorted = [...activeHabits];
+    sorted.sort((left, right) => {
+      const leftMetrics = habitMetricsByHabitId[left.id] ?? defaultMetricSnapshot();
+      const rightMetrics = habitMetricsByHabitId[right.id] ?? defaultMetricSnapshot();
+      const leftCheckins = habitCheckinsByHabitId[left.id]?.length ?? 0;
+      const rightCheckins = habitCheckinsByHabitId[right.id]?.length ?? 0;
+
+      switch (habitSortKey) {
+        case "adherence_desc":
+          return compareDescending(leftMetrics.adherence28dPercent, rightMetrics.adherence28dPercent, left.title, right.title);
+        case "current_streak_desc":
+          return compareDescending(leftMetrics.currentStreak, rightMetrics.currentStreak, left.title, right.title);
+        case "best_streak_desc":
+          return compareDescending(leftMetrics.bestStreak, rightMetrics.bestStreak, left.title, right.title);
+        case "checkins_desc":
+          return compareDescending(leftCheckins, rightCheckins, left.title, right.title);
+        case "status_asc":
+          return left.status.localeCompare(right.status) || left.title.localeCompare(right.title);
+        case "title_asc":
+        default:
+          return left.title.localeCompare(right.title);
+      }
+    });
+
+    return sorted;
+  }, [activeHabits, habitCheckinsByHabitId, habitMetricsByHabitId, habitSortKey]);
 
   if (isLoading || isRefreshing) {
     return (
@@ -134,6 +224,8 @@ export function HabitsWorkspace() {
     );
   }
 
+  const currentUser = user;
+
   async function handleHabitSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -142,7 +234,7 @@ export function HabitsWorkspace() {
 
     try {
       await dataRepository.saveHabit({
-        ownerUid: user.id,
+        ownerUid: currentUser.id,
         title: habitTitle,
         cadence: habitCadence,
         targetCount: Number(habitTargetCount),
@@ -167,7 +259,7 @@ export function HabitsWorkspace() {
     try {
       await dataRepository.saveHabit({
         habitId: habit.id,
-        ownerUid: user.id,
+        ownerUid: currentUser.id,
         title: habit.title,
         cadence: habit.cadence,
         targetCount: habit.targetCount,
@@ -188,7 +280,7 @@ export function HabitsWorkspace() {
     setLifecycleError(null);
 
     try {
-      await dataRepository.softDeleteHabit(user.id, habit.id);
+      await dataRepository.softDeleteHabit(currentUser.id, habit.id);
       setRefreshKey((value) => value + 1);
     } catch (caughtError) {
       setLifecycleError(getErrorMessage(caughtError, "We could not archive the habit."));
@@ -202,7 +294,7 @@ export function HabitsWorkspace() {
     setLifecycleError(null);
 
     try {
-      await dataRepository.restoreHabit(user.id, habit.id);
+      await dataRepository.restoreHabit(currentUser.id, habit.id);
       setRefreshKey((value) => value + 1);
     } catch (caughtError) {
       setLifecycleError(getErrorMessage(caughtError, "We could not restore the habit."));
@@ -223,7 +315,7 @@ export function HabitsWorkspace() {
     setLifecycleError(null);
 
     try {
-      await dataRepository.permanentlyDeleteHabit(user.id, habit.id);
+      await dataRepository.permanentlyDeleteHabit(currentUser.id, habit.id);
       setRefreshKey((value) => value + 1);
     } catch (caughtError) {
       setLifecycleError(getErrorMessage(caughtError, "We could not permanently delete the habit."));
@@ -232,24 +324,30 @@ export function HabitsWorkspace() {
     }
   }
 
-  async function handleHabitCheckin(habitId: string) {
+  async function handleHabitCheckin(habitId: string, checkInDate: string) {
     setIsSavingHabitCheckin(true);
     setCheckinError(null);
 
     try {
       await dataRepository.saveHabitCheckin({
-        ownerUid: user.id,
+        ownerUid: currentUser.id,
         habitId,
-        checkInDate: new Date().toISOString().slice(0, 10),
+        checkInDate,
         notes: null,
       });
 
+      setCheckinModalHabitId(null);
       setRefreshKey((value) => value + 1);
     } catch (caughtError) {
       setCheckinError(getErrorMessage(caughtError, "We could not save the habit check-in."));
     } finally {
       setIsSavingHabitCheckin(false);
     }
+  }
+
+  function openCheckinModal(habitId: string) {
+    setCheckinModalHabitId(habitId);
+    setCheckinDateInput(new Date().toISOString().slice(0, 10));
   }
 
   return (
@@ -267,9 +365,24 @@ export function HabitsWorkspace() {
     >
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Habit Tracker</h3>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-          {activeHabits.length} active
-        </span>
+        <div className="flex items-center gap-2">
+          <select
+            value={habitSortKey}
+            onChange={(event) => setHabitSortKey(event.target.value as HabitSortKey)}
+            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700"
+            aria-label="Sort habits"
+          >
+            <option value="adherence_desc">Sort: 4-week adherence</option>
+            <option value="current_streak_desc">Sort: Current streak</option>
+            <option value="best_streak_desc">Sort: Best streak</option>
+            <option value="checkins_desc">Sort: Total check-ins</option>
+            <option value="status_asc">Sort: Status</option>
+            <option value="title_asc">Sort: Name</option>
+          </select>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+            {activeHabits.length} active
+          </span>
+        </div>
       </div>
 
       <form className="mt-3 grid gap-2 md:grid-cols-4" onSubmit={handleHabitSubmit}>
@@ -301,7 +414,8 @@ export function HabitsWorkspace() {
         <button
           type="submit"
           disabled={isSavingHabit}
-          className="rounded-full bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+          className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:bg-slate-400"
+          style={{ backgroundColor: "var(--pdp-theme-primary)" }}
         >
           {isSavingHabit ? "Saving..." : "Create habit"}
         </button>
@@ -314,7 +428,7 @@ export function HabitsWorkspace() {
               No habits yet.
             </li>
           ) : (
-            activeHabits.map((habit) => {
+            sortedActiveHabits.map((habit) => {
               const isSelected = effectiveSelectedHabitId === habit.id;
               const checkinCount = habitCheckinsByHabitId[habit.id]?.length ?? 0;
               const metrics = habitMetricsByHabitId[habit.id] ?? {
@@ -323,6 +437,9 @@ export function HabitsWorkspace() {
                 adherence28dPercent: 0,
                 trend: "flat" as const,
               };
+              const activityCells = buildRecentActivityCells(habit, habitCheckinsByHabitId[habit.id] ?? []);
+              const streakFill = Math.max(6, Math.min(100, Math.round((metrics.currentStreak / Math.max(1, metrics.bestStreak || 1)) * 100)));
+
               return (
                 <li key={habit.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                   <button
@@ -330,18 +447,58 @@ export function HabitsWorkspace() {
                     onClick={() => setSelectedHabitId(habit.id)}
                     className="w-full text-left"
                   >
-                    <p className={`font-medium ${isSelected ? "text-slate-900" : "text-slate-700"}`}>{habit.title}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className={`font-medium ${isSelected ? "text-slate-900" : "text-slate-700"}`}>{habit.title}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${trendBadgeClass(metrics.trend)}`}>
+                        {metrics.trend}
+                      </span>
+                    </div>
+
                     <p className="mt-1 text-xs text-slate-500">
                       {habit.cadence === "daily" ? "Daily" : "Weekly"} | Target {habit.targetCount} | {checkinCount} check-ins | {habit.status}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Streak {metrics.currentStreak} | Best {metrics.bestStreak} | 4-week {metrics.adherence28dPercent}% | Trend {metrics.trend}
-                    </p>
+
+                    <div className="mt-2 grid gap-2 md:grid-cols-3">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">4-week adherence</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-900">{metrics.adherence28dPercent}%</p>
+                        <div className="mt-1 h-1.5 rounded-full bg-slate-200">
+                          <div
+                            className="h-1.5 rounded-full bg-emerald-500 transition-all"
+                            style={{ width: `${Math.max(4, metrics.adherence28dPercent)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Streak</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-900">{metrics.currentStreak} / {metrics.bestStreak}</p>
+                        <div className="mt-1 h-1.5 rounded-full bg-slate-200">
+                          <div
+                            className="h-1.5 rounded-full bg-sky-500 transition-all"
+                            style={{ width: `${streakFill}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Recent activity</p>
+                        <div className="mt-1 grid grid-cols-7 gap-1">
+                          {activityCells.map((isActive, index) => (
+                            <span
+                              key={`${habit.id}-activity-${index}`}
+                              className={`h-2.5 rounded-sm ${isActive ? "bg-indigo-500" : "bg-slate-200"}`}
+                              aria-hidden="true"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </button>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => void handleHabitCheckin(habit.id)}
+                      onClick={() => openCheckinModal(habit.id)}
                       disabled={isSavingHabitCheckin || habit.status === "paused"}
                       className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -371,22 +528,32 @@ export function HabitsWorkspace() {
         </ul>
 
         <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent check-ins</p>
-          {effectiveSelectedHabitId ? (
-            <ul className="mt-2 space-y-1 text-sm text-slate-700">
-              {selectedHabitCheckins.length === 0 ? (
-                <li className="text-xs text-slate-500">No check-ins yet.</li>
-              ) : (
-                selectedHabitCheckins.slice(0, 10).map((checkin) => (
-                  <li key={checkin.id} className="rounded-md bg-slate-50 px-2 py-1">
-                    <span className="font-medium">{checkin.checkInDate}</span>
-                    {checkin.notes ? <span className="text-slate-500"> - {checkin.notes}</span> : null}
-                  </li>
-                ))
-              )}
-            </ul>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent check-in days</p>
+          {recentDailyCheckins.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500">No check-ins yet.</p>
           ) : (
-            <p className="mt-2 text-xs text-slate-500">Select a habit to view check-ins.</p>
+            <ul className="mt-2 space-y-2 text-sm text-slate-700">
+              {recentDailyCheckins.slice(0, 12).map((daily) => (
+                <li key={daily.date}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDailyCheckinDate(daily.date)}
+                    className="w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-left transition hover:border-slate-300 hover:bg-white"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-slate-800">{daily.date}</span>
+                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                        {daily.checkins.length} check-ins
+                      </span>
+                    </div>
+                    <p className="mt-1 truncate text-xs text-slate-500">
+                      {daily.checkins.slice(0, 3).map((entry) => entry.habitTitle).join(" | ")}
+                      {daily.checkins.length > 3 ? " ..." : ""}
+                    </p>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>
@@ -426,8 +593,149 @@ export function HabitsWorkspace() {
           </ul>
         </div>
       ) : null}
+
+      <CrudModal
+        isOpen={selectedCheckinHabit !== null}
+        title={selectedCheckinHabit ? `Check in: ${selectedCheckinHabit.title}` : "Check in"}
+        onClose={() => setCheckinModalHabitId(null)}
+      >
+        {selectedCheckinHabit ? (
+          <div className="grid gap-3">
+            <p className="text-sm text-slate-600">Confirm today or backfill a missed day.</p>
+            <label className="text-sm text-slate-700">
+              Check-in date
+              <input
+                type="date"
+                value={checkinDateInput}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(event) => setCheckinDateInput(event.currentTarget.value)}
+                className="pdp-control mt-1 rounded-lg"
+              />
+            </label>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCheckinModalHabitId(null)}
+                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleHabitCheckin(selectedCheckinHabit.id, checkinDateInput)}
+                disabled={isSavingHabitCheckin || checkinDateInput.length === 0}
+                className="rounded-full border border-indigo-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-indigo-700 transition hover:border-indigo-400 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSavingHabitCheckin ? "Saving..." : "Confirm check-in"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </CrudModal>
+
+      <CrudModal
+        isOpen={selectedDailyCheckinSummary !== null}
+        title={selectedDailyCheckinSummary ? `Check-ins on ${selectedDailyCheckinSummary.date}` : "Daily Check-ins"}
+        onClose={() => setSelectedDailyCheckinDate(null)}
+      >
+        {selectedDailyCheckinSummary ? (
+          <div className="grid gap-3">
+            <p className="text-sm text-slate-600">
+              {selectedDailyCheckinSummary.checkins.length} habit check-in{selectedDailyCheckinSummary.checkins.length === 1 ? "" : "s"} recorded.
+            </p>
+            <ul className="space-y-2">
+              {selectedDailyCheckinSummary.checkins.map((checkin) => (
+                <li key={checkin.checkinId} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-sm font-semibold text-slate-900">{checkin.habitTitle}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {checkin.cadence === "daily" ? "Daily" : "Weekly"} target {checkin.targetCount}
+                  </p>
+                  {checkin.notes ? <p className="mt-1 text-xs text-slate-600">Notes: {checkin.notes}</p> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </CrudModal>
     </WorkspaceShell>
   );
+}
+
+function compareDescending(left: number, right: number, leftTitle: string, rightTitle: string) {
+  if (right !== left) {
+    return right - left;
+  }
+
+  return leftTitle.localeCompare(rightTitle);
+}
+
+function defaultMetricSnapshot(): HabitMetricSnapshot {
+  return {
+    currentStreak: 0,
+    bestStreak: 0,
+    adherence28dPercent: 0,
+    trend: "flat",
+  };
+}
+
+function trendBadgeClass(trend: HabitMetricSnapshot["trend"]) {
+  if (trend === "up") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (trend === "down") {
+    return "bg-rose-100 text-rose-700";
+  }
+
+  return "bg-slate-100 text-slate-700";
+}
+
+function buildRecentActivityCells(habit: Habit, checkins: HabitCheckin[]) {
+  const isoDates = new Set(checkins.map((checkin) => checkin.checkInDate));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (habit.cadence === "weekly") {
+    const cells: boolean[] = [];
+    for (let index = 5; index >= 0; index -= 1) {
+      const weekStart = new Date(today);
+      const day = weekStart.getDay();
+      const diffToMonday = day === 0 ? -6 : 1 - day;
+      weekStart.setDate(weekStart.getDate() + diffToMonday - index * 7);
+
+      let count = 0;
+      for (let offset = 0; offset < 7; offset += 1) {
+        const dayDate = new Date(weekStart);
+        dayDate.setDate(weekStart.getDate() + offset);
+        const iso = toIsoDate(dayDate);
+        if (isoDates.has(iso)) {
+          count += 1;
+        }
+      }
+
+      cells.push(count >= Math.max(1, habit.targetCount));
+    }
+
+    while (cells.length < 7) {
+      cells.unshift(false);
+    }
+
+    return cells;
+  }
+
+  const cells: boolean[] = [];
+  for (let index = 6; index >= 0; index -= 1) {
+    const cursor = new Date(today);
+    cursor.setDate(today.getDate() - index);
+    cells.push(isoDates.has(toIsoDate(cursor)));
+  }
+
+  return cells;
+}
+
+function toIsoDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {

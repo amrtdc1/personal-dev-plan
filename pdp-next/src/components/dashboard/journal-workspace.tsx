@@ -9,6 +9,7 @@ import { CrudModal } from "@/components/ui/crud-modal";
 import { InfoPopover } from "@/components/ui/info-popover";
 
 const MOOD_OPTIONS = ["great", "good", "okay", "low", "stressed"] as const;
+const JOURNAL_PAGE_SIZE = 6;
 
 export function JournalWorkspace() {
   const { isLoading, user, error } = db.useAuth();
@@ -32,6 +33,7 @@ export function JournalWorkspace() {
   const [tagFilter, setTagFilter] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -121,10 +123,17 @@ export function JournalWorkspace() {
 
   const editingEntry = entries.find((entry) => entry.id === editingEntryId) ?? null;
 
+  const totalPages = Math.max(1, Math.ceil(filteredEntries.length / JOURNAL_PAGE_SIZE));
+  const effectiveCurrentPage = Math.min(currentPage, totalPages);
+  const pagedEntries = useMemo(() => {
+    const start = (effectiveCurrentPage - 1) * JOURNAL_PAGE_SIZE;
+    return filteredEntries.slice(start, start + JOURNAL_PAGE_SIZE);
+  }, [effectiveCurrentPage, filteredEntries]);
+
   if (isLoading || isRefreshing) {
     return (
       <section className="pdp-panel">
-        <h2 className="text-lg font-semibold text-slate-900">Journal</h2>
+        <h2 className="pdp-section-title text-slate-900">Journal</h2>
         <p className="mt-3 text-sm text-slate-700">Loading journal entries...</p>
       </section>
     );
@@ -142,7 +151,7 @@ export function JournalWorkspace() {
   if (!user) {
     return (
       <section className="pdp-panel">
-        <h2 className="text-lg font-semibold text-slate-900">Journal</h2>
+        <h2 className="pdp-section-title text-slate-900">Journal</h2>
         <p className="mt-3 text-sm text-slate-700">Sign in to create and manage journal entries.</p>
       </section>
     );
@@ -272,7 +281,7 @@ export function JournalWorkspace() {
     <section className="pdp-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-slate-900">Journal</h2>
+          <h2 className="pdp-section-title text-slate-900">Journal</h2>
           <InfoPopover className="self-center sm:hidden" label="Journal help">
             Create, edit, archive, and filter journal entries with strict markdown rendering.
           </InfoPopover>
@@ -400,13 +409,13 @@ export function JournalWorkspace() {
         </form>
       </CrudModal>
 
-      <div className="pdp-panel-muted mt-4 p-3">
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-slate-900">Journal filters</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">JOURNAL FILTERS</p>
           <button
             type="button"
             onClick={() => setIsFilterPanelOpen((current) => !current)}
-            className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
             aria-expanded={isFilterPanelOpen}
           >
             {isFilterPanelOpen ? "Hide filters" : "Show filters"}
@@ -420,7 +429,10 @@ export function JournalWorkspace() {
               <select
                 id="journal-filter-mood"
                 value={moodFilter}
-                onChange={(event) => setMoodFilter(event.target.value)}
+                onChange={(event) => {
+                  setMoodFilter(event.target.value);
+                  setCurrentPage(1);
+                }}
                 className="pdp-control mt-1"
               >
                 <option value="all">All moods</option>
@@ -437,7 +449,10 @@ export function JournalWorkspace() {
               <select
                 id="journal-filter-goal"
                 value={goalFilter}
-                onChange={(event) => setGoalFilter(event.target.value)}
+                onChange={(event) => {
+                  setGoalFilter(event.target.value);
+                  setCurrentPage(1);
+                }}
                 className="pdp-control mt-1"
               >
                 <option value="all">All goals</option>
@@ -454,7 +469,10 @@ export function JournalWorkspace() {
               <input
                 id="journal-filter-tag"
                 value={tagFilter}
-                onChange={(event) => setTagFilter(event.target.value)}
+                onChange={(event) => {
+                  setTagFilter(event.target.value);
+                  setCurrentPage(1);
+                }}
                 placeholder="Search tag"
                 className="pdp-control mt-1"
               />
@@ -464,7 +482,10 @@ export function JournalWorkspace() {
               <input
                 type="checkbox"
                 checked={includeArchived}
-                onChange={(event) => setIncludeArchived(event.target.checked)}
+                onChange={(event) => {
+                  setIncludeArchived(event.target.checked);
+                  setCurrentPage(1);
+                }}
               />
               Include archived
             </label>
@@ -472,11 +493,11 @@ export function JournalWorkspace() {
         ) : null}
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filteredEntries.length === 0 ? (
           <p className="text-sm text-slate-600">No journal entries match these filters.</p>
         ) : (
-          filteredEntries.map((entry) => (
+          pagedEntries.map((entry) => (
             <article
               key={entry.id}
               className={`pdp-card rounded-xl border p-4 ${entry.deletedAt ? "border-amber-200 bg-amber-50/40" : "border-slate-200 bg-white"}`}
@@ -542,6 +563,32 @@ export function JournalWorkspace() {
           ))
         )}
       </div>
+
+      {filteredEntries.length > 0 ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-600">
+            Page {effectiveCurrentPage} of {totalPages} ({filteredEntries.length} total entries)
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              disabled={effectiveCurrentPage <= 1}
+              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+              disabled={effectiveCurrentPage >= totalPages}
+              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

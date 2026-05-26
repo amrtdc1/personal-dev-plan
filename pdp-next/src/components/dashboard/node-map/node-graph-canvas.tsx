@@ -1,17 +1,22 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
   Controls,
+  Handle,
   MarkerType,
   MiniMap,
+  Position,
   ReactFlow,
   ReactFlowProvider,
   type Edge,
   type Node,
   type NodeProps,
+  type NodeTypes,
+  useEdgesState,
+  useNodesState,
 } from "@xyflow/react";
 import { type GraphNodeData } from "@/components/dashboard/node-map/graph-adapter";
 
@@ -21,8 +26,8 @@ type NodeGraphCanvasProps = {
   onOpenItem?: (kind: "goal" | "task", id: string) => void;
 };
 
-const nodeTypes = {
-  entity: memo(EntityNode),
+const nodeTypes: NodeTypes = {
+  entity: EntityNode,
 };
 
 export function NodeGraphCanvas({ nodes, edges, onOpenItem }: NodeGraphCanvasProps) {
@@ -36,6 +41,31 @@ export function NodeGraphCanvas({ nodes, edges, onOpenItem }: NodeGraphCanvasPro
 function NodeGraphCanvasInner({ nodes, edges, onOpenItem }: NodeGraphCanvasProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(nodes);
+  const [flowEdges, setFlowEdges] = useEdgesState(edges);
+  const dragSessionRef = useRef<{
+    rootId: string;
+    rootStartPosition: { x: number; y: number };
+    descendantDepthById: Map<string, number>;
+    initialPositions: Map<string, { x: number; y: number }>;
+  } | null>(null);
+  const settleFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setFlowNodes(nodes);
+  }, [nodes, setFlowNodes]);
+
+  useEffect(() => {
+    setFlowEdges(edges);
+  }, [edges, setFlowEdges]);
+
+  useEffect(() => {
+    return () => {
+      if (settleFrameRef.current !== null) {
+        cancelAnimationFrame(settleFrameRef.current);
+      }
+    };
+  }, []);
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
@@ -46,7 +76,7 @@ function NodeGraphCanvasInner({ nodes, edges, onOpenItem }: NodeGraphCanvasProps
 
     const ids = new Set<string>([selectedNodeId]);
 
-    for (const edge of edges) {
+    for (const edge of flowEdges) {
       if (edge.source === selectedNodeId) {
         ids.add(edge.target);
       }
@@ -57,10 +87,10 @@ function NodeGraphCanvasInner({ nodes, edges, onOpenItem }: NodeGraphCanvasProps
     }
 
     return ids;
-  }, [edges, selectedNodeId]);
+  }, [flowEdges, selectedNodeId]);
 
   const displayedNodes = useMemo(() => {
-    return nodes.map((node) => {
+    return flowNodes.map((node) => {
       const titleMatches = normalizedQuery.length === 0 || node.data.title.toLowerCase().includes(normalizedQuery);
       const isSelected = selectedNodeId === node.id;
       const isRelated = relatedNodeIds.has(node.id);
@@ -75,10 +105,10 @@ function NodeGraphCanvasInner({ nodes, edges, onOpenItem }: NodeGraphCanvasProps
         },
       };
     });
-  }, [nodes, normalizedQuery, relatedNodeIds, selectedNodeId]);
+  }, [flowNodes, normalizedQuery, relatedNodeIds, selectedNodeId]);
 
   const displayedEdges = useMemo(() => {
-    return edges.map((edge) => {
+    return flowEdges.map((edge) => {
       const relationshipType = edge.data && typeof edge.data === "object" && "relationship" in edge.data
         ? String((edge.data as { relationship?: string }).relationship ?? "")
         : "";
@@ -89,20 +119,20 @@ function NodeGraphCanvasInner({ nodes, edges, onOpenItem }: NodeGraphCanvasProps
 
       return {
         ...edge,
-        type: isTaskEdge ? "bezier" : "smoothstep",
+        type: "simplebezier",
         markerEnd: {
           type: MarkerType.ArrowClosed,
         },
         animated: isPathEdge,
         style: {
-          strokeWidth: isPathEdge ? 2.6 : isTaskEdge ? 1.4 : 1.8,
-          stroke: isPathEdge ? "#0f172a" : isTaskEdge ? "#a78bfa" : "#64748b",
-          strokeDasharray: isTaskEdge ? "4 5" : undefined,
-          opacity: selectedNodeId ? (isPathEdge ? 1 : 0.25) : 0.7,
+          strokeWidth: isPathEdge ? 2.6 : isTaskEdge ? 1.25 : 1.65,
+          stroke: isPathEdge ? "#0f172a" : isTaskEdge ? "#7c3aed" : "#334155",
+          strokeDasharray: isTaskEdge ? "3 5" : undefined,
+          opacity: selectedNodeId ? (isPathEdge ? 1 : 0.18) : 0.6,
         },
       };
     });
-  }, [edges, selectedNodeId]);
+  }, [flowEdges, selectedNodeId]);
 
   const selectedNode = useMemo(() => {
     if (!selectedNodeId) {
@@ -118,6 +148,106 @@ function NodeGraphCanvasInner({ nodes, edges, onOpenItem }: NodeGraphCanvasProps
     }
 
     onOpenItem?.(selectedNode.data.kind, selectedNode.data.entityId);
+  }
+
+  function beginDrag(rootId: string, position: { x: number; y: number }) {
+    const descendantDepthById = collectDescendantDepths(rootId, flowEdges);
+    if (descendantDepthById.size === 0) {
+      dragSessionRef.current = null;
+      return;
+    }
+
+    const initialPositions = new Map<string, { x: number; y: number }>();
+    for (const node of flowNodes) {
+      if (node.id === rootId || descendantDepthById.has(node.id)) {
+        initialPositions.set(node.id, { ...node.position });
+      }
+    }
+
+    dragSessionRef.current = {
+      rootId,
+      rootStartPosition: position,
+      descendantDepthById,
+      initialPositions,
+    };
+  }
+
+  function syncDraggedFamily(
+    rootId: string,
+    position: { x: number; y: number },
+    phase: "drag" | "overshoot" | "settle" = "drag",
+  ) {
+    const session = dragSessionRef.current;
+    if (!session || session.rootId !== rootId) {
+      return;
+    }
+
+    const deltaX = position.x - session.rootStartPosition.x;
+    const deltaY = position.y - session.rootStartPosition.y;
+
+    setFlowNodes((currentNodes) =>
+      currentNodes.map((currentNode) => {
+        if (!session.descendantDepthById.has(currentNode.id) || currentNode.id === rootId) {
+          return currentNode;
+        }
+
+        const initialPosition = session.initialPositions.get(currentNode.id);
+        if (!initialPosition) {
+          return currentNode;
+        }
+
+        const depth = session.descendantDepthById.get(currentNode.id) ?? 1;
+        const targetPosition = {
+          x: initialPosition.x + deltaX,
+          y: initialPosition.y + deltaY,
+        };
+
+        if (phase === "settle") {
+          return {
+            ...currentNode,
+            position: targetPosition,
+          };
+        }
+
+        if (phase === "overshoot") {
+          const overshoot = getOvershootMultiplierForDepth(depth);
+          return {
+            ...currentNode,
+            position: {
+              x: initialPosition.x + deltaX * overshoot,
+              y: initialPosition.y + deltaY * overshoot,
+            },
+          };
+        }
+
+        const blend = getElasticBlendForDepth(depth);
+
+        return {
+          ...currentNode,
+          position: {
+            x: currentNode.position.x + (targetPosition.x - currentNode.position.x) * blend,
+            y: currentNode.position.y + (targetPosition.y - currentNode.position.y) * blend,
+          },
+        };
+      }),
+    );
+  }
+
+  function endDrag(rootId: string, position: { x: number; y: number }) {
+    syncDraggedFamily(rootId, position, "overshoot");
+
+    if (settleFrameRef.current !== null) {
+      cancelAnimationFrame(settleFrameRef.current);
+    }
+
+    settleFrameRef.current = requestAnimationFrame(() => {
+      settleFrameRef.current = requestAnimationFrame(() => {
+        syncDraggedFamily(rootId, position, "settle");
+        settleFrameRef.current = null;
+      });
+    });
+
+    dragSessionRef.current = null;
   }
 
   return (
@@ -148,16 +278,20 @@ function NodeGraphCanvasInner({ nodes, edges, onOpenItem }: NodeGraphCanvasProps
         </div>
       </div>
 
-      <div className="h-[560px] rounded-xl border border-slate-200 bg-gradient-to-b from-slate-100 to-slate-50">
+      <div className="h-[560px] rounded-xl border border-slate-200 bg-[radial-gradient(circle_at_center,_#f8fafc_10%,_#e2e8f0_80%)]">
         <ReactFlow
           nodes={displayedNodes}
           edges={displayedEdges}
           nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
           fitView
-          fitViewOptions={{ padding: 0.25 }}
-          minZoom={0.3}
+          fitViewOptions={{ padding: 0.18 }}
+          minZoom={0.2}
           maxZoom={2.2}
           onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+          onNodeDragStart={(_, node) => beginDrag(node.id, node.position)}
+          onNodeDrag={(_, node) => syncDraggedFamily(node.id, node.position)}
+          onNodeDragStop={(_, node) => endDrag(node.id, node.position)}
           onNodeDoubleClick={(_, node) => onOpenItem?.(node.data.kind, node.data.entityId)}
           onPaneClick={() => setSelectedNodeId(null)}
           proOptions={{ hideAttribution: true }}
@@ -180,31 +314,68 @@ function NodeGraphCanvasInner({ nodes, edges, onOpenItem }: NodeGraphCanvasProps
       </div>
 
       <p className="mt-2 text-[11px] text-slate-500">
-        Single-click selects and highlights nearby paths. Use the button (or Enter) to open the selected item in Planning.
+        Force-directed view clusters by timeframe anchors while physics spacing reduces node collisions and keeps cross-timeframe links visible.
       </p>
     </div>
   );
 }
 
-function EntityNode({ data }: NodeProps<GraphNodeData & { isSelected?: boolean; isRelated?: boolean; isDimmed?: boolean }>) {
-  const isGoal = data.kind === "goal";
+function collectDescendantDepths(rootId: string, edges: Edge[]) {
+  const descendantDepthById = new Map<string, number>();
+  const pendingNodes: Array<{ id: string; depth: number }> = [{ id: rootId, depth: 0 }];
+
+  while (pendingNodes.length > 0) {
+    const currentNode = pendingNodes.shift();
+    if (!currentNode) {
+      continue;
+    }
+
+    for (const edge of edges) {
+      if (edge.source !== currentNode.id || descendantDepthById.has(edge.target)) {
+        continue;
+      }
+
+      const nextDepth = currentNode.depth + 1;
+      descendantDepthById.set(edge.target, nextDepth);
+      pendingNodes.push({ id: edge.target, depth: nextDepth });
+    }
+  }
+
+  return descendantDepthById;
+}
+
+function getElasticBlendForDepth(depth: number) {
+  const normalizedDepth = Math.max(1, depth);
+  return Math.max(0.04, 0.17 - normalizedDepth * 0.024);
+}
+
+function getOvershootMultiplierForDepth(depth: number) {
+  const normalizedDepth = Math.max(1, depth);
+  return Math.max(1.04, 1.14 - normalizedDepth * 0.015);
+}
+
+function EntityNode({ data }: NodeProps) {
+  const typedData = data as GraphNodeData & { isSelected?: boolean; isRelated?: boolean; isDimmed?: boolean };
+  const isGoal = typedData.kind === "goal";
   const borderColor = isGoal ? "border-sky-300" : "border-violet-300";
   const badgeColor = isGoal ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700";
 
   return (
     <div
       className={`w-[176px] rounded-xl border bg-white/95 px-3 py-2 shadow-sm transition ${borderColor} ${
-        data.isSelected ? "ring-2 ring-slate-900" : ""
-      } ${data.isDimmed ? "opacity-35" : "opacity-100"}`}
+        typedData.isSelected ? "ring-2 ring-slate-900" : ""
+      } ${typedData.isDimmed ? "opacity-35" : "opacity-100"}`}
     >
+      <Handle type="target" id="target" position={Position.Left} className="!h-2 !w-2 !border !border-white !bg-slate-400" />
+      <Handle type="source" id="source" position={Position.Right} className="!h-2 !w-2 !border !border-white !bg-slate-400" />
       <div className="flex items-start justify-between gap-2">
-        <p className="line-clamp-2 text-xs font-semibold text-slate-900">{data.title}</p>
+        <p className="line-clamp-2 text-xs font-semibold text-slate-900">{typedData.title}</p>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badgeColor}`}>
-          {data.kind}
+          {typedData.kind}
         </span>
       </div>
-      <p className="mt-1 line-clamp-1 text-[10px] uppercase tracking-wide text-slate-500">{data.status.replace("_", " ")}</p>
-      <p className="mt-1 line-clamp-1 text-[10px] text-slate-500">{data.subtitle}</p>
+      <p className="mt-1 line-clamp-1 text-[10px] uppercase tracking-wide text-slate-500">{typedData.status.replace("_", " ")}</p>
+      <p className="mt-1 line-clamp-1 text-[10px] text-slate-500">{typedData.subtitle}</p>
     </div>
   );
 }

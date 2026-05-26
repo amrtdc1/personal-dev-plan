@@ -1354,7 +1354,7 @@ export function CalendarWorkspace() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">Calendar</h2>
+            <h2 className="pdp-section-title text-slate-900">Calendar</h2>
             <InfoPopover
               className="self-center sm:hidden"
               label="Calendar help"

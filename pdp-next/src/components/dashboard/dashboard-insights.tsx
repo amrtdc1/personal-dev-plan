@@ -6,6 +6,7 @@ import { db } from "@/lib/instantdb/client";
 import type { Goal, Habit, HabitCheckin, ItemStatus, ChildGoal, Task } from "@/lib/domain/types";
 import { KindTag } from "@/components/ui/tags";
 import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
+import { CrudModal } from "@/components/ui/crud-modal";
 
 type RecentlyUpdatedItem = {
   id: string;
@@ -18,8 +19,8 @@ type RecentlyUpdatedItem = {
 
 type DashboardInsightsMode = "today" | "plan" | "review" | "risks" | "close_day";
 type TodayQueueSortMode = "urgent" | "quick_wins";
+type TodayTaskFilterMode = "all" | "overdue";
 
-const DUE_SOON_LOOKBACK_DAYS = 7;
 const DUE_SOON_LOOKAHEAD_DAYS = 10;
 const STALE_IN_PROGRESS_DAYS = 3;
 const PARENT_INACTIVITY_DAYS = 5;
@@ -30,7 +31,6 @@ const QUICK_ACTION_BUTTON_CLASS =
 
 export function DashboardInsights({
   onOpenItem,
-  onNavigateToPlanning,
 }: {
   onOpenItem?: (kind: "goal" | "childGoal" | "task", id: string) => void;
   onNavigateToPlanning?: () => void;
@@ -50,6 +50,19 @@ export function DashboardInsights({
   const [closeDayWhatWentWrong, setCloseDayWhatWentWrong] = useState("");
   const [closeDayWhatToAdjust, setCloseDayWhatToAdjust] = useState("");
   const [closeDayAdditionalThoughts, setCloseDayAdditionalThoughts] = useState("");
+  const [closeDayDateOffset, setCloseDayDateOffset] = useState(0);
+  const [isQuickTaskModalOpen, setIsQuickTaskModalOpen] = useState(false);
+  const [quickTaskTitle, setQuickTaskTitle] = useState("");
+  const [quickTaskNotes, setQuickTaskNotes] = useState("");
+  const [quickTaskDueDate, setQuickTaskDueDate] = useState("");
+  const [quickTaskChildGoalId, setQuickTaskChildGoalId] = useState("");
+  const [taskModalTaskId, setTaskModalTaskId] = useState<string | null>(null);
+  const [taskModalSnoozeDays, setTaskModalSnoozeDays] = useState("1");
+  const [taskModalError, setTaskModalError] = useState<string | null>(null);
+  const [pendingTaskDoneId, setPendingTaskDoneId] = useState<string | null>(null);
+  const [habitCheckinModalHabitId, setHabitCheckinModalHabitId] = useState<string | null>(null);
+  const [habitCheckinDate, setHabitCheckinDate] = useState("");
+  const [todayTaskFilterMode, setTodayTaskFilterMode] = useState<TodayTaskFilterMode>("all");
   const [todayQueueSortMode, setTodayQueueSortMode] = useState<TodayQueueSortMode>(() => {
     if (typeof window === "undefined") {
       return "urgent";
@@ -163,6 +176,31 @@ export function DashboardInsights({
   const goalMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
   const childGoalMap = useMemo(() => new Map(childGoals.map((childGoal) => [childGoal.id, childGoal])), [childGoals]);
   const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const closeDayIso = useMemo(() => {
+    const base = parseDate(todayIso);
+    if (!base) {
+      return todayIso;
+    }
+
+    const date = new Date(base);
+    date.setDate(date.getDate() + closeDayDateOffset);
+    return toIsoDate(date);
+  }, [todayIso, closeDayDateOffset]);
+
+  const selectedTask = useMemo(
+    () => (taskModalTaskId ? tasks.find((task) => task.id === taskModalTaskId) ?? null : null),
+    [taskModalTaskId, tasks],
+  );
+
+  const selectedHabitForQuickCheckin = useMemo(
+    () => (habitCheckinModalHabitId ? habits.find((habit) => habit.id === habitCheckinModalHabitId) ?? null : null),
+    [habitCheckinModalHabitId, habits],
+  );
+
+  const pendingTaskDone = useMemo(
+    () => (pendingTaskDoneId ? tasks.find((task) => task.id === pendingTaskDoneId) ?? null : null),
+    [pendingTaskDoneId, tasks],
+  );
 
   const tasksDueToday = useMemo(
     () => tasks.filter((task) => task.status !== "done" && task.dueDate === todayIso),
@@ -237,6 +275,37 @@ export function DashboardInsights({
       .slice(0, 4);
   })();
 
+  const dueSoonTasks = useMemo(() => {
+    const now = startOfDay(new Date());
+    const dueBy = new Date(now);
+    dueBy.setDate(now.getDate() + DUE_SOON_LOOKAHEAD_DAYS);
+
+    return tasks
+      .filter((task) => task.status !== "done" && task.dueDate)
+      .filter((task) => {
+        const dueDate = parseDate(task.dueDate);
+        return Boolean(dueDate && dueDate >= now && dueDate <= dueBy);
+      })
+      .sort(compareTasksByDueDate);
+  }, [tasks]);
+
+  const dueSoonBeyondThisWeekTasks = (() => {
+    const now = parseDate(todayIso);
+    if (!now) {
+      return [] as Task[];
+    }
+
+    const dueAfter = new Date(now);
+    dueAfter.setDate(now.getDate() + 6);
+
+    return dueSoonTasks
+      .filter((task) => {
+        const dueDate = parseDate(task.dueDate);
+        return Boolean(dueDate && dueDate > dueAfter);
+      })
+      .slice(0, 6);
+  })();
+
   const staleInProgressTasks = (() => {
     const today = parseDate(todayIso);
     if (!today) {
@@ -286,12 +355,18 @@ export function DashboardInsights({
       .slice(0, 4);
   })();
 
-  const habitsCheckedInTodayCount = useMemo(
+  const habitsCheckedInToday = useMemo(
     () =>
       habits.filter((habit) =>
         (habitCheckinsByHabitId[habit.id] ?? []).some((checkin) => checkin.checkInDate === todayIso),
-      ).length,
+      ),
     [habits, habitCheckinsByHabitId, todayIso],
+  );
+
+  const habitsCheckedInTodayCount = useMemo(
+    () =>
+      habitsCheckedInToday.length,
+    [habitsCheckedInToday],
   );
 
   const habitsNeedingCheckin = useMemo(
@@ -307,33 +382,39 @@ export function DashboardInsights({
     [goals],
   );
 
-  const tasksDueSoon = useMemo(() => {
-    const now = startOfDay(new Date());
-    const lookbackStart = new Date(now);
-    lookbackStart.setDate(now.getDate() - DUE_SOON_LOOKBACK_DAYS);
-    const dueBy = new Date(now);
-    dueBy.setDate(now.getDate() + DUE_SOON_LOOKAHEAD_DAYS);
-
-    return tasks
-      .filter((task) => task.status !== "done" && task.dueDate)
-      .filter((task) => {
-        const dueDate = parseDate(task.dueDate);
-        return dueDate && dueDate >= lookbackStart && dueDate <= dueBy;
-      })
-      .sort(compareTasksByDueDate)
-      .slice(0, 8);
-  }, [tasks]);
-
   const quickActionTasks = useMemo(() => {
-    const openTasks = tasksDueSoon.filter((task) => task.status !== "done");
+    const openTasks = tasks.filter((task) => task.status !== "done");
+
+    if (todayQueueSortMode === "urgent") {
+      if (todayTaskFilterMode === "overdue") {
+        return overdueTasks.slice(0, 8);
+      }
+
+      const taskMap = new Map<string, Task>();
+      for (const task of overdueTasks) {
+        taskMap.set(task.id, task);
+      }
+      for (const task of tasksDueToday.sort(compareTasksByDueDate)) {
+        taskMap.set(task.id, task);
+      }
+      for (const task of dueSoonTasks) {
+        taskMap.set(task.id, task);
+      }
+
+      const prioritized = Array.from(taskMap.values()).slice(0, 8);
+      if (prioritized.length > 0) {
+        return prioritized;
+      }
+    }
+
     if (todayQueueSortMode === "quick_wins") {
       return [...openTasks]
         .sort(compareTasksByQuickWins)
-        .slice(0, 4);
+        .slice(0, 8);
     }
 
-    return openTasks.slice(0, 4);
-  }, [tasksDueSoon, todayQueueSortMode]);
+    return [...openTasks].sort(compareTasksByDueDate).slice(0, 8);
+  }, [dueSoonTasks, overdueTasks, tasks, tasksDueToday, todayQueueSortMode, todayTaskFilterMode]);
 
   const completedTodayTasks = useMemo(
     () =>
@@ -343,53 +424,6 @@ export function DashboardInsights({
         .slice(0, 4),
     [tasks, todayIso],
   );
-
-  const atRiskItems = useMemo(() => {
-    const now = startOfDay(new Date());
-
-    const overdueGoals = goals
-      .filter((goal) => goal.status !== "done" && goal.projectedEndDate)
-      .filter((goal) => {
-        const projectedEnd = parseDate(goal.projectedEndDate);
-        return projectedEnd && projectedEnd < now;
-      })
-      .map((goal) => ({
-        id: goal.id,
-        kind: "goal" as const,
-        title: goal.title,
-        dueDate: goal.projectedEndDate ?? "",
-      }));
-
-    const overdueChildGoals = childGoals
-      .filter((childGoal) => childGoal.status !== "done" && childGoal.projectedEndDate)
-      .filter((childGoal) => {
-        const projectedEnd = parseDate(childGoal.projectedEndDate);
-        return projectedEnd && projectedEnd < now;
-      })
-      .map((childGoal) => ({
-        id: childGoal.id,
-        kind: "childGoal" as const,
-        title: childGoal.title,
-        dueDate: childGoal.projectedEndDate ?? "",
-      }));
-
-    const overdueTasks = tasks
-      .filter((task) => task.status !== "done" && task.dueDate)
-      .filter((task) => {
-        const due = parseDate(task.dueDate);
-        return due && due < now;
-      })
-      .map((task) => ({
-        id: task.id,
-        kind: "task" as const,
-        title: task.title,
-        dueDate: task.dueDate ?? "",
-      }));
-
-    return [...overdueGoals, ...overdueChildGoals, ...overdueTasks]
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-      .slice(0, 10);
-  }, [goals, childGoals, tasks]);
 
   const overviewStats = useMemo(() => {
     const professional = goals.filter((goal) => goal.type === "professional");
@@ -450,8 +484,13 @@ export function DashboardInsights({
       .slice(0, 8);
   }, [goals, childGoals, tasks, goalMap, childGoalMap]);
 
-  async function handleQuickTaskDone(taskId: string) {
+  async function handleQuickTaskDone(taskId: string, requireConfirmation = true) {
     if (!user) {
+      return;
+    }
+
+    if (requireConfirmation) {
+      setPendingTaskDoneId(taskId);
       return;
     }
 
@@ -461,6 +500,7 @@ export function DashboardInsights({
     try {
       const updatedTask = await dataRepository.updateTaskStatus(user.id, taskId, "done");
       setTasks((current) => current.map((task) => (task.id === taskId ? updatedTask : task)));
+      setPendingTaskDoneId(null);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not complete that task."));
     } finally {
@@ -468,7 +508,7 @@ export function DashboardInsights({
     }
   }
 
-  async function handleQuickTaskDefer(taskId: string) {
+  async function handleQuickTaskSnooze(taskId: string, days: number) {
     if (!user) {
       return;
     }
@@ -484,7 +524,7 @@ export function DashboardInsights({
     }
 
     const nextDueDate = new Date(baseline);
-    nextDueDate.setDate(nextDueDate.getDate() + 1);
+    nextDueDate.setDate(nextDueDate.getDate() + days);
     const nextDueDateIso = `${nextDueDate.getFullYear()}-${String(nextDueDate.getMonth() + 1).padStart(2, "0")}-${String(
       nextDueDate.getDate(),
     ).padStart(2, "0")}`;
@@ -500,12 +540,44 @@ export function DashboardInsights({
         title: task.title,
         notes: task.notes,
         dueDate: nextDueDateIso,
+        originalDueDate: task.originalDueDate ?? task.dueDate ?? nextDueDateIso,
+        snoozedDueDate: nextDueDateIso,
+        snoozeCount: (task.snoozeCount ?? 0) + 1,
         existingTask: task,
       });
 
       setTasks((current) => current.map((entry) => (entry.id === taskId ? updatedTask : entry)));
     } catch (repositoryError) {
-      setActionError(getErrorMessage(repositoryError, "We could not defer that task."));
+      setActionError(getErrorMessage(repositoryError, "We could not snooze that task."));
+    } finally {
+      setActionInFlightId(null);
+    }
+  }
+
+  async function handleQuickTaskCreate() {
+    if (!user || !quickTaskChildGoalId || quickTaskTitle.trim().length === 0) {
+      return;
+    }
+
+    setActionError(null);
+    setActionInFlightId("quick-create-task");
+
+    try {
+      const createdTask = await dataRepository.saveTask({
+        ownerUid: user.id,
+        goalId: quickTaskChildGoalId,
+        title: quickTaskTitle,
+        notes: quickTaskNotes,
+        dueDate: quickTaskDueDate || null,
+      });
+
+      setTasks((current) => [...current, createdTask]);
+      setQuickTaskTitle("");
+      setQuickTaskNotes("");
+      setQuickTaskDueDate(todayIso);
+      setIsQuickTaskModalOpen(false);
+    } catch (repositoryError) {
+      setActionError(getErrorMessage(repositoryError, "We could not create that task."));
     } finally {
       setActionInFlightId(null);
     }
@@ -523,7 +595,7 @@ export function DashboardInsights({
       await dataRepository.saveHabitCheckin({
         ownerUid: user.id,
         habitId,
-        checkInDate: todayIso,
+        checkInDate: habitCheckinDate,
         notes: null,
       });
 
@@ -532,6 +604,7 @@ export function DashboardInsights({
         ...current,
         [habitId]: refreshedCheckins,
       }));
+      setHabitCheckinModalHabitId(null);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not save that habit check-in."));
     } finally {
@@ -562,7 +635,7 @@ export function DashboardInsights({
     try {
       await dataRepository.saveJournalEntry({
         ownerUid: user.id,
-        title: `Daily closeout - ${todayIso}`,
+        title: `Daily closeout - ${closeDayIso}`,
         content: buildCloseDayJournalContent({
           whatWentRight: closeDayWhatWentRight,
           whatWentWrong: closeDayWhatWentWrong,
@@ -570,7 +643,7 @@ export function DashboardInsights({
           additionalThoughts: closeDayAdditionalThoughts,
         }),
         mood: null,
-        tags: ["daily-closeout", "guided-journal"],
+        tags: ["daily-closeout", "guided-journal", `close-day:${closeDayIso}`],
         relatedGoalId: null,
       });
 
@@ -629,6 +702,50 @@ export function DashboardInsights({
     }
   }
 
+  function openTaskQuickModal(taskId: string) {
+    setTaskModalTaskId(taskId);
+    setTaskModalSnoozeDays("1");
+    setTaskModalError(null);
+  }
+
+  function openQuickTaskCreateModal() {
+    setQuickTaskTitle("");
+    setQuickTaskNotes("");
+    setQuickTaskDueDate(todayIso);
+    setQuickTaskChildGoalId((current) => current || childGoals[0]?.id || "");
+    setIsQuickTaskModalOpen(true);
+  }
+
+  function openQuickHabitCheckinModal(habitId: string) {
+    setHabitCheckinModalHabitId(habitId);
+    setHabitCheckinDate(todayIso);
+  }
+
+  async function handleTaskModalSnooze() {
+    if (!selectedTask) {
+      return;
+    }
+
+    const parsedDays = Number(taskModalSnoozeDays);
+    if (!Number.isFinite(parsedDays) || parsedDays <= 0) {
+      setTaskModalError("Snooze days must be greater than zero.");
+      return;
+    }
+
+    setTaskModalError(null);
+    await handleQuickTaskSnooze(selectedTask.id, Math.round(parsedDays));
+    setTaskModalTaskId(null);
+  }
+
+  async function handleTaskModalDone() {
+    if (!selectedTask) {
+      return;
+    }
+
+    setTaskModalTaskId(null);
+    await handleQuickTaskDone(selectedTask.id, true);
+  }
+
   if (isLoading || isRefreshing) {
     return (
       <section className="pdp-panel">
@@ -658,7 +775,7 @@ export function DashboardInsights({
 
   const modeItems: Array<{ mode: DashboardInsightsMode; label: string; count: number | null }> = [
     { mode: "today", label: "Today", count: tasksDueToday.length },
-    { mode: "plan", label: "Plan", count: dueThisWeekTasks.length },
+    { mode: "plan", label: "Plan", count: overdueTasks.length + dueThisWeekTasks.length },
     { mode: "review", label: "Review", count: completedTodayCount },
     { mode: "risks", label: "Risks", count: overdueTasks.length },
     { mode: "close_day", label: "Close Day", count: null },
@@ -667,6 +784,15 @@ export function DashboardInsights({
   return (
     <WorkspaceShell
       title="Today Workspace"
+      headerAside={
+        <button
+          type="button"
+          onClick={openQuickTaskCreateModal}
+          className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+        >
+          + Task
+        </button>
+      }
       notices={
         <>
           {loadError ? <p className="mt-3 text-sm text-red-700">{loadError}</p> : null}
@@ -739,15 +865,6 @@ export function DashboardInsights({
             <>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm text-slate-600">Focus on what needs action now.</p>
-                {onNavigateToPlanning ? (
-                  <button
-                    type="button"
-                    onClick={onNavigateToPlanning}
-                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                  >
-                    Open Planning
-                  </button>
-                ) : null}
               </div>
 
               <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -760,6 +877,12 @@ export function DashboardInsights({
             <p className="text-sm font-semibold text-slate-700">Habit check-ins</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{habitsCheckedInTodayCount}</p>
             <p className="text-xs text-slate-600">of {habits.length} active habits</p>
+            {habitsCheckedInToday.length > 0 ? (
+              <p className="mt-1 truncate text-[11px] text-slate-500">
+                Checked in: {habitsCheckedInToday.map((habit) => habit.title).slice(0, 3).join(", ")}
+                {habitsCheckedInToday.length > 3 ? "..." : ""}
+              </p>
+            ) : null}
           </div>
           <div className="pdp-card rounded-xl px-3 py-3">
             <p className="text-sm font-semibold text-slate-700">Tasks completed</p>
@@ -774,7 +897,11 @@ export function DashboardInsights({
             {overdueTasks.length > 0 ? (
               <button
                 type="button"
-                onClick={() => onOpenItem?.("task", overdueTasks[0].id)}
+                onClick={() => {
+                  setDashboardMode("today");
+                  setTodayQueueSortMode("urgent");
+                  setTodayTaskFilterMode("overdue");
+                }}
                 className="mt-1 rounded-full border border-amber-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 transition hover:border-amber-400 hover:bg-amber-100"
               >
                 Review overdue
@@ -789,25 +916,42 @@ export function DashboardInsights({
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-slate-700">Quick task actions</p>
-              <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
-                <button
-                  type="button"
-                  onClick={() => setTodayQueueSortMode("urgent")}
-                  className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition ${
-                    todayQueueSortMode === "urgent" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  Urgent
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTodayQueueSortMode("quick_wins")}
-                  className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition ${
-                    todayQueueSortMode === "quick_wins" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  Quick Wins
-                </button>
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTodayQueueSortMode("urgent");
+                      setTodayTaskFilterMode("all");
+                    }}
+                    className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition ${
+                      todayQueueSortMode === "urgent" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    Urgent
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTodayQueueSortMode("quick_wins");
+                      setTodayTaskFilterMode("all");
+                    }}
+                    className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition ${
+                      todayQueueSortMode === "quick_wins" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    Quick Wins
+                  </button>
+                </div>
+                {todayTaskFilterMode === "overdue" ? (
+                  <button
+                    type="button"
+                    onClick={() => setTodayTaskFilterMode("all")}
+                    className="rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 transition hover:border-amber-400 hover:bg-amber-100"
+                  >
+                    Overdue only
+                  </button>
+                ) : null}
               </div>
             </div>
             {quickActionTasks.length === 0 && completedTodayTasks.length === 0 ? (
@@ -821,12 +965,13 @@ export function DashboardInsights({
                         <div className="min-w-0 flex-1">
                           <button
                             type="button"
-                            onClick={() => onOpenItem?.("task", task.id)}
+                            onClick={() => openTaskQuickModal(task.id)}
                             className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
                             data-testid={`quick-task-title-${task.id}`}
                           >
                             {task.title}
                           </button>
+                          <p className="mt-1 text-[11px] text-slate-500">{buildTaskDueLabel(task, todayIso)}</p>
                           <label className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-600">
                             <input
                               type="checkbox"
@@ -841,7 +986,7 @@ export function DashboardInsights({
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => void handleQuickTaskDefer(task.id)}
+                            onClick={() => void handleQuickTaskSnooze(task.id, 1)}
                             disabled={actionInFlightId === `task-defer-${task.id}`}
                             className={`${QUICK_ACTION_BUTTON_CLASS} border-amber-300 text-amber-700 hover:border-amber-400 hover:bg-amber-50`}
                           >
@@ -849,7 +994,7 @@ export function DashboardInsights({
                           </button>
                           <button
                             type="button"
-                            onClick={() => void handleQuickTaskDone(task.id)}
+                            onClick={() => void handleQuickTaskDone(task.id, true)}
                             disabled={actionInFlightId === `task-${task.id}`}
                             className={`${QUICK_ACTION_BUTTON_CLASS} border-emerald-300 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50`}
                           >
@@ -870,12 +1015,13 @@ export function DashboardInsights({
                         <li key={task.id} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
                           <button
                             type="button"
-                            onClick={() => onOpenItem?.("task", task.id)}
+                            onClick={() => openTaskQuickModal(task.id)}
                             className="truncate text-left text-sm text-slate-600 line-through hover:underline"
                             data-testid={`completed-task-title-${task.id}`}
                           >
                             {task.title}
                           </button>
+                          <p className="mt-1 text-[11px] text-slate-500">{buildTaskDueLabel(task, todayIso)}</p>
                           <label className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-600">
                             <input
                               type="checkbox"
@@ -897,18 +1043,18 @@ export function DashboardInsights({
 
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
             <p className="text-sm font-semibold text-slate-700">Quick habit check-ins</p>
-            {habitsNeedingCheckin.slice(0, 4).length === 0 ? (
+            {habitsNeedingCheckin.slice(0, 20).length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">All tracked habits are checked in today.</p>
             ) : (
-              <ul className="mt-2 space-y-2">
-                {habitsNeedingCheckin.slice(0, 4).map((habit) => (
-                  <li key={habit.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2 py-2">
+              <ul className="mt-2 grid grid-cols-2 gap-2">
+                {habitsNeedingCheckin.slice(0, 20).map((habit) => (
+                  <li key={habit.id} className="rounded-lg border border-slate-200 px-2 py-2">
                     <p className="truncate text-sm font-medium text-slate-900">{habit.title}</p>
                     <button
                       type="button"
-                      onClick={() => void handleQuickHabitCheckin(habit.id)}
+                      onClick={() => openQuickHabitCheckinModal(habit.id)}
                       disabled={actionInFlightId === `habit-${habit.id}`}
-                      className={`${QUICK_ACTION_BUTTON_CLASS} border-indigo-300 text-indigo-700 hover:border-indigo-400 hover:bg-indigo-50`}
+                      className={`${QUICK_ACTION_BUTTON_CLASS} mt-2 w-full border-indigo-300 text-indigo-700 hover:border-indigo-400 hover:bg-indigo-50`}
                     >
                       {actionInFlightId === `habit-${habit.id}` ? "Saving..." : "Check in"}
                     </button>
@@ -925,9 +1071,34 @@ export function DashboardInsights({
             <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-slate-700">Close day guided journal</p>
-            {closeDaySavedAt ? (
-              <p className="text-xs text-emerald-700">Saved {formatDateTimeLabel(closeDaySavedAt)}</p>
-            ) : null}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCloseDayDateOffset((current) => current - 1);
+                  setCloseDaySavedAt(null);
+                }}
+                className="rounded-full border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                aria-label="Previous close day date"
+              >
+                ←
+              </button>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{formatDateLabel(closeDayIso)}</span>
+              {closeDayDateOffset < 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCloseDayDateOffset((current) => Math.min(current + 1, 0));
+                    setCloseDaySavedAt(null);
+                  }}
+                  className="rounded-full border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                  aria-label="Next close day date"
+                >
+                  →
+                </button>
+              ) : null}
+              {closeDaySavedAt ? <p className="text-xs text-emerald-700">Saved {formatDateTimeLabel(closeDaySavedAt)}</p> : null}
+            </div>
           </div>
           <p className="mt-1 text-xs text-slate-600">
             End your day with prompts, then add any free-write thoughts.
@@ -998,6 +1169,28 @@ export function DashboardInsights({
 
           {dashboardMode === "plan" ? (
             <div className="mt-3 grid gap-3 xl:grid-cols-2">
+              <div className="rounded-xl border border-rose-200 bg-rose-50/50 px-3 py-3">
+                <p className="text-sm font-semibold text-rose-700">Past due</p>
+                {overdueTasks.length === 0 ? (
+                  <p className="mt-2 text-sm text-rose-700">No overdue tasks.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {overdueTasks.slice(0, 6).map((task) => (
+                      <li key={task.id} className="rounded-lg border border-rose-200 bg-white px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => openTaskQuickModal(task.id)}
+                          className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
+                        >
+                          {task.title}
+                        </button>
+                        <p className="mt-1 text-xs text-rose-700">Due {formatDateLabel(task.dueDate)} (overdue)</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
                 <p className="text-sm font-semibold text-slate-700">Due this week</p>
                 {dueThisWeekTasks.length === 0 ? (
@@ -1008,7 +1201,7 @@ export function DashboardInsights({
                       <li key={task.id} className="rounded-lg border border-slate-200 px-2 py-2">
                         <button
                           type="button"
-                          onClick={() => onOpenItem?.("task", task.id)}
+                          onClick={() => openTaskQuickModal(task.id)}
                           className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
                           data-testid={`due-week-task-title-${task.id}`}
                         >
@@ -1023,15 +1216,15 @@ export function DashboardInsights({
 
               <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
                 <p className="text-sm font-semibold text-slate-700">Tasks due soon</p>
-                {tasksDueSoon.length === 0 ? (
+                {dueSoonBeyondThisWeekTasks.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-600">No tasks in the due-soon window.</p>
                 ) : (
                   <ul className="mt-2 space-y-2">
-                    {tasksDueSoon.slice(0, 6).map((task) => (
+                    {dueSoonBeyondThisWeekTasks.map((task) => (
                       <li key={task.id} className="rounded-lg border border-slate-200 px-2 py-2">
                         <button
                           type="button"
-                          onClick={() => onOpenItem?.("task", task.id)}
+                          onClick={() => openTaskQuickModal(task.id)}
                           className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
                         >
                           {task.title}
@@ -1046,29 +1239,7 @@ export function DashboardInsights({
           ) : null}
 
           {dashboardMode === "risks" ? (
-            <div className="mt-3 grid gap-2 xl:grid-cols-3">
-            <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-              <p className="text-sm font-semibold text-slate-700">Due this week</p>
-              {dueThisWeekTasks.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-600">No open tasks due in the next 7 days.</p>
-              ) : (
-                <ul className="mt-2 space-y-2">
-                  {dueThisWeekTasks.map((task) => (
-                    <li key={task.id} className="rounded-lg border border-slate-200 px-2 py-2">
-                      <button
-                        type="button"
-                        onClick={() => onOpenItem?.("task", task.id)}
-                        className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
-                        data-testid={`due-week-task-title-${task.id}`}
-                      >
-                        {task.title}
-                      </button>
-                      <p className="mt-1 text-xs text-slate-600">Due {formatDateLabel(task.dueDate)}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <div className="mt-3 grid gap-2 xl:grid-cols-2">
 
             <div className="rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-3">
               <p className="text-sm font-semibold text-rose-800">Stale in-progress</p>
@@ -1205,57 +1376,6 @@ export function DashboardInsights({
                 </ul>
               )}
                 </article>
-
-                <article className="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Tasks Due Soon</h3>
-              {tasksDueSoon.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-600">No tasks in the due-soon window.</p>
-              ) : (
-                <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  {tasksDueSoon.map((task) => {
-                    const parentChildGoal = childGoalMap.get(task.goalId);
-                    return (
-                      <li key={task.id}>
-                        <DashboardItemButton onClick={() => onOpenItem?.("task", task.id)}>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-medium text-slate-900">{task.title}</p>
-                            <KindTag kind="task" />
-                          </div>
-                          <p className="mt-1 text-xs text-slate-600">
-                            Due {formatDateLabel(task.dueDate)}
-                            {parentChildGoal ? ` | ${parentChildGoal.title}` : ""}
-                          </p>
-                        </DashboardItemButton>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-                </article>
-
-                <article className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-700">At-risk items</h3>
-              {atRiskItems.length === 0 ? (
-                <p className="mt-3 text-sm text-amber-800">Nothing is past due. Nicely done.</p>
-              ) : (
-                <ul className="mt-3 space-y-2 text-sm text-amber-900">
-                  {atRiskItems.map((item) => (
-                    <li key={`${item.kind}-${item.id}`}>
-                      <DashboardItemButton onClick={() => onOpenItem?.(item.kind, item.id)}>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium">{item.title}</p>
-                          <KindTag kind={item.kind} />
-                        </div>
-                        <p className="mt-1 text-xs uppercase tracking-wide text-amber-700">
-                          Was due {formatDateLabel(item.dueDate)}
-                        </p>
-                      </DashboardItemButton>
-                    </li>
-                  ))}
-                </ul>
-              )}
-                </article>
-
                 <article className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Recently Updated</h3>
               {recentlyUpdated.length === 0 ? (
@@ -1283,6 +1403,218 @@ export function DashboardInsights({
             </section>
           ) : null}
       </article>
+
+      <CrudModal
+        isOpen={isQuickTaskModalOpen}
+        title="Quick Add Task"
+        onClose={() => setIsQuickTaskModalOpen(false)}
+      >
+        <div className="grid gap-3">
+          <label className="text-sm text-slate-700">
+            Task title
+            <input
+              value={quickTaskTitle}
+              onChange={(event) => setQuickTaskTitle(event.currentTarget.value)}
+              className="pdp-control mt-1 rounded-lg"
+              placeholder="Add a task for today"
+            />
+          </label>
+
+          <label className="text-sm text-slate-700">
+            Sub-goal
+            <select
+              value={quickTaskChildGoalId}
+              onChange={(event) => setQuickTaskChildGoalId(event.currentTarget.value)}
+              className="pdp-control mt-1 rounded-lg"
+            >
+              <option value="">Select a sub-goal</option>
+              {childGoals.map((childGoal) => (
+                <option key={childGoal.id} value={childGoal.id}>
+                  {childGoal.title}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="text-sm text-slate-700">
+            Due date
+            <input
+              type="date"
+              value={quickTaskDueDate}
+              onChange={(event) => setQuickTaskDueDate(event.currentTarget.value)}
+              className="pdp-control mt-1 rounded-lg"
+            />
+          </label>
+
+          <label className="text-sm text-slate-700">
+            Notes
+            <textarea
+              value={quickTaskNotes}
+              onChange={(event) => setQuickTaskNotes(event.currentTarget.value)}
+              rows={3}
+              className="pdp-control mt-1 rounded-lg"
+            />
+          </label>
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsQuickTaskModalOpen(false)}
+              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleQuickTaskCreate()}
+              disabled={actionInFlightId === "quick-create-task" || quickTaskTitle.trim().length === 0 || !quickTaskChildGoalId}
+              className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {actionInFlightId === "quick-create-task" ? "Saving..." : "Create Task"}
+            </button>
+          </div>
+        </div>
+      </CrudModal>
+
+      <CrudModal
+        isOpen={selectedTask !== null}
+        title={selectedTask ? selectedTask.title : "Task"}
+        onClose={() => {
+          setTaskModalTaskId(null);
+          setTaskModalError(null);
+        }}
+      >
+        {selectedTask ? (
+          <div className="grid gap-3">
+            <p className="text-sm text-slate-600">{buildTaskDueLabel(selectedTask, todayIso)}</p>
+            <p className="text-xs text-slate-500">Snoozed {selectedTask.snoozeCount ?? 0} times</p>
+            {selectedTask.originalDueDate ? (
+              <p className="text-xs text-slate-500">Original due date: {formatDateLabel(selectedTask.originalDueDate)}</p>
+            ) : null}
+            {selectedTask.snoozedDueDate ? (
+              <p className="text-xs text-slate-500">Last snoozed to: {formatDateLabel(selectedTask.snoozedDueDate)}</p>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedTask) {
+                    onOpenItem?.("task", selectedTask.id);
+                    setTaskModalTaskId(null);
+                  }
+                }}
+                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                Edit in Planning
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleTaskModalDone()}
+                disabled={actionInFlightId === `task-${selectedTask.id}`}
+                className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {actionInFlightId === `task-${selectedTask.id}` ? "Saving..." : "Mark Complete"}
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Snooze task</p>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={taskModalSnoozeDays}
+                  onChange={(event) => setTaskModalSnoozeDays(event.currentTarget.value)}
+                  className="pdp-control w-20 rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleTaskModalSnooze()}
+                  disabled={actionInFlightId === `task-defer-${selectedTask.id}`}
+                  className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700 transition hover:border-amber-400 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {actionInFlightId === `task-defer-${selectedTask.id}` ? "Saving..." : "Snooze"}
+                </button>
+              </div>
+            </div>
+
+            {taskModalError ? <p className="text-sm text-red-700">{taskModalError}</p> : null}
+          </div>
+        ) : null}
+      </CrudModal>
+
+      <CrudModal
+        isOpen={pendingTaskDone !== null}
+        title="Confirm Task Completion"
+        onClose={() => setPendingTaskDoneId(null)}
+      >
+        {pendingTaskDone ? (
+          <div className="grid gap-3">
+            <p className="text-sm text-slate-700">Mark this task as done?</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-sm font-semibold text-slate-900">{pendingTaskDone.title}</p>
+              <p className="mt-1 text-xs text-slate-500">{buildTaskDueLabel(pendingTaskDone, todayIso)}</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingTaskDoneId(null)}
+                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleQuickTaskDone(pendingTaskDone.id, false)}
+                disabled={actionInFlightId === `task-${pendingTaskDone.id}`}
+                className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {actionInFlightId === `task-${pendingTaskDone.id}` ? "Saving..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </CrudModal>
+
+      <CrudModal
+        isOpen={selectedHabitForQuickCheckin !== null}
+        title={selectedHabitForQuickCheckin ? `Check in: ${selectedHabitForQuickCheckin.title}` : "Check in habit"}
+        onClose={() => setHabitCheckinModalHabitId(null)}
+      >
+        {selectedHabitForQuickCheckin ? (
+          <div className="grid gap-3">
+            <label className="text-sm text-slate-700">
+              Check-in date
+              <input
+                type="date"
+                value={habitCheckinDate}
+                max={todayIso}
+                onChange={(event) => setHabitCheckinDate(event.currentTarget.value)}
+                className="pdp-control mt-1 rounded-lg"
+              />
+            </label>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setHabitCheckinModalHabitId(null)}
+                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleQuickHabitCheckin(selectedHabitForQuickCheckin.id)}
+                disabled={actionInFlightId === `habit-${selectedHabitForQuickCheckin.id}` || !habitCheckinDate}
+                className="rounded-full border border-indigo-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-indigo-700 transition hover:border-indigo-400 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {actionInFlightId === `habit-${selectedHabitForQuickCheckin.id}` ? "Saving..." : "Confirm Check-in"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </CrudModal>
     </WorkspaceShell>
   );
 }
@@ -1427,4 +1759,27 @@ function buildCloseDayJournalContent(input: {
     "## Additional thoughts",
     extra,
   ].join("\n");
+}
+
+function toIsoDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function buildTaskDueLabel(task: Task, todayIso: string) {
+  if (!task.dueDate) {
+    return "No due date";
+  }
+
+  const dueDate = parseDate(task.dueDate);
+  const today = parseDate(todayIso);
+
+  if (dueDate && today && dueDate < today) {
+    return `Overdue: ${formatDateLabel(task.dueDate)}`;
+  }
+
+  if (task.dueDate === todayIso) {
+    return "Due today";
+  }
+
+  return `Due ${formatDateLabel(task.dueDate)}`;
 }

@@ -20,6 +20,7 @@ describe("graph adapter", () => {
       tasks,
       timeframeOrder: TIMEFRAME_ORDER,
       includeFreestandingTasks: false,
+      forceProfile: "balanced",
     });
 
     expect(result.nodes.map((node) => node.id)).toEqual(
@@ -40,6 +41,7 @@ describe("graph adapter", () => {
       tasks,
       timeframeOrder: TIMEFRAME_ORDER,
       includeFreestandingTasks: false,
+      forceProfile: "balanced",
     });
 
     const visible = buildNodeGraphModel({
@@ -47,10 +49,46 @@ describe("graph adapter", () => {
       tasks,
       timeframeOrder: TIMEFRAME_ORDER,
       includeFreestandingTasks: true,
+      forceProfile: "balanced",
     });
 
     expect(hidden.nodes.find((node) => node.id === "task:task-free")).toBeUndefined();
     expect(visible.nodes.find((node) => node.id === "task:task-free")).toBeDefined();
+  });
+
+  it("supports density profiles with distinct layouts", () => {
+    const goals = [
+      buildGoal({ id: "goal-a", timeframeLevel: "annual", orderIndex: 0 }),
+      buildGoal({ id: "goal-b", timeframeLevel: "annual", orderIndex: 1 }),
+      buildGoal({ id: "goal-c", timeframeLevel: "annual", orderIndex: 2 }),
+      buildGoal({ id: "goal-d", timeframeLevel: "annual", orderIndex: 3 }),
+    ];
+
+    const compact = buildNodeGraphModel({
+      goals,
+      tasks: [],
+      timeframeOrder: TIMEFRAME_ORDER,
+      includeFreestandingTasks: false,
+      forceProfile: "compact",
+    });
+
+    const spacious = buildNodeGraphModel({
+      goals,
+      tasks: [],
+      timeframeOrder: TIMEFRAME_ORDER,
+      includeFreestandingTasks: false,
+      forceProfile: "spacious",
+    });
+
+    const compactGoalA = compact.nodes.find((node) => node.id === "goal:goal-a");
+    const spaciousGoalA = spacious.nodes.find((node) => node.id === "goal:goal-a");
+
+    expect(compactGoalA).toBeDefined();
+    expect(spaciousGoalA).toBeDefined();
+    expect(
+      Math.abs((compactGoalA?.position.x ?? 0) - (spaciousGoalA?.position.x ?? 0)) +
+      Math.abs((compactGoalA?.position.y ?? 0) - (spaciousGoalA?.position.y ?? 0)),
+    ).toBeGreaterThan(0.2);
   });
 });
 

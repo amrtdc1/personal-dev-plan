@@ -24,6 +24,9 @@ type TaskWritePayload = {
   notes?: string;
   dueDate?: string | null;
   unplanned?: boolean;
+  originalDueDate?: string | null;
+  snoozedDueDate?: string | null;
+  snoozeCount?: number;
 };
 
 type JournalWritePayload = {
@@ -64,6 +67,9 @@ export type ParsedTaskWritePayload = {
   notes: string;
   dueDate: string | null;
   unplanned: boolean;
+  originalDueDate: string | null;
+  snoozedDueDate: string | null;
+  snoozeCount: number;
 };
 
 export type ParsedJournalWritePayload = {
@@ -145,12 +151,19 @@ export async function parseTaskWritePayload(request: Request): Promise<ParsedTas
     throw new InstantRouteBadRequestError("Task unplanned flag must be a boolean when provided.");
   }
 
+  if (payload.snoozeCount !== undefined && (typeof payload.snoozeCount !== "number" || !Number.isFinite(payload.snoozeCount))) {
+    throw new InstantRouteBadRequestError("Task snooze count must be a finite number when provided.");
+  }
+
   return {
     goalId: payload.goalId,
     title: payload.title,
     notes: payload.notes,
     dueDate: parseOptionalString(payload.dueDate),
     unplanned: payload.unplanned ?? false,
+    originalDueDate: parseOptionalString(payload.originalDueDate),
+    snoozedDueDate: parseOptionalString(payload.snoozedDueDate),
+    snoozeCount: payload.snoozeCount === undefined ? 0 : Math.max(0, Math.round(payload.snoozeCount)),
   };
 }
 
