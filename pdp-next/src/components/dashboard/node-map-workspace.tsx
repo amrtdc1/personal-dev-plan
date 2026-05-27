@@ -293,6 +293,20 @@ export function NodeMapWorkspace({
 
       {loadError ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p> : null}
 
+      <div className="grid gap-3 md:grid-cols-3">
+        <StatCard label="Visible Goals" value={String(filteredGoals.length)} />
+        <StatCard
+          label="Goal Links"
+          value={String(relationshipRows.length)}
+          helper="child -> parent relationships"
+        />
+        <StatCard
+          label="Linked Tasks"
+          value={String(Array.from(tasksByGoalId.values()).reduce((sum, next) => sum + next.length, 0))}
+          helper={isRefreshing ? "refreshing..." : "active filter scope"}
+        />
+      </div>
+
       <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">NODE MAP FILTERS</p>
@@ -360,20 +374,6 @@ export function NodeMapWorkspace({
             </label>
           </div>
         ) : null}
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <StatCard label="Visible Goals" value={String(filteredGoals.length)} />
-        <StatCard
-          label="Goal Links"
-          value={String(relationshipRows.length)}
-          helper="child -> parent relationships"
-        />
-        <StatCard
-          label="Linked Tasks"
-          value={String(Array.from(tasksByGoalId.values()).reduce((sum, next) => sum + next.length, 0))}
-          helper={isRefreshing ? "refreshing..." : "active filter scope"}
-        />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">

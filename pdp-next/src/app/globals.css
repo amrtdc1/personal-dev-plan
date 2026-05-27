@@ -604,12 +604,26 @@ h1, h2, h3, h4, h5, h6,
   background-color: color-mix(in srgb, var(--pdp-muted-surface) 78%, var(--pdp-theme-primary));
 }
 
+[data-theme="dark"] .pdp-calendar .fc .fc-list-day > th,
+[data-theme-source="cwm"] .pdp-calendar .fc .fc-list-day > th {
+  background-color: color-mix(in srgb, var(--pdp-muted-surface) 78%, var(--pdp-theme-primary));
+  border-color: var(--pdp-border);
+}
+
 [data-theme="dark"] .fc .fc-col-header-cell-cushion,
 [data-theme="dark"] .fc .fc-daygrid-day-number,
 [data-theme="dark"] .fc .fc-toolbar-title,
+[data-theme="dark"] .pdp-calendar .fc .fc-list-day-cushion,
+[data-theme="dark"] .pdp-calendar .fc .fc-list-day-cushion a,
+[data-theme="dark"] .pdp-calendar .fc .fc-list-day-text,
+[data-theme="dark"] .pdp-calendar .fc .fc-list-day-side-text,
 [data-theme-source="cwm"] .fc .fc-col-header-cell-cushion,
 [data-theme-source="cwm"] .fc .fc-daygrid-day-number,
-[data-theme-source="cwm"] .fc .fc-toolbar-title {
+[data-theme-source="cwm"] .fc .fc-toolbar-title,
+[data-theme-source="cwm"] .pdp-calendar .fc .fc-list-day-cushion,
+[data-theme-source="cwm"] .pdp-calendar .fc .fc-list-day-cushion a,
+[data-theme-source="cwm"] .pdp-calendar .fc .fc-list-day-text,
+[data-theme-source="cwm"] .pdp-calendar .fc .fc-list-day-side-text {
   color: var(--pdp-text-strong);
 }
 
