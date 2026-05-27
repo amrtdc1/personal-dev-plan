@@ -44,6 +44,7 @@ type HistoryWindowFilter = "24h" | "7d" | "30d" | "all";
 
 const DISMISS_KEY = "pdp.installNotify.dismissedAt";
 const DISMISS_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+export const OPEN_PUSH_SETTINGS_EVENT = "pdp:open-push-settings";
 
 export function InstallAndNotifyBanner() {
   const { user } = db.useAuth();
@@ -153,6 +154,25 @@ export function InstallAndNotifyBanner() {
     };
 
     void loadSubscription();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const onOpenPushSettings = () => {
+      setIsDismissed(false);
+      setError(null);
+      setSuccess(null);
+      window.localStorage.removeItem(DISMISS_KEY);
+    };
+
+    window.addEventListener(OPEN_PUSH_SETTINGS_EVENT, onOpenPushSettings);
+
+    return () => {
+      window.removeEventListener(OPEN_PUSH_SETTINGS_EVENT, onOpenPushSettings);
+    };
   }, []);
 
   const shouldShowInstallPrompt = useMemo(

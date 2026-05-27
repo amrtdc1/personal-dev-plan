@@ -370,24 +370,6 @@ export function HabitsWorkspace() {
         </span>
       </div>
 
-      <div className="mt-2 flex min-w-0 justify-end">
-        <div className="w-full sm:w-auto">
-          <select
-            value={habitSortKey}
-            onChange={(event) => setHabitSortKey(event.target.value as HabitSortKey)}
-            className="w-full rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 sm:w-auto"
-            aria-label="Sort habits"
-          >
-            <option value="adherence_desc">Sort: 4-week adherence</option>
-            <option value="current_streak_desc">Sort: Current streak</option>
-            <option value="best_streak_desc">Sort: Best streak</option>
-            <option value="checkins_desc">Sort: Total check-ins</option>
-            <option value="status_asc">Sort: Status</option>
-            <option value="title_asc">Sort: Name</option>
-          </select>
-        </div>
-      </div>
-
       <form className="mt-3 grid gap-2 md:grid-cols-4" onSubmit={handleHabitSubmit}>
         <input
           value={habitTitle}
@@ -423,6 +405,24 @@ export function HabitsWorkspace() {
           {isSavingHabit ? "Saving..." : "Create habit"}
         </button>
       </form>
+
+      <div className="mt-3 flex min-w-0 justify-start sm:justify-end">
+        <div className="w-full sm:w-auto">
+          <select
+            value={habitSortKey}
+            onChange={(event) => setHabitSortKey(event.target.value as HabitSortKey)}
+            className="w-full rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 sm:w-auto"
+            aria-label="Sort habits"
+          >
+            <option value="adherence_desc">Sort: 4-week adherence</option>
+            <option value="current_streak_desc">Sort: Current streak</option>
+            <option value="best_streak_desc">Sort: Best streak</option>
+            <option value="checkins_desc">Sort: Total check-ins</option>
+            <option value="status_asc">Sort: Status</option>
+            <option value="title_asc">Sort: Name</option>
+          </select>
+        </div>
+      </div>
 
       <div className="mt-4 grid min-w-0 gap-3 lg:grid-cols-2">
         <ul className="min-w-0 space-y-2">

@@ -56,7 +56,7 @@ export function CrudModal({ isOpen, title, onClose, children }: CrudModalProps) 
       role="presentation"
     >
       <div
-        className="flex w-full max-w-2xl max-h-[calc(100dvh-6rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:max-h-[min(82vh,56rem)] sm:p-5"
+        className="pdp-card flex w-full max-w-2xl max-h-[calc(100dvh-6rem)] flex-col overflow-hidden rounded-2xl p-4 shadow-2xl sm:max-h-[min(82vh,56rem)] sm:p-5"
         role="dialog"
         aria-modal="true"
         aria-label={title}

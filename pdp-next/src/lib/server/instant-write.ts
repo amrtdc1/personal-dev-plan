@@ -16,6 +16,7 @@ import { statusToPercent } from "@/lib/domain/status";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {
+  findOwnedChildGoal,
   findOwnedGoal,
   findOwnedHabit,
   findOwnedHabitCheckin,
@@ -196,7 +197,7 @@ export async function updateGoal(
 
 export async function createTask(ownerUid: string, payload: ParsedTaskWritePayload) {
   const instantAdmin = getInstantAdmin();
-  await findOwnedGoal(ownerUid, payload.goalId);
+  await findOwnedChildGoal(ownerUid, payload.goalId);
 
   const now = new Date().toISOString();
   const nextOrderIndex = await getNextTaskOrderIndex(ownerUid, payload.goalId);
@@ -265,7 +266,7 @@ export async function updateTask(
 ) {
   const instantAdmin = getInstantAdmin();
   const existingTask = await findOwnedTask(ownerUid, taskId);
-  await findOwnedGoal(ownerUid, payload.goalId);
+  await findOwnedChildGoal(ownerUid, payload.goalId);
   const now = new Date().toISOString();
 
   const { trimmedTitle, trimmedNotes } = validateTaskWrite({

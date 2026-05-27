@@ -867,7 +867,7 @@ export function DashboardInsights({
                 <p className="text-sm text-slate-600">Focus on what needs action now.</p>
               </div>
 
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="pdp-card rounded-xl px-3 py-3">
             <p className="text-sm font-semibold text-slate-700">Tasks due today</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{tasksDueToday.length}</p>
@@ -912,8 +912,8 @@ export function DashboardInsights({
           </div>
               </div>
 
-              <div className="mt-3 grid min-w-0 gap-3 xl:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                <div className="mt-4 grid min-w-0 gap-3 xl:[grid-template-columns:repeat(2,minmax(0,1fr))]">
+              <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-slate-700">Quick task actions</p>
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
@@ -961,7 +961,7 @@ export function DashboardInsights({
                 {quickActionTasks.length > 0 ? (
                   <ul className="space-y-2">
                     {quickActionTasks.map((task) => (
-                      <li key={task.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2 py-2">
+                      <li key={task.id} className="flex min-w-0 flex-wrap items-start justify-between gap-2 rounded-lg border border-slate-200 px-2 py-2">
                         <div className="min-w-0 flex-1">
                           <button
                             type="button"
@@ -983,7 +983,7 @@ export function DashboardInsights({
                             <span>Unplanned</span>
                           </label>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
                           <button
                             type="button"
                             onClick={() => void handleQuickTaskSnooze(task.id, 1)}
@@ -1041,14 +1041,14 @@ export function DashboardInsights({
             )}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+          <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3">
             <p className="text-sm font-semibold text-slate-700">Quick habit check-ins</p>
             {habitsNeedingCheckin.slice(0, 20).length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">All tracked habits are checked in today.</p>
             ) : (
-              <ul className="mt-2 grid min-w-0 grid-cols-2 gap-2">
+              <ul className="mt-2 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                 {habitsNeedingCheckin.slice(0, 20).map((habit) => (
-                  <li key={habit.id} className="rounded-lg border border-slate-200 px-2 py-2">
+                  <li key={habit.id} className="min-w-0 rounded-lg border border-slate-200 px-2 py-2">
                     <p className="truncate text-sm font-medium text-slate-900">{habit.title}</p>
                     <button
                       type="button"
@@ -1421,13 +1421,13 @@ export function DashboardInsights({
           </label>
 
           <label className="text-sm text-slate-700">
-            Sub-goal
+            Parent goal (optional)
             <select
               value={quickTaskChildGoalId}
               onChange={(event) => setQuickTaskChildGoalId(event.currentTarget.value)}
               className="pdp-control mt-1 rounded-lg"
             >
-              <option value="">Select a sub-goal</option>
+              <option value="">Select a parent goal</option>
               {childGoals.map((childGoal) => (
                 <option key={childGoal.id} value={childGoal.id}>
                   {childGoal.title}

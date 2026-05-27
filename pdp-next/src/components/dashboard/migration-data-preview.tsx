@@ -1301,10 +1301,12 @@ export function MigrationDataPreview({
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Tasks</h3>
             <button
               type="button"
-              disabled={!selectedChildGoal}
+              disabled={!selectedChildGoal && childGoalsForSelectedGoal.length === 0}
               onClick={() => {
-                if (selectedChildGoal) {
-                  openCreateTaskModal(selectedChildGoal.id);
+                const targetChildGoalId = selectedChildGoal?.id ?? childGoalsForSelectedGoal[0]?.id;
+                if (targetChildGoalId) {
+                  setSelectedChildGoalId(targetChildGoalId);
+                  openCreateTaskModal(targetChildGoalId);
                 }
               }}
               className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"

@@ -12,7 +12,7 @@ import { NodeMapWorkspace } from "@/components/dashboard/node-map-workspace";
 import { OfflineSyncStatus } from "@/components/dashboard/offline-sync-status";
 import { CalendarFeedRotationControl } from "@/components/dashboard/calendar-feed-rotation-control";
 import { SchedulerHealthCard } from "@/components/dashboard/scheduler-health-card";
-import { InstallAndNotifyBanner } from "@/components/pwa/install-and-notify-banner";
+import { InstallAndNotifyBanner, OPEN_PUSH_SETTINGS_EVENT } from "@/components/pwa/install-and-notify-banner";
 import { dataRepository } from "@/lib/data/repository";
 import { validateUserProfileWrite } from "@/lib/data/validation";
 import {
@@ -648,7 +648,7 @@ function SignedInShell() {
       ) : null}
 
       <nav
-        className="pdp-solid-surface fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white sm:hidden"
+        className="pdp-solid-surface fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] sm:hidden"
         aria-label="Mobile app sections"
       >
         <div className="mx-auto grid max-w-6xl grid-cols-6">
@@ -1147,6 +1147,16 @@ function ProfileSettings({
     }
   }
 
+  function handleOpenPushNotifications() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.removeItem("pdp.installNotify.dismissedAt");
+    window.dispatchEvent(new Event(OPEN_PUSH_SETTINGS_EVENT));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
     <section className="pdp-panel">
       <h2 className="text-lg font-semibold text-slate-900">Profile & Theme</h2>
@@ -1605,6 +1615,22 @@ function ProfileSettings({
           <p className="text-xs text-slate-500">
             Install check: if the app opens without browser URL controls, it is running as an installed app.
           </p>
+        </section>
+
+        <section className="pdp-panel-muted grid gap-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Push Notifications</h3>
+          <p className="text-sm text-slate-600">
+            Open push notification settings anytime to enable reminders, adjust quiet hours, or review recent delivery activity.
+          </p>
+          <div>
+            <button
+              type="button"
+              onClick={handleOpenPushNotifications}
+              className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+            >
+              Manage Push Notifications
+            </button>
+          </div>
         </section>
 
         <SchedulerHealthCard />
