@@ -51,7 +51,7 @@ export function CrudModal({ isOpen, title, onClose, children }: CrudModalProps) 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-900/35 px-3 py-5 backdrop-blur-sm sm:p-6"
+      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-900/55 px-3 py-5 backdrop-blur-md sm:p-6"
       onClick={onClose}
       role="presentation"
     >
