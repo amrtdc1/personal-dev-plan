@@ -50,19 +50,13 @@ export function InstallAndNotifyBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIosSafari, setIsIosSafari] = useState(false);
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">(
-    () => {
-      if (typeof window === "undefined") {
-        return "unsupported";
-      }
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return "unsupported";
+    }
 
-      if (!("Notification" in window)) {
-        return "unsupported";
-      }
-
-      return window.Notification.permission;
-    },
-  );
+    return window.Notification.permission;
+  });
   const [hasPushSubscription, setHasPushSubscription] = useState(false);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,11 +72,7 @@ export function InstallAndNotifyBanner() {
     }
 
     const dismissedAt = Number(dismissedAtRaw);
-    if (Number.isNaN(dismissedAt)) {
-      return false;
-    }
-
-    return Date.now() - dismissedAt < DISMISS_WINDOW_MS;
+    return !Number.isNaN(dismissedAt) && Date.now() - dismissedAt < DISMISS_WINDOW_MS;
   });
   const [selectedReminderType, setSelectedReminderType] = useState<ReminderType>("daily_agenda");
   const [preferences, setPreferences] = useState<NotificationPreferences>({
@@ -148,11 +138,7 @@ export function InstallAndNotifyBanner() {
   }, []);
 
   useEffect(() => {
-    if (typeof navigator === "undefined") {
-      return;
-    }
-
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
       return;
     }
 
@@ -180,24 +166,17 @@ export function InstallAndNotifyBanner() {
   );
 
   const shouldShowNotificationPrompt = useMemo(() => {
-    if (!user || isDismissed || !isStandalone) {
-      return false;
-    }
-
-    if (!vapidPublicKey || notificationPermission === "unsupported") {
+    if (!user || isDismissed || !isStandalone || !vapidPublicKey || notificationPermission === "unsupported") {
       return false;
     }
 
     return notificationPermission !== "granted" || !hasPushSubscription;
   }, [hasPushSubscription, isDismissed, isStandalone, notificationPermission, user, vapidPublicKey]);
 
-  const shouldShowNotificationManagement = useMemo(() => {
-    if (!user || isDismissed || !isStandalone) {
-      return false;
-    }
-
-    return notificationPermission === "granted" && hasPushSubscription;
-  }, [hasPushSubscription, isDismissed, isStandalone, notificationPermission, user]);
+  const shouldShowNotificationManagement = useMemo(
+    () => Boolean(user) && !isDismissed && isStandalone && notificationPermission === "granted" && hasPushSubscription,
+    [hasPushSubscription, isDismissed, isStandalone, notificationPermission, user],
+  );
 
   useEffect(() => {
     if (!shouldShowNotificationManagement) {
@@ -208,15 +187,9 @@ export function InstallAndNotifyBanner() {
 
     const loadPreferences = async () => {
       setIsLoadingPreferences(true);
-
       try {
-        const response = await fetch("/api/notifications/preferences", {
-          method: "GET",
-        });
-
-        const responseBody = (await response.json().catch(() => null)) as
-          | { preferences?: NotificationPreferences; error?: string }
-          | null;
+        const response = await fetch("/api/notifications/preferences", { method: "GET" });
+        const responseBody = (await response.json().catch(() => null)) as { preferences?: NotificationPreferences; error?: string } | null;
 
         if (!response.ok) {
           throw new Error(responseBody?.error || "Could not load notification preferences.");
@@ -227,15 +200,7 @@ export function InstallAndNotifyBanner() {
         }
       } catch {
         if (!isCancelled) {
-          setPreferences({
-            dailyAgendaEnabled: true,
-            weeklyReviewEnabled: true,
-            dueTasksEnabled: true,
-            preferredHourLocal: null,
-            timezone: null,
-            quietHoursStart: null,
-            quietHoursEnd: null,
-          });
+          setPreferences((current) => current);
         }
       } finally {
         if (!isCancelled) {
@@ -244,64 +209,348 @@ export function InstallAndNotifyBanner() {
       }
     };
 
-    const loadHistory = async () => {
-      setIsLoadingHistory(true);
-
-      try {
-        const query = buildHistoryQuery({
-          status: historyStatusFilter,
-          type: historyTypeFilter,
-          window: historyWindowFilter,
-        });
-        const response = await fetch(`/api/notifications/deliveries?${query}`, {
-          method: "GET",
-        });
-
-        const responseBody = (await response.json().catch(() => null)) as
-          | {
-              deliveries?: DeliveryHistoryItem[];
-              hasMore?: boolean;
-              nextCursor?: string | null;
-              error?: string;
-            }
-          | null;
-
-        if (!response.ok) {
-          throw new Error(responseBody?.error || "Could not load delivery history.");
-        }
-
-        if (!isCancelled) {
-          setDeliveryHistory(responseBody?.deliveries ?? []);
-          setHistoryHasMore(Boolean(responseBody?.hasMore));
-          setHistoryNextCursor(responseBody?.nextCursor ?? null);
-        }
-      } catch {
-        if (!isCancelled) {
-          setDeliveryHistory([]);
-          setHistoryHasMore(false);
-          setHistoryNextCursor(null);
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsLoadingHistory(false);
-        }
-      }
-    };
-
     void loadPreferences();
-    void loadHistory();
+    void refreshDeliveryHistory();
 
     return () => {
       isCancelled = true;
     };
+  }, [shouldShowNotificationManagement]);
+
+  useEffect(() => {
+    if (!shouldShowNotificationManagement) {
+      return;
+    }
+
+    void refreshDeliveryHistory();
   }, [historyStatusFilter, historyTypeFilter, historyWindowFilter, shouldShowNotificationManagement]);
 
-  if (!shouldShowInstallPrompt && !shouldShowIosInstallHelp && !shouldShowNotificationPrompt && !shouldShowNotificationManagement) {
-    return null;
-  }
+  return (
+    <aside className="fixed inset-x-2 top-2 z-40 max-w-[calc(100vw-1rem)] sm:bottom-6 sm:left-auto sm:right-6 sm:top-auto sm:w-[22rem]">
+      <div className="pdp-card flex max-h-[calc(100dvh-1rem)] flex-col overflow-hidden p-2.5 text-sm shadow-lg sm:max-h-[min(80vh,46rem)] sm:p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
+              {shouldShowInstallPrompt
+                ? "Install app"
+                : shouldShowIosInstallHelp
+                  ? "Install on iPhone"
+                  : shouldShowNotificationPrompt
+                    ? "Enable notifications"
+                    : "Manage notifications"}
+            </p>
+            <p className="mt-1 text-xs text-slate-700 sm:text-sm">
+              {shouldShowInstallPrompt
+                ? "Install PDP on your home screen to unlock reminder notifications and a native app feel."
+                : shouldShowIosInstallHelp
+                  ? "On iPhone Safari: tap Share, then Add to Home Screen. iOS does not show an automatic install pop-up."
+                  : shouldShowNotificationPrompt
+                    ? "Turn on push notifications for daily agenda, weekly review, and habit reminders."
+                    : "Push notifications are enabled. Send a quick test or disable notifications for this device."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissBanner}
+            aria-label="Dismiss"
+            className="rounded-full px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-100"
+          >
+            Dismiss
+          </button>
+        </div>
+
+        {error ? <p className="mt-2 text-xs text-red-700">{error}</p> : null}
+        {success ? <p className="mt-2 text-xs text-emerald-700">{success}</p> : null}
+
+        <div className="min-h-0 flex-1 overflow-y-auto pr-0.5 sm:pr-1">
+          <div className="mt-2.5 space-y-2.5 sm:mt-3 sm:space-y-3">
+            {shouldShowInstallPrompt ? (
+              <button
+                type="button"
+                onClick={() => void handleInstall()}
+                disabled={isLoadingAction}
+                className="w-full rounded-full bg-slate-900 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {isLoadingAction ? "Opening..." : "Install app"}
+              </button>
+            ) : shouldShowIosInstallHelp ? (
+              <div className="w-full rounded-2xl border border-slate-200 p-2.5 text-xs text-slate-700 sm:p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Install steps</p>
+                <p className="mt-1">1. Tap Share in Safari</p>
+                <p>2. Tap Add to Home Screen</p>
+                <p>3. Tap Add</p>
+              </div>
+            ) : shouldShowNotificationPrompt ? (
+              <button
+                type="button"
+                onClick={() => void handleEnableNotifications()}
+                disabled={isLoadingAction}
+                className="w-full rounded-full bg-slate-900 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {isLoadingAction ? "Updating..." : "Enable push"}
+              </button>
+            ) : (
+              <>
+                <section className="w-full rounded-2xl border border-slate-200 p-2.5 sm:p-3">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Reminder preferences</p>
+                  <div className="space-y-1.5 text-xs text-slate-700 sm:space-y-2">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={preferences.dailyAgendaEnabled}
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            dailyAgendaEnabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      Daily agenda
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={preferences.weeklyReviewEnabled}
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            weeklyReviewEnabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      Weekly review
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={preferences.dueTasksEnabled}
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            dueTasksEnabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      Due tasks
+                    </label>
+                  </div>
+
+                  <div className="mt-2.5 grid grid-cols-1 gap-2 sm:mt-3 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Preferred hour (local)</label>
+                      <select
+                        value={preferences.preferredHourLocal === null ? "" : String(preferences.preferredHourLocal)}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setPreferences((current) => ({
+                            ...current,
+                            preferredHourLocal: value === "" ? null : Number(value),
+                          }));
+                        }}
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                      >
+                        <option value="">Any hour</option>
+                        {Array.from({ length: 24 }, (_, hour) => (
+                          <option key={hour} value={String(hour)}>
+                            {`${String(hour).padStart(2, "0")}:00`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Timezone</label>
+                      <input
+                        type="text"
+                        value={preferences.timezone ?? ""}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            timezone: event.target.value,
+                          }))
+                        }
+                        placeholder="America/New_York"
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Quiet start</label>
+                      <input
+                        type="time"
+                        value={preferences.quietHoursStart ?? ""}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            quietHoursStart: event.target.value || null,
+                          }))
+                        }
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Quiet end</label>
+                      <input
+                        type="time"
+                        value={preferences.quietHoursEnd ?? ""}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            quietHoursEnd: event.target.value || null,
+                          }))
+                        }
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleSavePreferences()}
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isLoadingAction ? "Saving..." : "Save preferences"}
+                  </button>
+                  <select
+                    value={selectedReminderType}
+                    onChange={(event) => setSelectedReminderType(event.target.value as ReminderType)}
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    className="pdp-control rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-wide"
+                    aria-label="Reminder type"
+                  >
+                    <option value="daily_agenda">Daily agenda</option>
+                    <option value="weekly_review">Weekly review</option>
+                    <option value="due_tasks">Due tasks</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void handleSendReminderNotification()}
+                    disabled={isLoadingAction}
+                    className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {isLoadingAction ? "Sending..." : "Send reminder"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSendTestNotification()}
+                    disabled={isLoadingAction}
+                    className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {isLoadingAction ? "Sending..." : "Send test"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDisableNotifications()}
+                    disabled={isLoadingAction}
+                    className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Disable push
+                  </button>
+                </div>
+
+                <section className="w-full rounded-2xl border border-slate-200 p-3">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Recent notification activity
+                  </p>
+                  <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <select
+                      value={historyStatusFilter}
+                      onChange={(event) => setHistoryStatusFilter(event.target.value as HistoryStatusFilter)}
+                      className="pdp-control rounded-xl px-2 py-1 text-xs"
+                      disabled={isLoadingHistory}
+                      aria-label="Activity status filter"
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="sent">Sent</option>
+                      <option value="failed">Failed</option>
+                      <option value="skipped">Skipped</option>
+                    </select>
+                    <select
+                      value={historyTypeFilter}
+                      onChange={(event) => setHistoryTypeFilter(event.target.value as HistoryTypeFilter)}
+                      className="pdp-control rounded-xl px-2 py-1 text-xs"
+                      disabled={isLoadingHistory}
+                      aria-label="Activity type filter"
+                    >
+                      <option value="all">All types</option>
+                      <option value="daily_agenda">Daily agenda</option>
+                      <option value="weekly_review">Weekly review</option>
+                      <option value="due_tasks">Due tasks</option>
+                      <option value="test">Test</option>
+                    </select>
+                    <select
+                      value={historyWindowFilter}
+                      onChange={(event) => setHistoryWindowFilter(event.target.value as HistoryWindowFilter)}
+                      className="pdp-control rounded-xl px-2 py-1 text-xs sm:col-span-2"
+                      disabled={isLoadingHistory}
+                      aria-label="Activity window filter"
+                    >
+                      <option value="24h">Last 24 hours</option>
+                      <option value="7d">Last 7 days</option>
+                      <option value="30d">Last 30 days</option>
+                      <option value="all">All time</option>
+                    </select>
+                  </div>
+                  <div className="mb-2 flex flex-wrap gap-1">
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                      Sent {deliveryHistory.filter((entry) => entry.status === "sent").length}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                      Failed {deliveryHistory.filter((entry) => entry.status === "failed").length}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                      Skipped {deliveryHistory.filter((entry) => entry.status === "skipped").length}
+                    </span>
+                  </div>
+                  {isLoadingHistory ? <p className="text-xs text-slate-500">Loading activity...</p> : null}
+                  {!isLoadingHistory && deliveryHistory.length === 0 ? (
+                    <p className="text-xs text-slate-500">No delivery records yet.</p>
+                  ) : null}
+                  <div className="mt-2 max-h-52 space-y-2 overflow-y-auto pr-1 sm:max-h-56">
+                    {!isLoadingHistory && deliveryHistory.length > 0
+                      ? deliveryHistory.map((entry) => (
+                          <div key={entry.id} className="rounded-lg border border-slate-100 p-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                              {formatReminderLabel(entry.reminderType)} - {entry.status}
+                            </p>
+                            <p className="text-xs text-slate-700">{entry.message || entry.title || "No message"}</p>
+                            <p className="text-[11px] text-slate-500">{new Date(entry.createdAt).toLocaleString()}</p>
+                          </div>
+                        ))
+                      : null}
+                  </div>
+                  {historyHasMore ? (
+                    <button
+                      type="button"
+                      onClick={() => void refreshDeliveryHistory(historyNextCursor ?? undefined)}
+                      className="mt-2 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+                      disabled={isLoadingHistory}
+                    >
+                      {isLoadingHistory ? "Loading..." : "Load more"}
+                    </button>
+                  ) : null}
+                </section>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
 
   async function handleInstall() {
     if (!deferredPrompt) {
+      setError("Install is not available in this browser yet.");
       return;
     }
 
@@ -312,9 +561,12 @@ export function InstallAndNotifyBanner() {
     try {
       await deferredPrompt.prompt();
       const choice = await deferredPrompt.userChoice;
+
       if (choice.outcome === "accepted") {
+        setSuccess("App install started.");
         setDeferredPrompt(null);
-        setIsStandalone(true);
+      } else {
+        setSuccess("Install dismissed.");
       }
     } catch {
       setError("Install prompt could not be shown. Try using your browser menu to install the app.");
@@ -646,18 +898,18 @@ export function InstallAndNotifyBanner() {
                 ? "Install app"
                 : shouldShowIosInstallHelp
                   ? "Install on iPhone"
-                : shouldShowNotificationPrompt
-                  ? "Enable notifications"
-                  : "Manage notifications"}
+                  : shouldShowNotificationPrompt
+                    ? "Enable notifications"
+                    : "Manage notifications"}
             </p>
             <p className="mt-1 text-sm text-slate-700">
               {shouldShowInstallPrompt
                 ? "Install PDP on your home screen to unlock reminder notifications and a native app feel."
                 : shouldShowIosInstallHelp
                   ? "On iPhone Safari: tap Share, then Add to Home Screen. iOS does not show an automatic install pop-up."
-                : shouldShowNotificationPrompt
-                  ? "Turn on push notifications for daily agenda, weekly review, and habit reminders."
-                  : "Push notifications are enabled. Send a quick test or disable notifications for this device."}
+                  : shouldShowNotificationPrompt
+                    ? "Turn on push notifications for daily agenda, weekly review, and habit reminders."
+                    : "Push notifications are enabled. Send a quick test or disable notifications for this device."}
             </p>
           </div>
           <button
@@ -673,320 +925,314 @@ export function InstallAndNotifyBanner() {
         {error ? <p className="mt-2 text-xs text-red-700">{error}</p> : null}
         {success ? <p className="mt-2 text-xs text-emerald-700">{success}</p> : null}
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {shouldShowInstallPrompt ? (
-            <button
-              type="button"
-              onClick={() => void handleInstall()}
-              disabled={isLoadingAction}
-              className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-            >
-              {isLoadingAction ? "Opening..." : "Install app"}
-            </button>
-          ) : shouldShowIosInstallHelp ? (
-            <div className="w-full rounded-2xl border border-slate-200 p-2 text-xs text-slate-700">
-              <p className="font-semibold uppercase tracking-wide text-slate-500">Install steps</p>
-              <p className="mt-1">1. Tap Share in Safari</p>
-              <p>2. Tap Add to Home Screen</p>
-              <p>3. Tap Add</p>
-            </div>
-          ) : shouldShowNotificationPrompt ? (
-            <button
-            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-              {error ? <p className="mt-2 text-xs text-red-700">{error}</p> : null}
-              {success ? <p className="mt-2 text-xs text-emerald-700">{success}</p> : null}
-
-              <div className="mt-3 space-y-3">
-                {shouldShowInstallPrompt ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleInstall()}
-                    disabled={isLoadingAction}
-                    className="w-full rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  >
-                    {isLoadingAction ? "Opening..." : "Install app"}
-                  </button>
-                ) : shouldShowIosInstallHelp ? (
-                  <div className="w-full rounded-2xl border border-slate-200 p-3 text-xs text-slate-700">
-                    <p className="font-semibold uppercase tracking-wide text-slate-500">Install steps</p>
-                    <p className="mt-1">1. Tap Share in Safari</p>
-                    <p>2. Tap Add to Home Screen</p>
-                    <p>3. Tap Add</p>
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="mt-3 space-y-3">
+            {shouldShowInstallPrompt ? (
+              <button
+                type="button"
+                onClick={() => void handleInstall()}
+                disabled={isLoadingAction}
+                className="w-full rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {isLoadingAction ? "Opening..." : "Install app"}
+              </button>
+            ) : shouldShowIosInstallHelp ? (
+              <div className="w-full rounded-2xl border border-slate-200 p-3 text-xs text-slate-700">
+                <p className="font-semibold uppercase tracking-wide text-slate-500">Install steps</p>
+                <p className="mt-1">1. Tap Share in Safari</p>
+                <p>2. Tap Add to Home Screen</p>
+                <p>3. Tap Add</p>
+              </div>
+            ) : shouldShowNotificationPrompt ? (
+              <button
+                type="button"
+                onClick={() => void handleEnableNotifications()}
+                disabled={isLoadingAction}
+                className="w-full rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {isLoadingAction ? "Updating..." : "Enable push"}
+              </button>
+            ) : (
+              <>
+                <section className="w-full rounded-2xl border border-slate-200 p-3">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Reminder preferences</p>
+                  <div className="space-y-2 text-xs text-slate-700">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={preferences.dailyAgendaEnabled}
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            dailyAgendaEnabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      Daily agenda
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={preferences.weeklyReviewEnabled}
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            weeklyReviewEnabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      Weekly review
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={preferences.dueTasksEnabled}
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            dueTasksEnabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      Due tasks
+                    </label>
                   </div>
-                ) : shouldShowNotificationPrompt ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleEnableNotifications()}
-                    disabled={isLoadingAction}
-                    className="w-full rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  >
-                    {isLoadingAction ? "Updating..." : "Enable push"}
-                  </button>
-                ) : (
-                  <>
-                    <section className="w-full rounded-2xl border border-slate-200 p-3">
-                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Reminder preferences
-                      </p>
-                      <div className="space-y-2 text-xs text-slate-700">
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={preferences.dailyAgendaEnabled}
-                            disabled={isLoadingAction || isLoadingPreferences}
-                            onChange={(event) =>
-                              setPreferences((current) => ({
-                                ...current,
-                                dailyAgendaEnabled: event.target.checked,
-                              }))
-                            }
-                          />
-                          Daily agenda
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={preferences.weeklyReviewEnabled}
-                            disabled={isLoadingAction || isLoadingPreferences}
-                            onChange={(event) =>
-                              setPreferences((current) => ({
-                                ...current,
-                                weeklyReviewEnabled: event.target.checked,
-                              }))
-                            }
-                          />
-                          Weekly review
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={preferences.dueTasksEnabled}
-                            disabled={isLoadingAction || isLoadingPreferences}
-                            onChange={(event) =>
-                              setPreferences((current) => ({
-                                ...current,
-                                dueTasksEnabled: event.target.checked,
-                              }))
-                            }
-                          />
-                          Due tasks
-                        </label>
-                      </div>
 
-                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <div className="sm:col-span-2">
-                          <label className="mb-1 block text-[11px] font-medium text-slate-600">Preferred hour (local)</label>
-                          <select
-                            value={preferences.preferredHourLocal === null ? "" : String(preferences.preferredHourLocal)}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              setPreferences((current) => ({
-                                ...current,
-                                preferredHourLocal: value === "" ? null : Number(value),
-                              }));
-                            }}
-                            disabled={isLoadingAction || isLoadingPreferences}
-                            className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
-                          >
-                            <option value="">Any hour</option>
-                            {Array.from({ length: 24 }, (_, hour) => (
-                              <option key={hour} value={String(hour)}>
-                                {`${String(hour).padStart(2, "0")}:00`}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="sm:col-span-2">
-                          <label className="mb-1 block text-[11px] font-medium text-slate-600">Timezone</label>
-                          <input
-                            type="text"
-                            value={preferences.timezone ?? ""}
-                            onChange={(event) =>
-                              setPreferences((current) => ({
-                                ...current,
-                                timezone: event.target.value,
-                              }))
-                            }
-                            placeholder="America/New_York"
-                            disabled={isLoadingAction || isLoadingPreferences}
-                            className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-[11px] font-medium text-slate-600">Quiet start</label>
-                          <input
-                            type="time"
-                            value={preferences.quietHoursStart ?? ""}
-                            onChange={(event) =>
-                              setPreferences((current) => ({
-                                ...current,
-                                quietHoursStart: event.target.value || null,
-                              }))
-                            }
-                            disabled={isLoadingAction || isLoadingPreferences}
-                            className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-[11px] font-medium text-slate-600">Quiet end</label>
-                          <input
-                            type="time"
-                            value={preferences.quietHoursEnd ?? ""}
-                            onChange={(event) =>
-                              setPreferences((current) => ({
-                                ...current,
-                                quietHoursEnd: event.target.value || null,
-                              }))
-                            }
-                            disabled={isLoadingAction || isLoadingPreferences}
-                            className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
-                          />
-                        </div>
-                      </div>
-                    </section>
-
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() => void handleSavePreferences()}
-                        disabled={isLoadingAction || isLoadingPreferences}
-                        className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {isLoadingAction ? "Saving..." : "Save preferences"}
-                      </button>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Preferred hour (local)</label>
                       <select
-                        value={selectedReminderType}
-                        onChange={(event) => setSelectedReminderType(event.target.value as ReminderType)}
+                        value={preferences.preferredHourLocal === null ? "" : String(preferences.preferredHourLocal)}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setPreferences((current) => ({
+                            ...current,
+                            preferredHourLocal: value === "" ? null : Number(value),
+                          }));
+                        }}
                         disabled={isLoadingAction || isLoadingPreferences}
-                        className="pdp-control rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-wide"
-                        aria-label="Reminder type"
+                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
                       >
-                        <option value="daily_agenda">Daily agenda</option>
-                        <option value="weekly_review">Weekly review</option>
-                        <option value="due_tasks">Due tasks</option>
+                        <option value="">Any hour</option>
+                        {Array.from({ length: 24 }, (_, hour) => (
+                          <option key={hour} value={String(hour)}>
+                            {`${String(hour).padStart(2, "0")}:00`}
+                          </option>
+                        ))}
                       </select>
-                      <button
-                        type="button"
-                        onClick={() => void handleSendReminderNotification()}
-                        disabled={isLoadingAction}
-                        className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                      >
-                        {isLoadingAction ? "Sending..." : "Send reminder"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleSendTestNotification()}
-                        disabled={isLoadingAction}
-                        className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                      >
-                        {isLoadingAction ? "Sending..." : "Send test"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDisableNotifications()}
-                        disabled={isLoadingAction}
-                        className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Disable push
-                      </button>
                     </div>
 
-                    <section className="w-full rounded-2xl border border-slate-200 p-3">
-                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Recent notification activity
-                      </p>
-                      <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <select
-                          value={historyStatusFilter}
-                          onChange={(event) => setHistoryStatusFilter(event.target.value as HistoryStatusFilter)}
-                          className="pdp-control rounded-xl px-2 py-1 text-xs"
-                          disabled={isLoadingHistory}
-                          aria-label="Activity status filter"
-                        >
-                          <option value="all">All statuses</option>
-                          <option value="sent">Sent</option>
-                          <option value="failed">Failed</option>
-                          <option value="skipped">Skipped</option>
-                        </select>
-                        <select
-                          value={historyTypeFilter}
-                          onChange={(event) => setHistoryTypeFilter(event.target.value as HistoryTypeFilter)}
-                          className="pdp-control rounded-xl px-2 py-1 text-xs"
-                          disabled={isLoadingHistory}
-                          aria-label="Activity type filter"
-                        >
-                          <option value="all">All types</option>
-                          <option value="daily_agenda">Daily agenda</option>
-                          <option value="weekly_review">Weekly review</option>
-                          <option value="due_tasks">Due tasks</option>
-                          <option value="test">Test</option>
-                        </select>
-                        <select
-                          value={historyWindowFilter}
-                          onChange={(event) => setHistoryWindowFilter(event.target.value as HistoryWindowFilter)}
-                          className="pdp-control rounded-xl px-2 py-1 text-xs sm:col-span-2"
-                          disabled={isLoadingHistory}
-                          aria-label="Activity window filter"
-                        >
-                          <option value="24h">Last 24 hours</option>
-                          <option value="7d">Last 7 days</option>
-                          <option value="30d">Last 30 days</option>
-                          <option value="all">All time</option>
-                        </select>
-                      </div>
-                      <div className="mb-2 flex flex-wrap gap-1">
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-                          Sent {deliveryHistory.filter((entry) => entry.status === "sent").length}
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-                          Failed {deliveryHistory.filter((entry) => entry.status === "failed").length}
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-                          Skipped {deliveryHistory.filter((entry) => entry.status === "skipped").length}
-                        </span>
-                      </div>
-                      {isLoadingHistory ? <p className="text-xs text-slate-500">Loading activity...</p> : null}
-                      {!isLoadingHistory && deliveryHistory.length === 0 ? (
-                        <p className="text-xs text-slate-500">No delivery records yet.</p>
-                      ) : null}
-                      <div className="mt-2 max-h-56 space-y-2 overflow-y-auto pr-1">
-                        {!isLoadingHistory && deliveryHistory.length > 0
-                          ? deliveryHistory.map((entry) => (
-                              <div key={entry.id} className="rounded-lg border border-slate-100 p-2">
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                                  {formatReminderLabel(entry.reminderType)} - {entry.status}
-                                </p>
-                                <p className="text-xs text-slate-700">{entry.message || entry.title || "No message"}</p>
-                                <p className="text-[11px] text-slate-500">{new Date(entry.createdAt).toLocaleString()}</p>
-                              </div>
-                            ))
-                          : null}
-                      </div>
-                      {historyHasMore ? (
-                        <button
-                          type="button"
-                          onClick={() => void refreshDeliveryHistory(historyNextCursor ?? undefined)}
-                          className="mt-2 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
-                          disabled={isLoadingHistory}
-                        >
-                          {isLoadingHistory ? "Loading..." : "Load more"}
-                        </button>
-                      ) : null}
-                    </section>
-                  </>
-                )}
-              </div>
-            </div>
-  return {
-    endpoint: json.endpoint,
-    expirationTime: json.expirationTime ?? null,
-    keys: {
-      p256dh,
-      auth,
-    },
-  };
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Timezone</label>
+                      <input
+                        type="text"
+                        value={preferences.timezone ?? ""}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            timezone: event.target.value,
+                          }))
+                        }
+                        placeholder="America/New_York"
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Quiet start</label>
+                      <input
+                        type="time"
+                        value={preferences.quietHoursStart ?? ""}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            quietHoursStart: event.target.value || null,
+                          }))
+                        }
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Quiet end</label>
+                      <input
+                        type="time"
+                        value={preferences.quietHoursEnd ?? ""}
+                        onChange={(event) =>
+                          setPreferences((current) => ({
+                            ...current,
+                            quietHoursEnd: event.target.value || null,
+                          }))
+                        }
+                        disabled={isLoadingAction || isLoadingPreferences}
+                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleSavePreferences()}
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isLoadingAction ? "Saving..." : "Save preferences"}
+                  </button>
+                  <select
+                    value={selectedReminderType}
+                    onChange={(event) => setSelectedReminderType(event.target.value as ReminderType)}
+                    disabled={isLoadingAction || isLoadingPreferences}
+                    className="pdp-control rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-wide"
+                    aria-label="Reminder type"
+                  >
+                    <option value="daily_agenda">Daily agenda</option>
+                    <option value="weekly_review">Weekly review</option>
+                    <option value="due_tasks">Due tasks</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void handleSendReminderNotification()}
+                    disabled={isLoadingAction}
+                    className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {isLoadingAction ? "Sending..." : "Send reminder"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSendTestNotification()}
+                    disabled={isLoadingAction}
+                    className="rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {isLoadingAction ? "Sending..." : "Send test"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDisableNotifications()}
+                    disabled={isLoadingAction}
+                    className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Disable push
+                  </button>
+                </div>
+
+                <section className="w-full rounded-2xl border border-slate-200 p-3">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Recent notification activity
+                  </p>
+                  <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <select
+                      value={historyStatusFilter}
+                      onChange={(event) => setHistoryStatusFilter(event.target.value as HistoryStatusFilter)}
+                      className="pdp-control rounded-xl px-2 py-1 text-xs"
+                      disabled={isLoadingHistory}
+                      aria-label="Activity status filter"
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="sent">Sent</option>
+                      <option value="failed">Failed</option>
+                      <option value="skipped">Skipped</option>
+                    </select>
+                    <select
+                      value={historyTypeFilter}
+                      onChange={(event) => setHistoryTypeFilter(event.target.value as HistoryTypeFilter)}
+                      className="pdp-control rounded-xl px-2 py-1 text-xs"
+                      disabled={isLoadingHistory}
+                      aria-label="Activity type filter"
+                    >
+                      <option value="all">All types</option>
+                      <option value="daily_agenda">Daily agenda</option>
+                      <option value="weekly_review">Weekly review</option>
+                      <option value="due_tasks">Due tasks</option>
+                      <option value="test">Test</option>
+                    </select>
+                    <select
+                      value={historyWindowFilter}
+                      onChange={(event) => setHistoryWindowFilter(event.target.value as HistoryWindowFilter)}
+                      className="pdp-control rounded-xl px-2 py-1 text-xs sm:col-span-2"
+                      disabled={isLoadingHistory}
+                      aria-label="Activity window filter"
+                    >
+                      <option value="24h">Last 24 hours</option>
+                      <option value="7d">Last 7 days</option>
+                      <option value="30d">Last 30 days</option>
+                      <option value="all">All time</option>
+                    </select>
+                  </div>
+                  <div className="mb-2 flex flex-wrap gap-1">
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                      Sent {deliveryHistory.filter((entry) => entry.status === "sent").length}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                      Failed {deliveryHistory.filter((entry) => entry.status === "failed").length}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                      Skipped {deliveryHistory.filter((entry) => entry.status === "skipped").length}
+                    </span>
+                  </div>
+                  {isLoadingHistory ? <p className="text-xs text-slate-500">Loading activity...</p> : null}
+                  {!isLoadingHistory && deliveryHistory.length === 0 ? (
+                    <p className="text-xs text-slate-500">No delivery records yet.</p>
+                  ) : null}
+                  <div className="mt-2 max-h-56 space-y-2 overflow-y-auto pr-1">
+                    {!isLoadingHistory && deliveryHistory.length > 0
+                      ? deliveryHistory.map((entry) => (
+                          <div key={entry.id} className="rounded-lg border border-slate-100 p-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                              {formatReminderLabel(entry.reminderType)} - {entry.status}
+                            </p>
+                            <p className="text-xs text-slate-700">{entry.message || entry.title || "No message"}</p>
+                            <p className="text-[11px] text-slate-500">{new Date(entry.createdAt).toLocaleString()}</p>
+                          </div>
+                        ))
+                      : null}
+                  </div>
+                  {historyHasMore ? (
+                    <button
+                      type="button"
+                      onClick={() => void refreshDeliveryHistory(historyNextCursor ?? undefined)}
+                      className="mt-2 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+                      disabled={isLoadingHistory}
+                    >
+                      {isLoadingHistory ? "Loading..." : "Load more"}
+                    </button>
+                  ) : null}
+                </section>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function toPayload(subscription: PushSubscription): PushSubscriptionPayload | null {
+  try {
+    const json = subscription.toJSON();
+    const p256dhKey = subscription.getKey("p256dh");
+    const authKey = subscription.getKey("auth");
+
+    if (!json.endpoint || !p256dhKey || !authKey) {
+      return null;
+    }
+
+    return {
+      endpoint: json.endpoint,
+      expirationTime: json.expirationTime ?? null,
+      keys: {
+        p256dh: arrayBufferToBase64(p256dhKey),
+        auth: arrayBufferToBase64(authKey),
+      },
+    };
+  } catch {
+    return null;
+  }
 }
 
 function toUint8Array(base64String: string) {
@@ -1000,6 +1246,17 @@ function toUint8Array(base64String: string) {
   }
 
   return output;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+
+  return window.btoa(binary);
 }
 
 function formatReminderLabel(type: string) {
