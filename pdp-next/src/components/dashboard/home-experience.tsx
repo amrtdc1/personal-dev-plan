@@ -318,7 +318,7 @@ function SignedInShell() {
 
   if (isProfileLoading) {
     return (
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-5 py-6 md:px-8 md:py-8">
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 px-2.5 py-3 sm:px-4 md:px-8 md:py-8">
         <section className="pdp-panel">
           <h2 className="text-lg font-semibold text-slate-900">Loading your workspace...</h2>
         </section>
@@ -482,7 +482,7 @@ function SignedInShell() {
   }
 
   return (
-    <main className="pdp-shell relative isolate mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 pb-24 pt-4 md:px-8 md:pb-8 md:pt-8">
+    <main className="pdp-shell relative isolate mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-2.5 pb-20 pt-2 sm:px-4 sm:pt-3 md:px-8 md:pb-8 md:pt-8">
       <InstallAndNotifyBanner />
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         {brandVisual.watermarkUrl ? (
@@ -1712,7 +1712,7 @@ function FirstLoginOnboarding({
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-1 items-center px-5 py-6 md:px-8 md:py-10">
+    <main className="mx-auto flex w-full max-w-4xl flex-1 items-center px-2.5 py-3 sm:px-4 md:px-8 md:py-10">
       <section className="w-full rounded-2xl border border-slate-300 bg-white p-6 shadow-sm md:p-7">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Welcome to PDP</p>
         <h1 className="mt-2 text-2xl font-semibold text-slate-900">Let&apos;s set up your workspace</h1>
