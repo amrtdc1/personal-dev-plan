@@ -776,6 +776,14 @@ h1, h2, h3, h4, h5, h6,
     padding: 0.5rem;
   }
 
+  .pdp-shell article.pdp-card.rounded-xl.border {
+    padding: 0.5rem;
+  }
+
+  .pdp-shell div.journal-markdown.pdp-panel-muted {
+    padding: 0.5rem;
+  }
+
   .pdp-calendar .fc .fc-list-day-cushion {
     padding: 0.5rem 0.75rem;
   }

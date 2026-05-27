@@ -251,7 +251,7 @@ function NodeGraphCanvasInner({ nodes, edges, onOpenItem }: NodeGraphCanvasProps
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+    <div className="bg-transparent p-0">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <input
