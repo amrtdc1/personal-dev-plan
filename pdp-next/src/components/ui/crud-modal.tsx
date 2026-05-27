@@ -51,12 +51,12 @@ export function CrudModal({ isOpen, title, onClose, children }: CrudModalProps) 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-900/35 p-3 backdrop-blur-sm sm:p-4"
+      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-900/35 px-3 py-5 backdrop-blur-sm sm:p-6"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="flex w-full max-w-2xl max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:max-h-[min(88vh,56rem)] sm:p-5"
+        className="flex w-full max-w-2xl max-h-[calc(100dvh-6rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:max-h-[min(82vh,56rem)] sm:p-5"
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -72,7 +72,7 @@ export function CrudModal({ isOpen, title, onClose, children }: CrudModalProps) 
             Close
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1">
           {children}
         </div>
       </div>

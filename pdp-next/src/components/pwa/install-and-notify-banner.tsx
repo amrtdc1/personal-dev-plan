@@ -177,6 +177,7 @@ export function InstallAndNotifyBanner() {
     () => Boolean(user) && !isDismissed && isStandalone && notificationPermission === "granted" && hasPushSubscription,
     [hasPushSubscription, isDismissed, isStandalone, notificationPermission, user],
   );
+  const timezoneOptions = useMemo(() => getTimezoneOptions(preferences.timezone ?? undefined), [preferences.timezone]);
 
   useEffect(() => {
     if (!shouldShowNotificationManagement) {
@@ -364,22 +365,27 @@ export function InstallAndNotifyBanner() {
 
                     <div className="min-w-0 sm:col-span-2">
                       <label className="mb-1 block text-[11px] font-medium text-slate-600">Timezone</label>
-                      <input
-                        type="text"
+                      <select
                         value={preferences.timezone ?? ""}
                         onChange={(event) =>
                           setPreferences((current) => ({
                             ...current,
-                            timezone: event.target.value,
+                            timezone: event.target.value || null,
                           }))
                         }
-                        placeholder="America/New_York"
                         disabled={isLoadingAction || isLoadingPreferences}
                         className="pdp-control w-full min-w-0 max-w-full rounded-xl px-2 py-1 text-xs"
-                      />
+                      >
+                        <option value="">Use device timezone</option>
+                        {timezoneOptions.map((timezoneValue) => (
+                          <option key={timezoneValue} value={timezoneValue}>
+                            {timezoneValue}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <div className="min-w-0">
+                    <div className="min-w-0 sm:col-span-2">
                       <label className="mb-1 block text-[11px] font-medium text-slate-600">Quiet start</label>
                       <input
                         type="time"
@@ -391,10 +397,10 @@ export function InstallAndNotifyBanner() {
                           }))
                         }
                         disabled={isLoadingAction || isLoadingPreferences}
-                        className="pdp-control w-full min-w-0 max-w-full rounded-xl px-2 py-1 text-xs"
+                        className="pdp-control w-full min-w-0 max-w-[11.5rem] rounded-xl px-2 py-1 text-xs"
                       />
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 sm:col-span-2">
                       <label className="mb-1 block text-[11px] font-medium text-slate-600">Quiet end</label>
                       <input
                         type="time"
@@ -406,7 +412,7 @@ export function InstallAndNotifyBanner() {
                           }))
                         }
                         disabled={isLoadingAction || isLoadingPreferences}
-                        className="pdp-control w-full min-w-0 max-w-full rounded-xl px-2 py-1 text-xs"
+                        className="pdp-control w-full min-w-0 max-w-[11.5rem] rounded-xl px-2 py-1 text-xs"
                       />
                     </div>
                   </div>
@@ -1257,6 +1263,38 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   }
 
   return window.btoa(binary);
+}
+
+function getDefaultTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function getTimezoneOptions(initialTimezone?: string) {
+  const defaultTimezone = getDefaultTimezone();
+  const fallback = [
+    "UTC",
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "Europe/London",
+    "Europe/Paris",
+    "Asia/Tokyo",
+    "Asia/Kolkata",
+    "Australia/Sydney",
+  ];
+
+  const intlWithSupported = Intl as typeof Intl & {
+    supportedValuesOf?: (key: "timeZone") => string[];
+  };
+  const fromRuntime =
+    typeof intlWithSupported.supportedValuesOf === "function"
+      ? intlWithSupported.supportedValuesOf("timeZone")
+      : fallback;
+
+  return Array.from(new Set([initialTimezone ?? "", defaultTimezone, ...fromRuntime])).filter(
+    (value) => value.length > 0,
+  );
 }
 
 function formatReminderLabel(type: string) {
