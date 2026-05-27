@@ -853,7 +853,7 @@ export function DashboardInsights({
         </nav>
       }
     >
-      <article className="pdp-panel-muted">
+      <article className="pdp-panel-muted min-w-0 overflow-x-clip">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-lg font-semibold text-slate-900">{modeItems.find((item) => item.mode === dashboardMode)?.label}</h3>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -912,12 +912,12 @@ export function DashboardInsights({
           </div>
               </div>
 
-              <div className="mt-3 grid gap-3 xl:grid-cols-2">
+              <div className="mt-3 grid min-w-0 gap-3 xl:grid-cols-2">
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-slate-700">Quick task actions</p>
-              <div className="flex items-center gap-2">
-                <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                <div className="flex max-w-full flex-wrap rounded-full border border-slate-300 bg-white p-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -1046,7 +1046,7 @@ export function DashboardInsights({
             {habitsNeedingCheckin.slice(0, 20).length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">All tracked habits are checked in today.</p>
             ) : (
-              <ul className="mt-2 grid grid-cols-2 gap-2">
+              <ul className="mt-2 grid min-w-0 grid-cols-2 gap-2">
                 {habitsNeedingCheckin.slice(0, 20).map((habit) => (
                   <li key={habit.id} className="rounded-lg border border-slate-200 px-2 py-2">
                     <p className="truncate text-sm font-medium text-slate-900">{habit.title}</p>
@@ -1239,9 +1239,9 @@ export function DashboardInsights({
           ) : null}
 
           {dashboardMode === "risks" ? (
-            <div className="mt-3 grid gap-2 xl:grid-cols-2">
+            <div className="mt-3 grid min-w-0 gap-2 xl:grid-cols-2">
 
-            <div className="rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-3">
+            <div className="min-w-0 rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-3">
               <p className="text-sm font-semibold text-rose-800">Stale in-progress</p>
               {staleInProgressTasks.length === 0 ? (
                 <p className="mt-2 text-sm text-rose-700">No stale in-progress tasks.</p>
@@ -1264,7 +1264,7 @@ export function DashboardInsights({
               )}
             </div>
 
-            <div className="rounded-xl border border-violet-200 bg-violet-50/40 px-3 py-3">
+            <div className="min-w-0 rounded-xl border border-violet-200 bg-violet-50/40 px-3 py-3">
               <p className="text-sm font-semibold text-violet-800">Blocked by parent inactivity</p>
               {blockedByParentInactivityTasks.length === 0 ? (
                 <p className="mt-2 text-sm text-violet-700">No parent-chain blockers flagged.</p>

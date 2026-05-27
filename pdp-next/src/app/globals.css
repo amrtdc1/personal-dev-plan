@@ -613,8 +613,36 @@ h1, h2, h3, h4, h5, h6,
   max-width: 100%;
 }
 
+.pdp-calendar {
+  min-width: 0;
+  width: 100%;
+  overflow-x: hidden;
+}
+
 .pdp-calendar .fc .fc-scrollgrid {
   width: 100% !important;
+}
+
+.pdp-calendar .fc .fc-view-harness,
+.pdp-calendar .fc .fc-view-harness-active,
+.pdp-calendar .fc .fc-view {
+  min-width: 0;
+}
+
+.pdp-calendar .fc .fc-list,
+.pdp-calendar .fc .fc-list-table {
+  width: 100% !important;
+}
+
+.pdp-calendar .fc .fc-list-event > td {
+  white-space: normal;
+}
+
+.pdp-calendar .fc .fc-list-event-time,
+.pdp-calendar .fc .fc-list-event-title,
+.pdp-calendar .fc .fc-list-event-title a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .pdp-touch-mode .fc .fc-button {

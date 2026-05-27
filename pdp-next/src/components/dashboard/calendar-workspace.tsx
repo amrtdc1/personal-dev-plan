@@ -1461,7 +1461,7 @@ export function CalendarWorkspace() {
             ) : null}
           </div>
 
-          <div className="pdp-calendar">
+          <div className="pdp-calendar min-w-0">
               <FullCalendar
                 plugins={[dayGridPlugin, interactionPlugin, listPlugin]}
                 initialView={calendarViewPreference}

@@ -26,7 +26,7 @@ export function WorkspaceShell({
   children,
 }: WorkspaceShellProps) {
   return (
-    <section className="pdp-panel">
+    <section className="pdp-panel min-w-0 overflow-x-clip">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -47,15 +47,15 @@ export function WorkspaceShell({
       {mobileNav ? <div className="mt-4 lg:hidden">{mobileNav}</div> : null}
 
       {leftRailContent ? (
-        <div className="mt-4 grid gap-3 lg:grid-cols-[15rem_1fr]">
+        <div className="mt-4 grid min-w-0 gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
           <aside className="pdp-panel-muted hidden lg:block">
             {leftRailTitle ? <h3 className="pdp-section-kicker text-slate-600">{leftRailTitle}</h3> : null}
             <div className={leftRailTitle ? "mt-3" : ""}>{leftRailContent}</div>
           </aside>
-          <div>{children}</div>
+          <div className="min-w-0">{children}</div>
         </div>
       ) : (
-        <div className="mt-4">{children}</div>
+        <div className="mt-4 min-w-0">{children}</div>
       )}
     </section>
   );

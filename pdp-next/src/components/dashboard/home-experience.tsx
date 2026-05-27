@@ -1581,6 +1581,32 @@ function ProfileSettings({
           ) : null}
         </section>
 
+        <section className="pdp-panel-muted grid gap-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Install App</h3>
+          <p className="text-sm text-slate-600">
+            Install PDP on your home screen for a native app feel, faster launch, and better notification support.
+          </p>
+
+          <div className="grid gap-2 md:grid-cols-3">
+            <article className="rounded-lg border border-slate-200 bg-white p-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">iPhone / iPad</p>
+              <p className="mt-1 text-xs text-slate-600">Open in Safari, tap Share, choose Add to Home Screen, then tap Add.</p>
+            </article>
+            <article className="rounded-lg border border-slate-200 bg-white p-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Android</p>
+              <p className="mt-1 text-xs text-slate-600">Open in Chrome, tap Install app or use browser menu then Add to Home screen.</p>
+            </article>
+            <article className="rounded-lg border border-slate-200 bg-white p-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Desktop</p>
+              <p className="mt-1 text-xs text-slate-600">Use the browser install icon in the address bar to install PDP as an app.</p>
+            </article>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Install check: if the app opens without browser URL controls, it is running as an installed app.
+          </p>
+        </section>
+
         <SchedulerHealthCard />
       </form>
     </section>

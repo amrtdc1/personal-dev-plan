@@ -49,6 +49,7 @@ export function InstallAndNotifyBanner() {
   const { user } = db.useAuth();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [isIosSafari, setIsIosSafari] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">(
     () => {
       if (typeof window === "undefined") {
@@ -110,6 +111,12 @@ export function InstallAndNotifyBanner() {
       return;
     }
 
+    const userAgent = window.navigator.userAgent;
+    const isIosDevice = /iPhone|iPad|iPod/i.test(userAgent);
+    const isWebkit = /WebKit/i.test(userAgent);
+    const isNonSafariIosBrowser = /CriOS|FxiOS|EdgiOS|OPiOS/i.test(userAgent);
+    setIsIosSafari(isIosDevice && isWebkit && !isNonSafariIosBrowser);
+
     const checkStandalone = () => {
       const isIosStandalone =
         "standalone" in window.navigator && typeof window.navigator.standalone === "boolean"
@@ -165,6 +172,11 @@ export function InstallAndNotifyBanner() {
   const shouldShowInstallPrompt = useMemo(
     () => Boolean(user) && !isDismissed && !isStandalone && deferredPrompt !== null,
     [deferredPrompt, isDismissed, isStandalone, user],
+  );
+
+  const shouldShowIosInstallHelp = useMemo(
+    () => Boolean(user) && !isDismissed && !isStandalone && deferredPrompt === null && isIosSafari,
+    [deferredPrompt, isDismissed, isIosSafari, isStandalone, user],
   );
 
   const shouldShowNotificationPrompt = useMemo(() => {
@@ -284,7 +296,7 @@ export function InstallAndNotifyBanner() {
     };
   }, [historyStatusFilter, historyTypeFilter, historyWindowFilter, shouldShowNotificationManagement]);
 
-  if (!shouldShowInstallPrompt && !shouldShowNotificationPrompt && !shouldShowNotificationManagement) {
+  if (!shouldShowInstallPrompt && !shouldShowIosInstallHelp && !shouldShowNotificationPrompt && !shouldShowNotificationManagement) {
     return null;
   }
 
@@ -632,6 +644,8 @@ export function InstallAndNotifyBanner() {
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {shouldShowInstallPrompt
                 ? "Install app"
+                : shouldShowIosInstallHelp
+                  ? "Install on iPhone"
                 : shouldShowNotificationPrompt
                   ? "Enable notifications"
                   : "Manage notifications"}
@@ -639,6 +653,8 @@ export function InstallAndNotifyBanner() {
             <p className="mt-1 text-sm text-slate-700">
               {shouldShowInstallPrompt
                 ? "Install PDP on your home screen to unlock reminder notifications and a native app feel."
+                : shouldShowIosInstallHelp
+                  ? "On iPhone Safari: tap Share, then Add to Home Screen. iOS does not show an automatic install pop-up."
                 : shouldShowNotificationPrompt
                   ? "Turn on push notifications for daily agenda, weekly review, and habit reminders."
                   : "Push notifications are enabled. Send a quick test or disable notifications for this device."}
@@ -667,6 +683,13 @@ export function InstallAndNotifyBanner() {
             >
               {isLoadingAction ? "Opening..." : "Install app"}
             </button>
+          ) : shouldShowIosInstallHelp ? (
+            <div className="w-full rounded-2xl border border-slate-200 p-2 text-xs text-slate-700">
+              <p className="font-semibold uppercase tracking-wide text-slate-500">Install steps</p>
+              <p className="mt-1">1. Tap Share in Safari</p>
+              <p>2. Tap Add to Home Screen</p>
+              <p>3. Tap Add</p>
+            </div>
           ) : shouldShowNotificationPrompt ? (
             <button
               type="button"

@@ -26,8 +26,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "Personal Development Plan";
   const options = {
     body: payload.body || "You have a new reminder.",
-    icon: payload.icon || "/favicon.ico",
-    badge: payload.badge || "/favicon.ico",
+    icon: payload.icon || "/icons/web-app-manifest-192x192.png",
+    badge: payload.badge || "/icons/web-app-manifest-192x192.png",
     tag: payload.tag || "pdp-reminder",
     data: {
       url: payload.url || "/",

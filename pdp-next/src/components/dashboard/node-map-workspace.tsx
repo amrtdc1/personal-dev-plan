@@ -379,12 +379,12 @@ export function NodeMapWorkspace({
       <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Layout Density</p>
-          <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
+          <div className="flex max-w-full flex-wrap rounded-full border border-slate-300 bg-white p-1">
             {([
-              ["compact", "Compact"],
-              ["balanced", "Balanced"],
-              ["spacious", "Spacious"],
-            ] as const).map(([value, label]) => (
+              ["compact", "Compact", "[::]"],
+              ["balanced", "Balanced", "[==]"],
+              ["spacious", "Spacious", "[  ]"],
+            ] as const).map(([value, label, mobileIcon]) => (
               <button
                 key={value}
                 type="button"
@@ -392,8 +392,10 @@ export function NodeMapWorkspace({
                 className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition ${
                   forceProfile === value ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
+                aria-label={label}
               >
-                {label}
+                <span className="hidden sm:inline">{label}</span>
+                <span className="sm:hidden" aria-hidden="true">{mobileIcon}</span>
               </button>
             ))}
           </div>
