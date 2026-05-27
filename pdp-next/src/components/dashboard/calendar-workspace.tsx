@@ -62,6 +62,7 @@ type EventPreview = {
 
 type CalendarFilterPreferences = {
   showGoals: boolean;
+  showGoalChildren: boolean;
   showTasks: boolean;
   statusFilter: StatusFilter;
   scopeGoalType: "all" | GoalType;
@@ -108,6 +109,7 @@ export function CalendarWorkspace() {
 
   const persistedFilters = useMemo(() => readCalendarFilterPreferences(), []);
   const [showGoals, setShowGoals] = useState(persistedFilters.showGoals);
+  const [showGoalChildren, setShowGoalChildren] = useState(persistedFilters.showGoalChildren);
   const [showTasks, setShowTasks] = useState(persistedFilters.showTasks);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(persistedFilters.statusFilter);
   const [scopeGoalType, setScopeGoalType] = useState<"all" | GoalType>(persistedFilters.scopeGoalType);
@@ -222,13 +224,14 @@ export function CalendarWorkspace() {
 
     const preferences: CalendarFilterPreferences = {
       showGoals,
+      showGoalChildren,
       showTasks,
       statusFilter,
       scopeGoalType,
     };
 
     window.localStorage.setItem(CALENDAR_FILTER_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
-  }, [scopeGoalType, showGoals, showTasks, statusFilter]);
+  }, [scopeGoalType, showGoals, showGoalChildren, showTasks, statusFilter]);
 
   useEffect(() => {
     if (!eventPreview || !previewCardRef.current) {
@@ -511,7 +514,7 @@ export function CalendarWorkspace() {
 
       builtEvents.push({
         id: `goal:${goal.id}`,
-        title: `G | ${goal.title}`,
+        title: goal.title,
         start: range.start,
         end: toExclusiveEndDate(range.end),
         allDay: true,
@@ -523,13 +526,15 @@ export function CalendarWorkspace() {
         extendedProps: {
           kind: "goal" as CalendarItemKind,
           hierarchy: `${goal.type === "professional" ? "Professional" : "Personal"} goal`,
+          goalTypeLabel: goal.type === "professional" ? "Professional" : "Personal",
+          kindLabel: "Goal",
           status: goal.status,
         },
       });
     }
 
     for (const childGoal of childGoals) {
-      if (!statusMatch(childGoal.status)) {
+      if (!showGoalChildren || !statusMatch(childGoal.status)) {
         continue;
       }
 
@@ -545,7 +550,7 @@ export function CalendarWorkspace() {
 
       builtEvents.push({
         id: `childGoal:${childGoal.id}`,
-        title: `SG | ${childGoal.title}`,
+        title: childGoal.title,
         start: range.start,
         end: toExclusiveEndDate(range.end),
         allDay: true,
@@ -556,6 +561,8 @@ export function CalendarWorkspace() {
         extendedProps: {
           kind: "childGoal" as CalendarItemKind,
           hierarchy: parentGoal ? `${parentGoal.title} -> ${childGoal.title}` : "Child goal",
+          goalTypeLabel: parentGoal ? (parentGoal.type === "professional" ? "Professional" : "Personal") : "No goal type",
+          kindLabel: "Goal child",
           status: childGoal.status,
         },
       });
@@ -584,7 +591,7 @@ export function CalendarWorkspace() {
 
       builtEvents.push({
         id: `task:${task.id}`,
-        title: `T | ${task.title}`,
+        title: task.title,
         start: task.dueDate,
         allDay: true,
         editable: true,
@@ -594,6 +601,8 @@ export function CalendarWorkspace() {
         extendedProps: {
           kind: "task" as CalendarItemKind,
           hierarchy: hierarchyBits.length > 0 ? hierarchyBits.join(" | ") : "Task",
+          goalTypeLabel: parentGoal ? (parentGoal.type === "professional" ? "Professional" : "Personal") : "No goal type",
+          kindLabel: "Task",
           status: task.status,
         },
       });
@@ -605,6 +614,7 @@ export function CalendarWorkspace() {
     goals,
     scopeGoalType,
     showGoals,
+    showGoalChildren,
     showTasks,
     statusFilter,
     childGoalMap,
@@ -656,7 +666,7 @@ export function CalendarWorkspace() {
     }
 
     for (const childGoal of childGoals) {
-      if (!statusMatch(childGoal.status)) {
+      if (!showGoalChildren || !statusMatch(childGoal.status)) {
         continue;
       }
 
@@ -724,6 +734,7 @@ export function CalendarWorkspace() {
     goals,
     scopeGoalType,
     showGoals,
+    showGoalChildren,
     showTasks,
     statusFilter,
     childGoalMap,
@@ -780,6 +791,17 @@ export function CalendarWorkspace() {
     setIsCreateModalOpen(true);
   }
 
+  function handleDateClick(clickArg: { date: Date }) {
+    const normalizedDate = toDateOnly(clickArg.date);
+
+    setSelection({
+      startDate: normalizedDate,
+      endDate: normalizedDate,
+    });
+    setActionError(null);
+    setIsCreateModalOpen(true);
+  }
+
   function handleDatesSet(datesArg: DatesSetArg) {
     const nextView = datesArg.view.type;
     if (
@@ -794,6 +816,7 @@ export function CalendarWorkspace() {
 
   function resetCalendarFilters() {
     setShowGoals(true);
+    setShowGoalChildren(true);
     setShowTasks(true);
     setStatusFilter("all");
     setScopeGoalType("all");
@@ -1399,6 +1422,14 @@ export function CalendarWorkspace() {
                     Goals
                   </label>
                   <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={showGoalChildren}
+                      onChange={(event) => setShowGoalChildren(event.target.checked)}
+                    />
+                    Goal children
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-700">
                     <input type="checkbox" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} />
                     Tasks
                   </label>
@@ -1476,6 +1507,7 @@ export function CalendarWorkspace() {
                 fixedWeekCount={false}
                 events={events}
                 select={handleDateSelect}
+                dateClick={handleDateClick}
                 eventClick={handleEventClick}
                 eventMouseEnter={(hoverArg) => {
                   if (eventPreview?.pinned) {
@@ -1538,6 +1570,9 @@ export function CalendarWorkspace() {
                   const hierarchy = String(contentArg.event.extendedProps.hierarchy ?? "");
                   const status = String(contentArg.event.extendedProps.status ?? "not_started") as ItemStatus;
                   const kind = String(contentArg.event.extendedProps.kind ?? "task") as CalendarItemKind;
+                  const goalTypeLabel = String(contentArg.event.extendedProps.goalTypeLabel ?? "No goal type");
+                  const kindLabel = String(contentArg.event.extendedProps.kindLabel ?? "Task");
+                  const isListView = contentArg.view.type.startsWith("list");
 
                   if (isMobileCalendar && contentArg.view.type === "dayGridMonth") {
                     return (
@@ -1552,6 +1587,25 @@ export function CalendarWorkspace() {
                           }}
                         />
                         <span className="sr-only">{contentArg.event.title}</span>
+                      </div>
+                    );
+                  }
+
+                  if (isListView) {
+                    return (
+                      <div className="pdp-calendar-list-item">
+                        <div className="text-sm font-semibold leading-tight text-slate-900">{contentArg.event.title}</div>
+                        <div className="mt-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                          <span className="whitespace-nowrap">{goalTypeLabel}</span>
+                        </div>
+                        <div className="mt-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                          <span className="whitespace-nowrap">{kindLabel}</span>
+                        </div>
+                        <div className="mt-2">
+                          <span className={`pdp-status-chip ${statusChipClass(status)}`}>
+                            {status.replaceAll("_", " ")}
+                          </span>
+                        </div>
                       </div>
                     );
                   }
@@ -1601,7 +1655,7 @@ export function CalendarWorkspace() {
           ) : (
             <div className="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 sm:grid-cols-3">
               <p><span className="font-semibold text-blue-700">G</span> Goal range events</p>
-              <p><span className="font-semibold text-amber-600">H</span> Goal hierarchy links</p>
+              <p><span className="font-semibold text-amber-600">GC</span> Goal child range events</p>
               <p><span className="font-semibold text-emerald-600">T</span> Task due-date markers</p>
             </div>
           )}
@@ -1928,7 +1982,7 @@ function agendaLabel(kind: CalendarItemKind) {
   }
 
   if (kind === "childGoal") {
-    return "SG";
+    return "GC";
   }
 
   return "T";
@@ -1937,6 +1991,7 @@ function agendaLabel(kind: CalendarItemKind) {
 function readCalendarFilterPreferences(): CalendarFilterPreferences {
   const defaults: CalendarFilterPreferences = {
     showGoals: true,
+    showGoalChildren: true,
     showTasks: true,
     statusFilter: "all",
     scopeGoalType: "all",
@@ -1956,6 +2011,8 @@ function readCalendarFilterPreferences(): CalendarFilterPreferences {
 
     return {
       showGoals: typeof parsed.showGoals === "boolean" ? parsed.showGoals : defaults.showGoals,
+      showGoalChildren:
+        typeof parsed.showGoalChildren === "boolean" ? parsed.showGoalChildren : defaults.showGoalChildren,
       showTasks: typeof parsed.showTasks === "boolean" ? parsed.showTasks : defaults.showTasks,
       statusFilter:
         parsed.statusFilter === "all" || parsed.statusFilter === "not_started" || parsed.statusFilter === "in_progress" || parsed.statusFilter === "done"

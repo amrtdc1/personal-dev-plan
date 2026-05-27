@@ -194,6 +194,62 @@ h1, h2, h3, h4, h5, h6,
   color: color-mix(in srgb, var(--pdp-text-muted) 72%, var(--pdp-text) 28%) !important;
 }
 
+.pdp-modal-theme .bg-white {
+  background-color: color-mix(in srgb, var(--pdp-surface) var(--pdp-surface-secondary-opacity), transparent) !important;
+}
+
+.pdp-modal-theme .bg-slate-50,
+.pdp-modal-theme .bg-slate-50\/60,
+.pdp-modal-theme .bg-slate-50\/70,
+.pdp-modal-theme .bg-slate-100,
+.pdp-modal-theme .bg-slate-200 {
+  background-color: color-mix(in srgb, var(--pdp-muted-surface) var(--pdp-muted-secondary-opacity), transparent) !important;
+}
+
+.pdp-modal-theme .bg-slate-900,
+.pdp-modal-theme .bg-blue-700 {
+  background-color: var(--pdp-theme-primary) !important;
+}
+
+.pdp-modal-theme .hover\:bg-slate-50:hover,
+.pdp-modal-theme .hover\:bg-slate-100:hover {
+  background-color: color-mix(in srgb, var(--pdp-muted-surface) 88%, var(--pdp-theme-soft)) !important;
+}
+
+.pdp-modal-theme .hover\:bg-slate-700:hover,
+.pdp-modal-theme .hover\:bg-blue-600:hover {
+  background-color: color-mix(in srgb, var(--pdp-theme-primary) 82%, #000000) !important;
+}
+
+.pdp-modal-theme .disabled\:bg-slate-400:disabled {
+  background-color: color-mix(in srgb, var(--pdp-theme-primary) 34%, #94a3b8) !important;
+}
+
+.pdp-modal-theme .border-slate-200,
+.pdp-modal-theme .border-slate-300,
+.pdp-modal-theme .border-slate-100,
+.pdp-modal-theme .border-slate-400 {
+  border-color: var(--pdp-border) !important;
+}
+
+.pdp-modal-theme .text-slate-900,
+.pdp-modal-theme .text-slate-800 {
+  color: var(--pdp-text-strong) !important;
+}
+
+.pdp-modal-theme .text-slate-700,
+.pdp-modal-theme .text-slate-600 {
+  color: var(--pdp-text) !important;
+}
+
+.pdp-modal-theme .text-slate-500 {
+  color: var(--pdp-text-muted) !important;
+}
+
+.pdp-modal-theme .text-slate-400 {
+  color: color-mix(in srgb, var(--pdp-text-muted) 72%, var(--pdp-text) 28%) !important;
+}
+
 .pdp-shell .pdp-solid-surface {
   background-color: var(--pdp-surface) !important;
   backdrop-filter: none !important;
@@ -684,6 +740,48 @@ h1, h2, h3, h4, h5, h6,
 }
 
 @media (max-width: 640px) {
+  .pdp-calendar .fc .fc-list-day-cushion {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .pdp-calendar .fc .fc-list-table {
+    table-layout: auto;
+  }
+
+  .pdp-calendar .fc .fc-list-event > td {
+    vertical-align: top;
+    padding: 0.6rem 0.5rem;
+  }
+
+  .pdp-calendar .fc .fc-list-event-time {
+    display: none;
+  }
+
+  .pdp-calendar .fc .fc-list-event-graphic {
+    width: 1.25rem;
+    min-width: 1.25rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  .pdp-calendar .fc .fc-list-event-title {
+    width: 100%;
+    min-width: 0;
+    padding: 0.6rem 0.75rem 0.6rem 0.15rem;
+  }
+
+  .pdp-calendar .fc .fc-list-event-title a {
+    display: block;
+    width: 100%;
+    white-space: normal !important;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+    text-decoration: none;
+    color: inherit;
+    text-align: left;
+  }
+
   .auth-hero-grid {
     gap: 0.75rem;
   }

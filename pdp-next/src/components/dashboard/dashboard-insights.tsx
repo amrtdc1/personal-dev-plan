@@ -868,12 +868,12 @@ export function DashboardInsights({
               </div>
 
               <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="pdp-card rounded-xl px-3 py-3">
+          <div className="pdp-solid-surface rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
             <p className="text-sm font-semibold text-slate-700">Tasks due today</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{tasksDueToday.length}</p>
             <p className="text-xs text-slate-600">Need action</p>
           </div>
-          <div className="pdp-card rounded-xl px-3 py-3">
+          <div className="pdp-solid-surface rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
             <p className="text-sm font-semibold text-slate-700">Habit check-ins</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{habitsCheckedInTodayCount}</p>
             <p className="text-xs text-slate-600">of {habits.length} active habits</p>
@@ -884,14 +884,14 @@ export function DashboardInsights({
               </p>
             ) : null}
           </div>
-          <div className="pdp-card rounded-xl px-3 py-3">
+          <div className="pdp-solid-surface rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
             <p className="text-sm font-semibold text-slate-700">Tasks completed</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{completedTodayCount}</p>
             <p className="text-xs text-slate-600" data-testid="planned-unplanned-summary">
               {plannedVsUnplannedToday.planned} planned | {plannedVsUnplannedToday.unplanned} unplanned
             </p>
           </div>
-          <div className="pdp-card rounded-xl border border-amber-200 bg-amber-50/40 px-3 py-3">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 shadow-sm">
             <p className="text-sm font-semibold text-amber-800">Overdue now</p>
             <p className="mt-1 text-2xl font-semibold text-amber-900">{overdueTasks.length}</p>
             {overdueTasks.length > 0 ? (
