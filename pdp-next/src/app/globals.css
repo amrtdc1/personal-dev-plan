@@ -759,6 +759,23 @@ h1, h2, h3, h4, h5, h6,
 }
 
 @media (max-width: 640px) {
+  section.pdp-panel {
+    padding: 0.5rem;
+  }
+
+  article.pdp-panel-muted.min-w-0 {
+    padding: 0.5rem;
+  }
+
+  article.block.pdp-panel-muted {
+    padding: 0.5rem;
+  }
+
+  .pdp-shell div.rounded-xl.border,
+  .pdp-shell div.rounded-2xl.border {
+    padding: 0.5rem;
+  }
+
   .pdp-calendar .fc .fc-list-day-cushion {
     padding: 0.5rem 0.75rem;
   }
