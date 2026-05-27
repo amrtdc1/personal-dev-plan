@@ -16,11 +16,32 @@ export function CrudModal({ isOpen, title, onClose, children }: CrudModalProps) 
       return;
     }
 
-    const previousOverflow = document.body.style.overflow;
+    const scrollY = window.scrollY;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyPosition = document.body.style.position;
+    const previousBodyTop = document.body.style.top;
+    const previousBodyLeft = document.body.style.left;
+    const previousBodyRight = document.body.style.right;
+    const previousBodyWidth = document.body.style.width;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
 
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.position = previousBodyPosition;
+      document.body.style.top = previousBodyTop;
+      document.body.style.left = previousBodyLeft;
+      document.body.style.right = previousBodyRight;
+      document.body.style.width = previousBodyWidth;
+      window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
 
@@ -30,12 +51,12 @@ export function CrudModal({ isOpen, title, onClose, children }: CrudModalProps) 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto bg-slate-900/35 p-2 pt-2 backdrop-blur-sm sm:items-center sm:p-4"
+      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-900/35 p-3 backdrop-blur-sm sm:p-4"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="flex w-full max-w-2xl max-h-[calc(100dvh-1rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:max-h-[min(90vh,56rem)] sm:p-5"
+        className="flex w-full max-w-2xl max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:max-h-[min(88vh,56rem)] sm:p-5"
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -51,7 +72,7 @@ export function CrudModal({ isOpen, title, onClose, children }: CrudModalProps) 
             Close
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
           {children}
         </div>
       </div>

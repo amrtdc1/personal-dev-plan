@@ -339,7 +339,7 @@ export function InstallAndNotifyBanner() {
                   </div>
 
                   <div className="mt-2.5 grid grid-cols-1 gap-2 sm:mt-3 sm:grid-cols-2">
-                    <div className="sm:col-span-2">
+                    <div className="min-w-0 sm:col-span-2">
                       <label className="mb-1 block text-[11px] font-medium text-slate-600">Preferred hour (local)</label>
                       <select
                         value={preferences.preferredHourLocal === null ? "" : String(preferences.preferredHourLocal)}
@@ -351,7 +351,7 @@ export function InstallAndNotifyBanner() {
                           }));
                         }}
                         disabled={isLoadingAction || isLoadingPreferences}
-                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                        className="pdp-control w-full min-w-0 max-w-full rounded-xl px-2 py-1 text-xs"
                       >
                         <option value="">Any hour</option>
                         {Array.from({ length: 24 }, (_, hour) => (
@@ -362,7 +362,7 @@ export function InstallAndNotifyBanner() {
                       </select>
                     </div>
 
-                    <div className="sm:col-span-2">
+                    <div className="min-w-0 sm:col-span-2">
                       <label className="mb-1 block text-[11px] font-medium text-slate-600">Timezone</label>
                       <input
                         type="text"
@@ -375,11 +375,11 @@ export function InstallAndNotifyBanner() {
                         }
                         placeholder="America/New_York"
                         disabled={isLoadingAction || isLoadingPreferences}
-                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                        className="pdp-control w-full min-w-0 max-w-full rounded-xl px-2 py-1 text-xs"
                       />
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <label className="mb-1 block text-[11px] font-medium text-slate-600">Quiet start</label>
                       <input
                         type="time"
@@ -391,10 +391,10 @@ export function InstallAndNotifyBanner() {
                           }))
                         }
                         disabled={isLoadingAction || isLoadingPreferences}
-                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                        className="pdp-control w-full min-w-0 max-w-full rounded-xl px-2 py-1 text-xs"
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="mb-1 block text-[11px] font-medium text-slate-600">Quiet end</label>
                       <input
                         type="time"
@@ -406,7 +406,7 @@ export function InstallAndNotifyBanner() {
                           }))
                         }
                         disabled={isLoadingAction || isLoadingPreferences}
-                        className="pdp-control w-full min-w-0 rounded-xl px-2 py-1 text-xs"
+                        className="pdp-control w-full min-w-0 max-w-full rounded-xl px-2 py-1 text-xs"
                       />
                     </div>
                   </div>
