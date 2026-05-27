@@ -226,6 +226,13 @@ export function InstallAndNotifyBanner() {
     void refreshDeliveryHistory();
   }, [historyStatusFilter, historyTypeFilter, historyWindowFilter, shouldShowNotificationManagement]);
 
+  const shouldRenderBanner =
+    shouldShowInstallPrompt || shouldShowIosInstallHelp || shouldShowNotificationPrompt || shouldShowNotificationManagement;
+
+  if (!shouldRenderBanner) {
+    return null;
+  }
+
   return (
     <aside className="fixed inset-x-2 top-2 z-40 max-w-[calc(100vw-1rem)] sm:bottom-6 sm:left-auto sm:right-6 sm:top-auto sm:w-[22rem]">
       <div className="pdp-card flex max-h-[calc(100dvh-1rem)] flex-col overflow-hidden p-2.5 text-sm shadow-lg sm:max-h-[min(80vh,46rem)] sm:p-3">
