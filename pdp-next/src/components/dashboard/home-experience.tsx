@@ -389,7 +389,7 @@ function SignedInShell() {
         </button>
 
         {isProfileMenuOpen ? (
-          <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+          <div className="pdp-card pdp-modal-theme absolute right-0 z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
             <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Account</p>
             <button
               type="button"
