@@ -98,7 +98,7 @@ async function checkData() {
     if (tasks.length > 0) {
       console.log("\n🔎 Sample Tasks:");
       tasks.slice(0, 3).forEach((task, i) => {
-        console.log(`   ${i + 1}. "${task.title}" - goalId: ${task.goalId}, parentGoalId: ${task.parentGoalId}`);
+        console.log(`   ${i + 1}. "${task.title}" - parentGoalId: ${task.parentGoalId ?? "null"}`);
       });
     }
 

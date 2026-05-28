@@ -15,6 +15,7 @@ import type {
   EventInput,
 } from "@fullcalendar/core";
 import type { Goal, GoalTimeframeLevel, GoalType, ItemStatus, ChildGoal, Task } from "@/lib/domain/types";
+import { getTaskParentGoalId } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
@@ -459,9 +460,18 @@ export function CalendarWorkspace() {
         const loadedChildGoals = childGoalGroups.flat().filter((childGoal) => !childGoal.deletedAt);
 
         const taskGroups = await Promise.all(
-          loadedChildGoals.map((childGoal) => dataRepository.listTasks(currentUser.id, childGoal.id, { includeDeleted: true })),
+          [...loadedGoals.map((goal) => goal.id), ...loadedChildGoals.map((childGoal) => childGoal.id), null].map((parentGoalId) =>
+            dataRepository.listTasks(currentUser.id, parentGoalId, { includeDeleted: true }),
+          ),
         );
-        const loadedTasks = taskGroups.flat().filter((task) => !task.deletedAt);
+        const loadedTasks = Array.from(
+          new Map(
+            taskGroups
+              .flat()
+              .filter((task) => !task.deletedAt)
+              .map((task) => [task.id, task]),
+          ).values(),
+        );
 
         if (!isCancelled) {
           setGoals(loadedGoals);
@@ -577,8 +587,9 @@ export function CalendarWorkspace() {
         continue;
       }
 
-      const parentChildGoal = childGoalMap.get(task.goalId);
-      const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : null;
+      const parentGoalId = getTaskParentGoalId(task);
+      const parentChildGoal = parentGoalId ? childGoalMap.get(parentGoalId) : null;
+      const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : parentGoalId ? goalMap.get(parentGoalId) : null;
 
       if (scopeGoalType !== "all" && parentGoal?.type !== scopeGoalType) {
         continue;
@@ -694,8 +705,9 @@ export function CalendarWorkspace() {
         continue;
       }
 
-      const parentChildGoal = childGoalMap.get(task.goalId);
-      const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : null;
+      const parentGoalId = getTaskParentGoalId(task);
+      const parentChildGoal = parentGoalId ? childGoalMap.get(parentGoalId) : null;
+      const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : parentGoalId ? goalMap.get(parentGoalId) : null;
 
       if (scopeGoalType !== "all" && parentGoal?.type !== scopeGoalType) {
         continue;
@@ -765,9 +777,18 @@ export function CalendarWorkspace() {
       );
       const loadedChildGoals = childGoalGroups.flat().filter((childGoal) => !childGoal.deletedAt);
       const taskGroups = await Promise.all(
-        loadedChildGoals.map((childGoal) => dataRepository.listTasks(currentUser.id, childGoal.id, { includeDeleted: true })),
+        [...loadedGoals.map((goal) => goal.id), ...loadedChildGoals.map((childGoal) => childGoal.id), null].map((parentGoalId) =>
+          dataRepository.listTasks(currentUser.id, parentGoalId, { includeDeleted: true }),
+        ),
       );
-      const loadedTasks = taskGroups.flat().filter((task) => !task.deletedAt);
+      const loadedTasks = Array.from(
+        new Map(
+          taskGroups
+            .flat()
+            .filter((task) => !task.deletedAt)
+            .map((task) => [task.id, task]),
+        ).values(),
+      );
 
       setGoals(loadedGoals);
       setChildGoals(loadedChildGoals);
@@ -869,7 +890,7 @@ export function CalendarWorkspace() {
       setEditStatus(selectedTask.status);
       setEditGoalType("professional");
       setEditParentGoalId("");
-      setEditParentChildGoalId(selectedTask.goalId);
+      setEditParentChildGoalId(getTaskParentGoalId(selectedTask) ?? "");
     }
 
     setSelectedEventRef({ kind, id });
@@ -979,8 +1000,9 @@ export function CalendarWorkspace() {
       return null;
     }
 
-    const parentChildGoal = childGoalMap.get(task.goalId);
-    const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : null;
+    const parentGoalId = getTaskParentGoalId(task);
+    const parentChildGoal = parentGoalId ? childGoalMap.get(parentGoalId) : null;
+    const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : parentGoalId ? goalMap.get(parentGoalId) : null;
     const hierarchyBits = [
       parentGoal ? `Goal: ${parentGoal.title}` : null,
       parentChildGoal ? `Child goal: ${parentChildGoal.title}` : null,
@@ -1110,7 +1132,7 @@ export function CalendarWorkspace() {
         await dataRepository.saveTask({
           taskId: existingTask.id,
           ownerUid: user.id,
-          goalId: existingTask.goalId,
+          parentGoalId: getTaskParentGoalId(existingTask),
           title: existingTask.title,
           notes: existingTask.notes,
           dueDate: nextStart,
@@ -1163,7 +1185,7 @@ export function CalendarWorkspace() {
 
         await dataRepository.saveTask({
           ownerUid: user.id,
-          goalId: draftChildGoalId,
+          parentGoalId: draftChildGoalId,
           title: draftTitle,
           notes: draftDetails,
           dueDate: selection.startDate,
@@ -1258,7 +1280,7 @@ export function CalendarWorkspace() {
         const updatedTask = await dataRepository.saveTask({
           taskId: existingTask.id,
           ownerUid: user.id,
-          goalId: editParentChildGoalId,
+          parentGoalId: editParentChildGoalId,
           title: normalizedTitle,
           notes: editDetails,
           dueDate: existingTask.dueDate,

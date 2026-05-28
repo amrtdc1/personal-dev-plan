@@ -54,8 +54,8 @@ export type ChildGoal = SoftDeleteFields & {
 export type Task = SoftDeleteFields & {
   id: string;
   ownerUid: string;
-  goalId: string;
-  parentGoalId?: string | null;
+  goalId?: string | null;
+  parentGoalId: string | null;
   title: string;
   notes: string;
   dueDate: string | null;
@@ -69,6 +69,10 @@ export type Task = SoftDeleteFields & {
   createdAt: string;
   updatedAt: string;
 };
+
+export function getTaskParentGoalId(task: Pick<Task, "parentGoalId" | "goalId">) {
+  return task.parentGoalId ?? task.goalId ?? null;
+}
 
 export type JournalEntry = SoftDeleteFields & {
   id: string;

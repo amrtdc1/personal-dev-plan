@@ -6,6 +6,7 @@ import { NodeGraphCanvas } from "@/components/dashboard/node-map/node-graph-canv
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import type { Goal, GoalTimeframeLevel, GoalType, ItemStatus, Task } from "@/lib/domain/types";
+import { getTaskParentGoalId } from "@/lib/domain/types";
 
 type TimeframeFilter = "all" | GoalTimeframeLevel;
 type TypeFilter = "all" | GoalType;
@@ -108,7 +109,9 @@ export function NodeMapWorkspace({
         }
 
         const taskGroups = await Promise.all(
-          activeGoals.map((goal) => dataRepository.listTasks(currentUser.id, goal.id)),
+          [...activeGoals.map((goal) => goal.id), null].map((parentGoalId) =>
+            dataRepository.listTasks(currentUser.id, parentGoalId),
+          ),
         );
         const nextTasks = uniqueById(taskGroups.flat()).filter((task) => !task.deletedAt);
 
@@ -153,7 +156,8 @@ export function NodeMapWorkspace({
         continue;
       }
 
-      const parentGoal = goalMap.get(task.goalId);
+      const taskParentGoalId = getTaskParentGoalId(task);
+      const parentGoal = taskParentGoalId ? goalMap.get(taskParentGoalId) : null;
       if (!parentGoal) {
         continue;
       }
@@ -222,7 +226,8 @@ export function NodeMapWorkspace({
         return false;
       }
 
-      return !goalMap.has(task.goalId);
+      const taskParentGoalId = getTaskParentGoalId(task);
+      return !taskParentGoalId || !goalMap.has(taskParentGoalId);
     });
   }, [goalMap, includeFreestandingTasks, statusFilter, tasks]);
 

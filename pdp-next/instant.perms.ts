@@ -30,9 +30,9 @@ const rules = {
   tasks: {
     allow: {
       view: "auth.id != null && data.ownerUid == auth.id",
-      create: "auth.id != null && newData.ownerUid == auth.id && newData.goalId != null",
+      create: "auth.id != null && newData.ownerUid == auth.id",
       update:
-        "auth.id != null && data.ownerUid == auth.id && (newData.ownerUid == null || newData.ownerUid == auth.id) && newData.goalId != null",
+        "auth.id != null && data.ownerUid == auth.id && (newData.ownerUid == null || newData.ownerUid == auth.id)",
       delete: "auth.id != null && data.ownerUid == auth.id",
     },
   },

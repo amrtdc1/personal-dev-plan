@@ -8,7 +8,7 @@ import { instantRouteErrorResponse } from "@/lib/server/instant-route";
 import {
   listOwnedTasks,
   parseIncludeDeleted,
-  parseRequiredGoalId,
+  parseTaskParentGoalFilter,
 } from "@/lib/server/instant-read";
 
 export async function GET(request: Request) {
@@ -16,8 +16,8 @@ export async function GET(request: Request) {
     const user = await requireInstantUser(request);
     const searchParams = new URL(request.url).searchParams;
     const includeDeleted = parseIncludeDeleted(searchParams);
-    const goalId = parseRequiredGoalId(searchParams);
-    const tasks = await listOwnedTasks(user.id, { includeDeleted, goalId });
+    const taskParentFilter = parseTaskParentGoalFilter(searchParams);
+    const tasks = await listOwnedTasks(user.id, { includeDeleted, ...taskParentFilter });
     return NextResponse.json({ tasks });
   } catch (error) {
     return instantRouteErrorResponse(error);

@@ -11,7 +11,7 @@ export async function PATCH(request: Request) {
     const user = await requireInstantUser(request);
     const payload = await parseTaskReorderPayload(request);
 
-    const tasks = await reorderTasks(user.id, payload.goalId, payload.orderedTaskIds);
+    const tasks = await reorderTasks(user.id, payload.parentGoalId, payload.orderedTaskIds);
     return NextResponse.json({ tasks });
   } catch (error) {
     return instantRouteErrorResponse(error);

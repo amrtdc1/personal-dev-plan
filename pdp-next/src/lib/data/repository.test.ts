@@ -746,7 +746,7 @@ describe("dataRepository soft-delete cascade", () => {
     await dataRepository.saveTask({
       taskId: "task-1",
       ownerUid: "user-1",
-      goalId: "childGoal-1",
+      parentGoalId: "childGoal-1",
       title: "Task",
       notes: "Notes",
       dueDate: null,
@@ -766,7 +766,7 @@ describe("dataRepository soft-delete cascade", () => {
     );
     expect(parsedBody).toEqual(
       expect.objectContaining({
-        goalId: "childGoal-1",
+        parentGoalId: "childGoal-1",
         title: "Task",
         notes: "Notes",
         dueDate: null,

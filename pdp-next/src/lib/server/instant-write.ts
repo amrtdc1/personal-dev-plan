@@ -7,6 +7,7 @@ import type {
   JournalEntry,
   Task,
 } from "@/lib/domain/types";
+import { getTaskParentGoalId } from "@/lib/domain/types";
 import {
   validateGoalWrite,
   validateJournalEntryWrite,
@@ -16,7 +17,6 @@ import { statusToPercent } from "@/lib/domain/status";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {
-  findOwnedChildGoal,
   findOwnedGoal,
   findOwnedHabit,
   findOwnedHabitCheckin,
@@ -197,13 +197,15 @@ export async function updateGoal(
 
 export async function createTask(ownerUid: string, payload: ParsedTaskWritePayload) {
   const instantAdmin = getInstantAdmin();
-  await findOwnedChildGoal(ownerUid, payload.goalId);
+  if (payload.parentGoalId) {
+    await findOwnedGoal(ownerUid, payload.parentGoalId);
+  }
 
   const now = new Date().toISOString();
-  const nextOrderIndex = await getNextTaskOrderIndex(ownerUid, payload.goalId);
+  const nextOrderIndex = await getNextTaskOrderIndex(ownerUid, payload.parentGoalId);
   const { trimmedTitle, trimmedNotes } = validateTaskWrite({
     ownerUid,
-    goalId: payload.goalId,
+    parentGoalId: payload.parentGoalId,
     title: payload.title,
     notes: payload.notes,
     dueDate: payload.dueDate,
@@ -214,7 +216,7 @@ export async function createTask(ownerUid: string, payload: ParsedTaskWritePaylo
   const task: Task = {
     id: taskId,
     ownerUid,
-    goalId: payload.goalId,
+    parentGoalId: payload.parentGoalId,
     title: trimmedTitle,
     notes: trimmedNotes,
     dueDate: payload.dueDate,
@@ -236,7 +238,7 @@ export async function createTask(ownerUid: string, payload: ParsedTaskWritePaylo
   await instantAdmin.transact(
     instantAdmin.tx.tasks[taskId].update({
       ownerUid: task.ownerUid,
-      goalId: task.goalId,
+      parentGoalId: task.parentGoalId,
       title: task.title,
       notes: task.notes,
       dueDate: task.dueDate,
@@ -265,14 +267,17 @@ export async function updateTask(
   payload: ParsedTaskWritePayload,
 ) {
   const instantAdmin = getInstantAdmin();
-  const existingTask = await findOwnedTask(ownerUid, taskId);
-  await findOwnedChildGoal(ownerUid, payload.goalId);
+  const existingTask = normalizeTaskParentGoal(await findOwnedTask(ownerUid, taskId));
+  const parentGoalChanged = payload.parentGoalId !== existingTask.parentGoalId;
+  if (parentGoalChanged && payload.parentGoalId) {
+    await findOwnedGoal(ownerUid, payload.parentGoalId);
+  }
   const now = new Date().toISOString();
 
   const { trimmedTitle, trimmedNotes } = validateTaskWrite({
     taskId,
     ownerUid,
-    goalId: payload.goalId,
+    parentGoalId: payload.parentGoalId,
     title: payload.title,
     notes: payload.notes,
     dueDate: payload.dueDate,
@@ -280,13 +285,13 @@ export async function updateTask(
   });
 
   const nextOrderIndex =
-    existingTask.goalId === payload.goalId
+    existingTask.parentGoalId === payload.parentGoalId
       ? existingTask.orderIndex
-      : await getNextTaskOrderIndex(ownerUid, payload.goalId);
+      : await getNextTaskOrderIndex(ownerUid, payload.parentGoalId);
 
   const task: Task = {
     ...existingTask,
-    goalId: payload.goalId,
+    parentGoalId: payload.parentGoalId,
     title: trimmedTitle,
     notes: trimmedNotes,
     dueDate: payload.dueDate,
@@ -300,7 +305,7 @@ export async function updateTask(
 
   await instantAdmin.transact(
     instantAdmin.tx.tasks[taskId].update({
-      goalId: task.goalId,
+      parentGoalId: task.parentGoalId,
       title: task.title,
       notes: task.notes,
       dueDate: task.dueDate,
@@ -590,21 +595,33 @@ async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {
   return maxIndex + 1;
 }
 
-async function getNextTaskOrderIndex(ownerUid: string, goalId: string) {
+async function getNextTaskOrderIndex(ownerUid: string, parentGoalId: string | null) {
   const instantAdmin = getInstantAdmin();
   const { tasks = [] } = await instantAdmin.query({
     tasks: {
       $: {
         where: {
           ownerUid,
-          goalId,
         },
       },
     },
   });
 
-  const maxIndex = (tasks as Task[]).reduce((max, task) => Math.max(max, task.orderIndex), -1);
+  const maxIndex = (tasks as Task[])
+    .map((task) => normalizeTaskParentGoal(task))
+    .filter((task) => task.parentGoalId === parentGoalId)
+    .reduce((max, task) => {
+      const orderIndex = Number.isFinite(task.orderIndex) ? task.orderIndex : -1;
+      return Math.max(max, orderIndex);
+    }, -1);
   return maxIndex + 1;
+}
+
+function normalizeTaskParentGoal(task: Task): Task {
+  return {
+    ...task,
+    parentGoalId: getTaskParentGoalId(task),
+  };
 }
 
 function buildGoalTimeframe(

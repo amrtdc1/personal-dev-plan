@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "@/lib/instantdb/client";
 
 type BeforeInstallPromptEvent = Event & {
@@ -50,7 +50,6 @@ export function InstallAndNotifyBanner() {
   const { user } = db.useAuth();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
-  const [isIosSafari, setIsIosSafari] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">(() => {
     if (typeof window === "undefined" || !("Notification" in window)) {
       return "unsupported";
@@ -93,20 +92,24 @@ export function InstallAndNotifyBanner() {
   const [historyWindowFilter, setHistoryWindowFilter] = useState<HistoryWindowFilter>("7d");
   const [historyNextCursor, setHistoryNextCursor] = useState<string | null>(null);
   const [historyHasMore, setHistoryHasMore] = useState(false);
-  const [isExportingHistory, setIsExportingHistory] = useState(false);
 
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
-
-  useEffect(() => {
+  const isIosSafari = useMemo(() => {
     if (typeof window === "undefined") {
-      return;
+      return false;
     }
 
     const userAgent = window.navigator.userAgent;
     const isIosDevice = /iPhone|iPad|iPod/i.test(userAgent);
     const isWebkit = /WebKit/i.test(userAgent);
     const isNonSafariIosBrowser = /CriOS|FxiOS|EdgiOS|OPiOS/i.test(userAgent);
-    setIsIosSafari(isIosDevice && isWebkit && !isNonSafariIosBrowser);
+    return isIosDevice && isWebkit && !isNonSafariIosBrowser;
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
 
     const checkStandalone = () => {
       const isIosStandalone =
@@ -199,6 +202,46 @@ export function InstallAndNotifyBanner() {
   );
   const timezoneOptions = useMemo(() => getTimezoneOptions(preferences.timezone ?? undefined), [preferences.timezone]);
 
+  const refreshDeliveryHistory = useCallback(async (cursor?: string) => {
+    setIsLoadingHistory(true);
+
+    try {
+      const query = buildHistoryQuery({
+        status: historyStatusFilter,
+        type: historyTypeFilter,
+        window: historyWindowFilter,
+        before: cursor,
+      });
+      const response = await fetch(`/api/notifications/deliveries?${query}`, {
+        method: "GET",
+      });
+
+      const responseBody = (await response.json().catch(() => null)) as
+        | {
+            deliveries?: DeliveryHistoryItem[];
+            hasMore?: boolean;
+            nextCursor?: string | null;
+            error?: string;
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(responseBody?.error || "Could not refresh delivery history.");
+      }
+
+      const incoming = responseBody?.deliveries ?? [];
+      setDeliveryHistory((current) => (cursor ? [...current, ...incoming] : incoming));
+      setHistoryHasMore(Boolean(responseBody?.hasMore));
+      setHistoryNextCursor(responseBody?.nextCursor ?? null);
+    } catch {
+      setDeliveryHistory([]);
+      setHistoryHasMore(false);
+      setHistoryNextCursor(null);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [historyStatusFilter, historyTypeFilter, historyWindowFilter]);
+
   useEffect(() => {
     if (!shouldShowNotificationManagement) {
       return;
@@ -231,20 +274,24 @@ export function InstallAndNotifyBanner() {
     };
 
     void loadPreferences();
-    void refreshDeliveryHistory();
+    queueMicrotask(() => {
+      void refreshDeliveryHistory();
+    });
 
     return () => {
       isCancelled = true;
     };
-  }, [shouldShowNotificationManagement]);
+  }, [refreshDeliveryHistory, shouldShowNotificationManagement]);
 
   useEffect(() => {
     if (!shouldShowNotificationManagement) {
       return;
     }
 
-    void refreshDeliveryHistory();
-  }, [historyStatusFilter, historyTypeFilter, historyWindowFilter, shouldShowNotificationManagement]);
+    queueMicrotask(() => {
+      void refreshDeliveryHistory();
+    });
+  }, [refreshDeliveryHistory, shouldShowNotificationManagement]);
 
   const shouldRenderBanner =
     shouldShowInstallPrompt || shouldShowIosInstallHelp || shouldShowNotificationPrompt || shouldShowNotificationManagement;
@@ -839,81 +886,6 @@ export function InstallAndNotifyBanner() {
     }
   }
 
-  async function refreshDeliveryHistory(cursor?: string) {
-    setIsLoadingHistory(true);
-
-    try {
-      const query = buildHistoryQuery({
-        status: historyStatusFilter,
-        type: historyTypeFilter,
-        window: historyWindowFilter,
-        before: cursor,
-      });
-      const response = await fetch(`/api/notifications/deliveries?${query}`, {
-        method: "GET",
-      });
-
-      const responseBody = (await response.json().catch(() => null)) as
-        | {
-            deliveries?: DeliveryHistoryItem[];
-            hasMore?: boolean;
-            nextCursor?: string | null;
-            error?: string;
-          }
-        | null;
-
-      if (!response.ok) {
-        throw new Error(responseBody?.error || "Could not refresh delivery history.");
-      }
-
-      const incoming = responseBody?.deliveries ?? [];
-      setDeliveryHistory((current) => (cursor ? [...current, ...incoming] : incoming));
-      setHistoryHasMore(Boolean(responseBody?.hasMore));
-      setHistoryNextCursor(responseBody?.nextCursor ?? null);
-    } catch {
-      setDeliveryHistory([]);
-      setHistoryHasMore(false);
-      setHistoryNextCursor(null);
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  }
-
-  async function handleExportHistoryCsv() {
-    setError(null);
-    setIsExportingHistory(true);
-
-    try {
-      const query = buildHistoryExportQuery({
-        status: historyStatusFilter,
-        type: historyTypeFilter,
-        window: historyWindowFilter,
-      });
-
-      const response = await fetch(`/api/notifications/deliveries/export?${query}`, {
-        method: "GET",
-      });
-
-      if (!response.ok) {
-        const responseBody = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(responseBody?.error || "Could not export delivery activity.");
-      }
-
-      const csv = await response.text();
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      const url = window.URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "notification-deliveries.csv";
-      anchor.click();
-      window.URL.revokeObjectURL(url);
-    } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : "Could not export delivery activity.");
-    } finally {
-      setIsExportingHistory(false);
-    }
-  }
-
   function dismissBanner() {
     setIsDismissed(true);
     if (typeof window !== "undefined") {
@@ -1368,30 +1340,6 @@ function buildHistoryQuery(params: {
     if (afterIso) {
       searchParams.set("after", afterIso);
     }
-  }
-
-  return searchParams.toString();
-}
-
-function buildHistoryExportQuery(params: {
-  status: HistoryStatusFilter;
-  type: HistoryTypeFilter;
-  window: HistoryWindowFilter;
-}) {
-  const searchParams = new URLSearchParams();
-  searchParams.set("limit", "500");
-
-  if (params.status !== "all") {
-    searchParams.set("status", params.status);
-  }
-
-  if (params.type !== "all") {
-    searchParams.set("type", params.type);
-  }
-
-  const afterIso = toWindowAfterIso(params.window);
-  if (afterIso) {
-    searchParams.set("after", afterIso);
   }
 
   return searchParams.toString();

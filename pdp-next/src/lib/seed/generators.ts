@@ -315,14 +315,10 @@ export function generateTasks(
     const dueDate = formatISODate(
       addDays(new Date(), Math.floor(Math.random() * 21) - 3)
     );
-    // Use a special marker for unplanned tasks
-    const unplannedGoalId = "unplanned";
-
     const task: Task = {
       id: generateId(),
       ownerUid,
-      goalId: unplannedGoalId,
-      parentGoalId: undefined,
+      parentGoalId: null,
       title: `Unplanned: ${pickRandom(TASK_TITLES)}`,
       notes: "This is an unplanned task",
       dueDate,

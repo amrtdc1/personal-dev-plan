@@ -12,6 +12,7 @@ const {
   listHabitCheckinsMock,
   updateTaskStatusMock,
   saveTaskMock,
+  softDeleteTaskMock,
   saveHabitCheckinMock,
   saveJournalEntryMock,
 } = vi.hoisted(() => ({
@@ -27,6 +28,7 @@ const {
   listHabitCheckinsMock: vi.fn(),
   updateTaskStatusMock: vi.fn(),
   saveTaskMock: vi.fn(),
+  softDeleteTaskMock: vi.fn(),
   saveHabitCheckinMock: vi.fn(),
   saveJournalEntryMock: vi.fn(),
 }));
@@ -46,6 +48,7 @@ vi.mock("@/lib/data/repository", () => ({
     listHabitCheckins: listHabitCheckinsMock,
     updateTaskStatus: updateTaskStatusMock,
     saveTask: saveTaskMock,
+    softDeleteTask: softDeleteTaskMock,
     saveHabitCheckin: saveHabitCheckinMock,
     saveJournalEntry: saveJournalEntryMock,
   },
@@ -63,6 +66,7 @@ describe("dashboard insights command center", () => {
     listHabitCheckinsMock.mockReset();
     updateTaskStatusMock.mockReset();
     saveTaskMock.mockReset();
+    softDeleteTaskMock.mockReset();
     saveHabitCheckinMock.mockReset();
     saveJournalEntryMock.mockReset();
 
@@ -207,7 +211,7 @@ describe("dashboard insights command center", () => {
     saveTaskMock.mockImplementation(async (input: {
       taskId: string;
       ownerUid: string;
-      goalId: string;
+      parentGoalId: string | null;
       title: string;
       notes: string;
       dueDate: string | null;
@@ -221,7 +225,7 @@ describe("dashboard insights command center", () => {
     }) => ({
       id: input.taskId,
       ownerUid: input.ownerUid,
-      goalId: input.goalId,
+      parentGoalId: input.parentGoalId,
       title: input.title,
       notes: input.notes,
       dueDate: input.dueDate,
@@ -398,6 +402,120 @@ describe("dashboard insights command center", () => {
     });
 
     expect(screen.getByTestId("planned-unplanned-summary").textContent).toContain("0 planned | 1 unplanned");
+  });
+
+  it("creates an unplanned task without requiring a parent goal", async () => {
+    const user = userEvent.setup();
+
+    saveTaskMock.mockImplementationOnce(async (input: {
+      ownerUid: string;
+      goalId: string;
+      title: string;
+      notes: string;
+      dueDate: string | null;
+      unplanned?: boolean;
+    }) => ({
+      id: "task-unplanned-created",
+      ownerUid: input.ownerUid,
+      goalId: input.goalId,
+      title: input.title,
+      notes: input.notes,
+      dueDate: input.dueDate,
+      unplanned: input.unplanned ?? false,
+      status: "not_started",
+      percentComplete: 0,
+      orderIndex: 99,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+    }));
+
+    render(<DashboardInsights />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Quick task actions")).not.toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "+ Task" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Quick Add Task")).not.toBeNull();
+    });
+
+    await user.type(screen.getByLabelText("Task title"), "Inbox triage");
+
+    const createButton = screen.getByRole("button", { name: "Create Task" });
+    expect((createButton as HTMLButtonElement).disabled).toBe(false);
+    await user.click(createButton);
+
+    await waitFor(() => {
+      expect(saveTaskMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerUid: "user-1",
+          parentGoalId: null,
+          title: "Inbox triage",
+          unplanned: true,
+        }),
+      );
+    });
+  });
+
+  it("edits a visible task in the Today modal", async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardInsights />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("quick-task-title-task-1")).not.toBeNull();
+    });
+
+    await user.click(screen.getByTestId("quick-task-title-task-1"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Post standup summary" })).not.toBeNull();
+    });
+
+    const titleInput = screen.getByLabelText("Task title") as HTMLInputElement;
+    await user.clear(titleInput);
+    await user.type(titleInput, "Updated standup summary");
+
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(saveTaskMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: "task-1",
+          ownerUid: "user-1",
+          parentGoalId: "childGoal-1",
+          title: "Updated standup summary",
+        }),
+      );
+    });
+  });
+
+  it("deletes a visible task from the Today modal", async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardInsights />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("quick-task-title-task-1")).not.toBeNull();
+    });
+
+    await user.click(screen.getByTestId("quick-task-title-task-1"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Post standup summary" })).not.toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Delete task" }));
+
+    await waitFor(() => {
+      expect(softDeleteTaskMock).toHaveBeenCalledWith("user-1", "task-1");
+    });
   });
 
   it("saves guided close-day journal notes", async () => {

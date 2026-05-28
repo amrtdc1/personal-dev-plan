@@ -39,6 +39,38 @@ export function parseRequiredGoalId(searchParams: URLSearchParams) {
   return goalId;
 }
 
+export function parseTaskParentGoalFilter(searchParams: URLSearchParams) {
+  const parentGoalId = searchParams.get("parentGoalId");
+  const standalone = searchParams.get("standalone");
+
+  if (parentGoalId) {
+    if (standalone === "true") {
+      throw new InstantRouteBadRequestError("Use either parentGoalId or standalone=true for task filters, not both.");
+    }
+
+    return {
+      hasParentGoalFilter: true,
+      parentGoalId,
+    };
+  }
+
+  if (!standalone || standalone === "false") {
+    return {
+      hasParentGoalFilter: false,
+      parentGoalId: null,
+    };
+  }
+
+  if (standalone === "true") {
+    return {
+      hasParentGoalFilter: true,
+      parentGoalId: null,
+    };
+  }
+
+  throw new InstantRouteBadRequestError("standalone must be 'true' or 'false' when provided.");
+}
+
 export function parseRequiredHabitId(searchParams: URLSearchParams) {
   const habitId = searchParams.get("habitId");
   if (!habitId) {

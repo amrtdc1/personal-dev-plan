@@ -19,7 +19,7 @@ type GoalWritePayload = {
 };
 
 type TaskWritePayload = {
-  goalId?: string;
+  parentGoalId?: string | null;
   title?: string;
   notes?: string;
   dueDate?: string | null;
@@ -62,7 +62,7 @@ export type ParsedGoalWritePayload = {
 };
 
 export type ParsedTaskWritePayload = {
-  goalId: string;
+  parentGoalId: string | null;
   title: string;
   notes: string;
   dueDate: string | null;
@@ -135,10 +135,6 @@ export async function parseGoalWritePayload(request: Request): Promise<ParsedGoa
 export async function parseTaskWritePayload(request: Request): Promise<ParsedTaskWritePayload> {
   const payload = await parseJsonPayload<TaskWritePayload>(request);
 
-  if (!payload.goalId) {
-    throw new InstantRouteBadRequestError("Goal id is required.");
-  }
-
   if (typeof payload.title !== "string") {
     throw new InstantRouteBadRequestError("Task title is required.");
   }
@@ -156,7 +152,7 @@ export async function parseTaskWritePayload(request: Request): Promise<ParsedTas
   }
 
   return {
-    goalId: payload.goalId,
+    parentGoalId: parseOptionalTrimmedString(payload.parentGoalId),
     title: payload.title,
     notes: payload.notes,
     dueDate: parseOptionalString(payload.dueDate),

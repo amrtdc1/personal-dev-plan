@@ -30,6 +30,7 @@ import type {
   Task,
   UserProfile,
 } from "@/lib/domain/types";
+import { getTaskParentGoalId } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
@@ -39,7 +40,6 @@ import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
 
 const GOAL_TIMELINE_FILTER_STORAGE_KEY = "pdp.goalTimelineFilter";
 const GOAL_TYPE_FILTER_STORAGE_KEY = "pdp.goalTypeFilter";
-
 type RepositorySnapshot = {
   profile: UserProfile | null;
   professionalGoals: Goal[];
@@ -181,7 +181,8 @@ export function MigrationDataPreview({
         if (task.deletedAt === null) {
           return false;
         }
-        const parentChildGoal = allChildGoals.find((childGoal) => childGoal.id === task.goalId);
+        const taskParentGoalId = getTaskParentGoalId(task);
+        const parentChildGoal = allChildGoals.find((childGoal) => childGoal.id === taskParentGoalId);
         if (parentChildGoal === undefined || parentChildGoal.deletedAt !== null) {
           return false;
         }
@@ -271,8 +272,10 @@ export function MigrationDataPreview({
     () =>
       selectedChildGoal
         ? (snapshot?.tasksByChildGoalId[selectedChildGoal.id] ?? []).filter((task) => task.deletedAt === null)
-        : [],
-    [selectedChildGoal, snapshot?.tasksByChildGoalId],
+        : childGoalsForSelectedGoal.length === 0 && selectedGoal
+          ? (snapshot?.tasksByChildGoalId[selectedGoal.id] ?? []).filter((task) => task.deletedAt === null)
+          : [],
+    [childGoalsForSelectedGoal.length, selectedChildGoal, selectedGoal, snapshot?.tasksByChildGoalId],
   );
   const selectedTask = useMemo(
     () => tasksForSelectedChildGoal.find((task) => task.id === selectedTaskId) ?? null,
@@ -390,11 +393,11 @@ export function MigrationDataPreview({
 
         const allChildGoalsFlat = childGoalEntries.flatMap(([, childGoals]) => childGoals);
         const taskEntries = await Promise.all(
-          allChildGoalsFlat.map(async (childGoal) => {
-            const tasks = await dataRepository.listTasks(currentUser.id, childGoal.id, {
+          [...combinedGoals, ...allChildGoalsFlat].map(async (goalOrChildGoal) => {
+            const tasks = await dataRepository.listTasks(currentUser.id, goalOrChildGoal.id, {
               includeDeleted: true,
             });
-            return [childGoal.id, tasks] as const;
+            return [goalOrChildGoal.id, tasks] as const;
           }),
         );
         const tasksByChildGoalId: Record<string, Task[]> = {};
@@ -512,7 +515,8 @@ export function MigrationDataPreview({
     } else if (pendingOpenItem.kind === "task") {
       const task = allTasks.find((candidate) => candidate.id === pendingOpenItem.id);
       if (task) {
-        const parentChildGoal = allChildGoals.find((candidate) => candidate.id === task.goalId);
+        const taskParentGoalId = getTaskParentGoalId(task);
+        const parentChildGoal = allChildGoals.find((candidate) => candidate.id === taskParentGoalId);
         queueMicrotask(() => {
           if (parentChildGoal) {
             setSelectedGoalId(parentChildGoal.goalId);
@@ -775,14 +779,14 @@ export function MigrationDataPreview({
     }
   }
 
-  async function handleTaskReorder(goalId: string, orderedTaskIds: string[]) {
+  async function handleTaskReorder(parentGoalId: string, orderedTaskIds: string[]) {
     if (!user) {
       return;
     }
 
     setActionError(null);
     try {
-      await dataRepository.reorderTasks(user.id, goalId, orderedTaskIds);
+      await dataRepository.reorderTasks(user.id, parentGoalId, orderedTaskIds);
       setRefreshKey((value) => value + 1);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not reorder tasks."));
@@ -817,7 +821,8 @@ export function MigrationDataPreview({
   }
 
   function handleTaskDragEnd(event: DragEndEvent) {
-    if (!selectedChildGoal) {
+    const taskOwnerId = selectedChildGoal?.id ?? (childGoalsForSelectedGoal.length === 0 ? selectedGoal?.id ?? null : null);
+    if (!taskOwnerId) {
       return;
     }
 
@@ -835,13 +840,16 @@ export function MigrationDataPreview({
       return;
     }
 
-    void handleTaskReorder(selectedChildGoal.id, orderedIds);
+    void handleTaskReorder(taskOwnerId, orderedIds);
   }
 
   async function handleTaskSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parentChildGoalId = editingTask?.goalId ?? targetChildGoalIdForTask;
-    if (!user || !parentChildGoalId) {
+    const taskOwnerId =
+      (editingTask ? getTaskParentGoalId(editingTask) : null) ??
+      targetChildGoalIdForTask ??
+      (childGoalsForSelectedGoal.length === 0 ? selectedGoal?.id ?? null : null);
+    if (!user || !taskOwnerId) {
       return;
     }
 
@@ -852,10 +860,11 @@ export function MigrationDataPreview({
       await dataRepository.saveTask({
         taskId: editingTask?.id,
         ownerUid: user.id,
-        goalId: parentChildGoalId,
+        parentGoalId: taskOwnerId,
         title: taskTitle,
         notes: taskNotes,
         dueDate: taskDueDate || null,
+        unplanned: taskOwnerId === null,
         existingTask: editingTask ?? undefined,
       });
 
@@ -1301,11 +1310,13 @@ export function MigrationDataPreview({
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Tasks</h3>
             <button
               type="button"
-              disabled={!selectedChildGoal && childGoalsForSelectedGoal.length === 0}
+              disabled={!selectedGoal}
               onClick={() => {
-                const targetChildGoalId = selectedChildGoal?.id ?? childGoalsForSelectedGoal[0]?.id;
+                const targetChildGoalId = selectedChildGoal?.id ?? childGoalsForSelectedGoal[0]?.id ?? selectedGoal?.id;
                 if (targetChildGoalId) {
-                  setSelectedChildGoalId(targetChildGoalId);
+                  if (childGoalsForSelectedGoal.some((childGoal) => childGoal.id === targetChildGoalId)) {
+                    setSelectedChildGoalId(targetChildGoalId);
+                  }
                   openCreateTaskModal(targetChildGoalId);
                 }
               }}
@@ -1544,7 +1555,8 @@ export function MigrationDataPreview({
               </p>
               <ul className="mt-2 space-y-2 text-sm text-slate-700">
                 {orphanArchivedTasks.map((task) => {
-                  const parentChildGoal = allChildGoals.find((childGoal) => childGoal.id === task.goalId);
+                  const taskParentGoalId = getTaskParentGoalId(task);
+                  const parentChildGoal = allChildGoals.find((childGoal) => childGoal.id === taskParentGoalId);
                   return (
                     <li key={task.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                       <div className="flex items-start justify-between gap-3">
@@ -1793,22 +1805,25 @@ export function MigrationDataPreview({
       >
         <form className="grid gap-4" onSubmit={handleTaskSubmit}>
           {(() => {
-            const parentChildGoalId = editingTask?.goalId ?? targetChildGoalIdForTask;
+            const parentChildGoalId =
+              (editingTask ? getTaskParentGoalId(editingTask) : null) ??
+              targetChildGoalIdForTask ??
+              (childGoalsForSelectedGoal.length === 0 ? selectedGoal?.id ?? null : null);
             const parentChildGoal = parentChildGoalId
               ? allChildGoals.find((childGoal) => childGoal.id === parentChildGoalId)
               : null;
             const parentGoal = parentChildGoal
               ? allGoals.find((goal) => goal.id === parentChildGoal.goalId)
-              : null;
-            return parentChildGoal ? (
+              : parentChildGoalId
+                ? allGoals.find((goal) => goal.id === parentChildGoalId)
+                : null;
+            return parentChildGoal || parentGoal ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Parent sub-goal
+                  {parentChildGoal ? "Parent sub-goal" : "Parent goal"}
                 </span>
-                <p className="mt-1 font-semibold text-slate-900">{parentChildGoal.title}</p>
-                {parentGoal ? (
-                  <p className="mt-1 text-xs text-slate-500">Goal: {parentGoal.title}</p>
-                ) : null}
+                <p className="mt-1 font-semibold text-slate-900">{parentChildGoal?.title ?? parentGoal?.title}</p>
+                {parentGoal && parentChildGoal ? <p className="mt-1 text-xs text-slate-500">Goal: {parentGoal.title}</p> : null}
               </div>
             ) : null;
           })()}
@@ -1842,7 +1857,7 @@ export function MigrationDataPreview({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="submit"
-              disabled={isSavingTask || (!editingTask?.goalId && !targetChildGoalIdForTask)}
+              disabled={isSavingTask || (!(editingTask ? getTaskParentGoalId(editingTask) : null) && !targetChildGoalIdForTask && !selectedGoal)}
               className="rounded-full bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
               {isSavingTask ? "Saving..." : editingTask ? "Update task" : "Create task"}

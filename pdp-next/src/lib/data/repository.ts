@@ -16,6 +16,7 @@ import type {
   Task,
   UserProfile,
 } from "@/lib/domain/types";
+import { getTaskParentGoalId } from "@/lib/domain/types";
 import type { AppSchema } from "@/lib/instantdb/schema";
 import {
   enqueueOfflineMutation,
@@ -82,7 +83,7 @@ export type SaveChildGoalInput = {
 export type SaveTaskInput = {
   taskId?: string;
   ownerUid: string;
-  goalId: string;
+  parentGoalId?: string | null;
   title: string;
   notes: string;
   dueDate: string | null;
@@ -155,7 +156,7 @@ type ChildGoalReorderInput = {
 
 type TaskReorderInput = {
   ownerUid: string;
-  goalId: string;
+  parentGoalId: string | null;
   orderedTaskIds: string[];
 };
 
@@ -230,10 +231,10 @@ export type DataRepository = {
   softDeleteChildGoal: (ownerUid: string, childGoalId: string) => Promise<ChildGoal>;
   restoreChildGoal: (ownerUid: string, childGoalId: string) => Promise<ChildGoal>;
   permanentlyDeleteChildGoal: (ownerUid: string, childGoalId: string) => Promise<void>;
-  listTasks: (ownerUid: string, goalId: string, options?: ListOptions) => Promise<Task[]>;
+  listTasks: (ownerUid: string, parentGoalId?: string | null, options?: ListOptions) => Promise<Task[]>;
   saveTask: (input: SaveTaskInput) => Promise<Task>;
   updateTaskStatus: (ownerUid: string, taskId: string, status: ItemStatus) => Promise<Task>;
-  reorderTasks: (ownerUid: string, goalId: string, orderedTaskIds: string[]) => Promise<Task[]>;
+  reorderTasks: (ownerUid: string, parentGoalId: string | null, orderedTaskIds: string[]) => Promise<Task[]>;
   softDeleteTask: (ownerUid: string, taskId: string) => Promise<Task>;
   restoreTask: (ownerUid: string, taskId: string) => Promise<Task>;
   permanentlyDeleteTask: (ownerUid: string, taskId: string) => Promise<void>;
@@ -902,12 +903,16 @@ export const dataRepository: DataRepository = {
       },
     );
   },
-  async listTasks(ownerUid, goalId, options) {
+  async listTasks(ownerUid, parentGoalId, options) {
     if (canUseProtectedApiRoutes()) {
       const searchParams = new URLSearchParams({
         includeDeleted: String(Boolean(options?.includeDeleted)),
-        goalId,
       });
+      if (typeof parentGoalId === "string" && parentGoalId.length > 0) {
+        searchParams.set("parentGoalId", parentGoalId);
+      } else if (parentGoalId === null) {
+        searchParams.set("standalone", "true");
+      }
       const response = await invokeProtectedRead<{ tasks?: Task[] }>(`/api/tasks?${searchParams.toString()}`);
       return filterDeleted((response.tasks ?? []).map(normalizeTaskDefaults), options).sort(compareTasks);
     }
@@ -917,33 +922,37 @@ export const dataRepository: DataRepository = {
         $: {
           where: {
             ownerUid,
-            goalId,
           },
         },
       },
     });
 
-    return filterDeleted((data.tasks ?? []).map(normalizeTaskDefaults), options).sort(compareTasks);
+    const normalizedTasks = (data.tasks ?? []).map(normalizeTaskDefaults);
+    const scopedTasks = typeof parentGoalId === "undefined"
+      ? normalizedTasks
+      : normalizedTasks.filter((task) => getTaskParentGoalId(task) === parentGoalId);
+
+    return filterDeleted(scopedTasks, options).sort(compareTasks);
   },
   async saveTask(input) {
     ensureClientMutationSupport();
-    const normalizedGoalId = input.goalId;
+    const normalizedParentGoalId = input.parentGoalId ?? null;
 
     const now = new Date().toISOString();
     const { trimmedTitle, trimmedNotes } = validateTaskWrite(input);
-    const existingTaskGoalId = input.existingTask?.goalId;
+    const existingTaskParentGoalId = input.existingTask ? getTaskParentGoalId(input.existingTask) : null;
 
     const nextOrderIndex = input.existingTask
-      ? existingTaskGoalId === normalizedGoalId
+      ? existingTaskParentGoalId === normalizedParentGoalId
         ? input.existingTask.orderIndex
-        : await getNextTaskOrderIndex(input.ownerUid, normalizedGoalId)
-      : await getNextTaskOrderIndex(input.ownerUid, normalizedGoalId);
+        : await getNextTaskOrderIndex(input.ownerUid, normalizedParentGoalId)
+      : await getNextTaskOrderIndex(input.ownerUid, normalizedParentGoalId);
 
     const taskId = input.existingTask?.id ?? input.taskId ?? id();
     const task: Task = {
       id: taskId,
       ownerUid: input.ownerUid,
-      goalId: normalizedGoalId,
+      parentGoalId: normalizedParentGoalId,
       title: trimmedTitle,
       notes: trimmedNotes,
       dueDate: input.dueDate,
@@ -978,7 +987,7 @@ export const dataRepository: DataRepository = {
             await db.transact(
               db.tx.tasks[taskId].update({
                 ownerUid: task.ownerUid,
-                goalId: task.goalId,
+                parentGoalId: task.parentGoalId,
                 title: task.title,
                 notes: task.notes,
                 dueDate: task.dueDate,
@@ -1038,10 +1047,10 @@ export const dataRepository: DataRepository = {
       updatedAt: now,
     };
   },
-  async reorderTasks(ownerUid, goalId, orderedTaskIds) {
+  async reorderTasks(ownerUid, parentGoalId, orderedTaskIds) {
     ensureClientMutationSupport();
 
-    const tasks = await dataRepository.listTasks(ownerUid, goalId);
+    const tasks = await dataRepository.listTasks(ownerUid, parentGoalId);
     validateReorderIds(tasks, orderedTaskIds, "task");
 
     const reordered = buildReorderedEntities({
@@ -1056,7 +1065,7 @@ export const dataRepository: DataRepository = {
 
     await commitOrQueueMutation(
       "reorderTasks",
-      { ownerUid, goalId, orderedTaskIds } as TaskReorderInput,
+      { ownerUid, parentGoalId, orderedTaskIds } as TaskReorderInput,
       async () => {
         await db.transact(reordered.mutations);
       },
@@ -1200,11 +1209,14 @@ export const dataRepository: DataRepository = {
 
     const expiredTaskIds = new Set(
       tasks
-        .filter(
-          (task) =>
-            isExpiredSoftDeletedEntity(task.deletedAt, task.purgeAt, nowIso) ||
-            expiredChildGoalIds.has(task.goalId),
-        )
+        .filter((task) => {
+          if (isExpiredSoftDeletedEntity(task.deletedAt, task.purgeAt, nowIso)) {
+            return true;
+          }
+
+          const parentGoalId = getTaskParentGoalId(task);
+          return parentGoalId ? expiredChildGoalIds.has(parentGoalId) : false;
+        })
         .map((task) => task.id),
     );
 
@@ -1993,9 +2005,12 @@ async function getNextGoalOrderIndex(ownerUid: string, type: GoalType) {
   return maxIndex + 1;
 }
 
-async function getNextTaskOrderIndex(ownerUid: string, goalId: string) {
-  const tasks = await dataRepository.listTasks(ownerUid, goalId, { includeDeleted: true });
-  const maxIndex = tasks.reduce((max, task) => Math.max(max, task.orderIndex), -1);
+async function getNextTaskOrderIndex(ownerUid: string, parentGoalId: string | null) {
+  const tasks = await dataRepository.listTasks(ownerUid, parentGoalId, { includeDeleted: true });
+  const maxIndex = tasks.reduce((max, task) => {
+    const orderIndex = Number.isFinite(task.orderIndex) ? task.orderIndex : -1;
+    return Math.max(max, orderIndex);
+  }, -1);
   return maxIndex + 1;
 }
 
@@ -2127,6 +2142,7 @@ function normalizeGoalDefaults(goal: Goal): Goal {
 function normalizeTaskDefaults(task: Task): Task {
   return {
     ...task,
+    parentGoalId: getTaskParentGoalId(task),
     unplanned: task.unplanned ?? false,
     originalDueDate: task.originalDueDate ?? null,
     snoozedDueDate: task.snoozedDueDate ?? null,
@@ -2139,7 +2155,7 @@ async function saveTaskViaApi(task: Task, isUpdate: boolean) {
   const method = isUpdate ? "PATCH" : "POST";
 
   const basePayload = {
-    goalId: task.goalId,
+    parentGoalId: task.parentGoalId,
     title: task.title,
     notes: task.notes,
     dueDate: task.dueDate,
@@ -2500,7 +2516,7 @@ async function replayOfflineMutation(mutation: OfflineMutation) {
       }
       case "reorderTasks": {
         const payload = mutation.payload as TaskReorderInput;
-        await dataRepository.reorderTasks(payload.ownerUid, payload.goalId, payload.orderedTaskIds);
+        await dataRepository.reorderTasks(payload.ownerUid, payload.parentGoalId, payload.orderedTaskIds);
         return;
       }
       case "softDeleteTask": {

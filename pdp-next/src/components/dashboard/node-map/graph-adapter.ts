@@ -8,6 +8,7 @@ import {
   forceY,
 } from "d3-force";
 import type { Goal, GoalTimeframeLevel, Task } from "@/lib/domain/types";
+import { getTaskParentGoalId } from "@/lib/domain/types";
 
 type GraphNodeKind = "goal" | "task";
 
@@ -191,7 +192,8 @@ export function buildNodeGraphModel(input: {
 
   const tasksByGoalId = new Map<string, Task[]>();
   for (const task of input.tasks) {
-    const parentGoal = goalsById.get(task.goalId);
+    const parentGoalId = getTaskParentGoalId(task);
+    const parentGoal = parentGoalId ? goalsById.get(parentGoalId) : null;
     if (!parentGoal) {
       continue;
     }
@@ -277,7 +279,10 @@ export function buildNodeGraphModel(input: {
 
   if (input.includeFreestandingTasks) {
     const freestandingTasks = input.tasks
-      .filter((task) => !goalsById.has(task.goalId))
+      .filter((task) => {
+        const parentGoalId = getTaskParentGoalId(task);
+        return !parentGoalId || !goalsById.has(parentGoalId);
+      })
       .sort((left, right) => left.title.localeCompare(right.title));
 
     const outerRadius = RING_START_RADIUS + input.timeframeOrder.length * RING_GAP + 180;

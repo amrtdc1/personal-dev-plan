@@ -1,9 +1,9 @@
-import type { Goal, GoalType, Habit, HabitCheckin, JournalEntry, Task } from "@/lib/domain/types";
+import { getTaskParentGoalId, type Goal, type GoalType, type Habit, type HabitCheckin, type JournalEntry, type Task } from "@/lib/domain/types";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 export {
   parseGoalType,
   parseIncludeDeleted,
-  parseRequiredGoalId,
+  parseTaskParentGoalFilter,
   parseRequiredHabitId,
 } from "@/lib/server/instant-read-params";
 
@@ -28,20 +28,26 @@ export async function listOwnedGoals(ownerUid: string, input: { includeDeleted: 
   return filteredGoals.sort(compareByOrderIndexThenUpdatedAtDesc);
 }
 
-export async function listOwnedTasks(ownerUid: string, input: { includeDeleted: boolean; goalId: string }) {
+export async function listOwnedTasks(
+  ownerUid: string,
+  input: { includeDeleted: boolean; hasParentGoalFilter?: boolean; parentGoalId?: string | null },
+) {
   const instantAdmin = getInstantAdmin();
   const { tasks = [] } = await instantAdmin.query({
     tasks: {
       $: {
         where: {
           ownerUid,
-          goalId: input.goalId,
         },
       },
     },
   });
 
-  const filteredTasks = filterDeleted((tasks as Task[]).map(normalizeTaskDefaults), input.includeDeleted);
+  const normalizedTasks = (tasks as Task[]).map(normalizeTaskDefaults);
+  const scopedTasks = input.hasParentGoalFilter
+    ? normalizedTasks.filter((task) => getTaskParentGoalId(task) === (input.parentGoalId ?? null))
+    : normalizedTasks;
+  const filteredTasks = filterDeleted(scopedTasks, input.includeDeleted);
   return filteredTasks.sort(compareByOrderIndexThenUpdatedAtDesc);
 }
 
@@ -121,6 +127,7 @@ function compareByUpdatedAtDesc<TEntity extends { updatedAt: string; createdAt: 
 function normalizeTaskDefaults(task: Task): Task {
   return {
     ...task,
+    parentGoalId: getTaskParentGoalId(task),
     unplanned: task.unplanned ?? false,
     originalDueDate: task.originalDueDate ?? null,
     snoozedDueDate: task.snoozedDueDate ?? null,

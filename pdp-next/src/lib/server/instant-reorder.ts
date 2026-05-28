@@ -1,4 +1,4 @@
-import type { Goal, GoalType, Task } from "@/lib/domain/types";
+import { getTaskParentGoalId, type Goal, type GoalType, type Task } from "@/lib/domain/types";
 import { validateReorderIds } from "@/lib/data/validation";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
@@ -9,7 +9,7 @@ type ReorderGoalsPayload = {
 };
 
 type ReorderTasksPayload = {
-  goalId?: string;
+  parentGoalId?: string | null;
   orderedTaskIds?: string[];
 };
 
@@ -30,13 +30,9 @@ export async function parseGoalReorderPayload(request: Request) {
 export async function parseTaskReorderPayload(request: Request) {
   const payload = await parseJsonPayload<ReorderTasksPayload>(request);
 
-  if (!payload.goalId) {
-    throw new InstantRouteBadRequestError("Goal id is required.");
-  }
-
   const orderedTaskIds = parseOrderedIds(payload.orderedTaskIds, "orderedTaskIds");
   return {
-    goalId: payload.goalId,
+    parentGoalId: typeof payload.parentGoalId === "string" ? payload.parentGoalId.trim() || null : null,
     orderedTaskIds,
   };
 }
@@ -68,20 +64,24 @@ export async function reorderGoals(ownerUid: string, type: GoalType, orderedGoal
   });
 }
 
-export async function reorderTasks(ownerUid: string, goalId: string, orderedTaskIds: string[]) {
+export async function reorderTasks(ownerUid: string, parentGoalId: string | null, orderedTaskIds: string[]) {
   const instantAdmin = getInstantAdmin();
   const { tasks = [] } = await instantAdmin.query({
     tasks: {
       $: {
         where: {
           ownerUid,
-          goalId,
         },
       },
     },
   });
 
-  const activeTasks = (tasks as Task[]).filter((task) => task.deletedAt === null);
+  const activeTasks = (tasks as Task[])
+    .map((task) => ({
+      ...task,
+      parentGoalId: getTaskParentGoalId(task),
+    }))
+    .filter((task) => task.deletedAt === null && task.parentGoalId === parentGoalId);
   validateReorderIds(activeTasks, orderedTaskIds, "task");
 
   return applyReorder({

@@ -76,7 +76,7 @@ describe("instant-read owner-scoped reads", () => {
       ],
     });
 
-    const tasks = await listOwnedTasks("user-1", { includeDeleted: false, goalId: "childGoal-1" });
+    const tasks = await listOwnedTasks("user-1", { includeDeleted: false, parentGoalId: "childGoal-1" });
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.unplanned).toBe(false);
   });

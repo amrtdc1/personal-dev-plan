@@ -1,5 +1,6 @@
 import { env } from "@/lib/config/env";
 import type { Habit, Task } from "@/lib/domain/types";
+import { getTaskParentGoalId } from "@/lib/domain/types";
 import { getInstantAdmin } from "@/lib/instantdb/admin";
 import { InstantRouteBadRequestError } from "@/lib/server/instant-errors";
 import {
@@ -599,10 +600,15 @@ export async function purgeExpiredOwnedData(ownerUid: string): Promise<PurgeSumm
   );
 
   const expiredTaskIds = new Set(
-    (tasks as Array<{ id: string; goalId: string; deletedAt: string | null; purgeAt: string | null }>).
-      filter(
-        (task) => isExpiredSoftDeletedEntity(task.deletedAt, task.purgeAt, nowIso) || expiredChildGoalIds.has(task.goalId),
-      )
+    (tasks as Task[])
+      .filter((task) => {
+        if (isExpiredSoftDeletedEntity(task.deletedAt, task.purgeAt, nowIso)) {
+          return true;
+        }
+
+        const parentGoalId = getTaskParentGoalId(task);
+        return parentGoalId ? expiredChildGoalIds.has(parentGoalId) : false;
+      })
       .map((task) => task.id),
   );
 
@@ -662,14 +668,14 @@ async function listOwnedChildGoals(ownerUid: string, goalId: string) {
   }));
 }
 
-async function listOwnedTasks(ownerUid: string, goalId: string) {
+async function listOwnedTasks(ownerUid: string, parentGoalId: string) {
   const instantAdmin = getInstantAdmin();
   const { tasks = [] } = await instantAdmin.query({
     tasks: {
       $: {
         where: {
           ownerUid,
-          goalId,
+          parentGoalId,
         },
       },
     },

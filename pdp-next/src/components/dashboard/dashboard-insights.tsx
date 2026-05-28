@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import type { Goal, Habit, HabitCheckin, ItemStatus, ChildGoal, Task } from "@/lib/domain/types";
+import { getTaskParentGoalId } from "@/lib/domain/types";
 import { KindTag } from "@/components/ui/tags";
 import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
 import { CrudModal } from "@/components/ui/crud-modal";
@@ -57,6 +58,10 @@ export function DashboardInsights({
   const [quickTaskDueDate, setQuickTaskDueDate] = useState("");
   const [quickTaskChildGoalId, setQuickTaskChildGoalId] = useState("");
   const [taskModalTaskId, setTaskModalTaskId] = useState<string | null>(null);
+  const [taskModalTitle, setTaskModalTitle] = useState("");
+  const [taskModalNotes, setTaskModalNotes] = useState("");
+  const [taskModalDueDate, setTaskModalDueDate] = useState("");
+  const [taskModalParentGoalId, setTaskModalParentGoalId] = useState("");
   const [taskModalSnoozeDays, setTaskModalSnoozeDays] = useState("1");
   const [taskModalError, setTaskModalError] = useState<string | null>(null);
   const [pendingTaskDoneId, setPendingTaskDoneId] = useState<string | null>(null);
@@ -131,9 +136,18 @@ export function DashboardInsights({
         const loadedChildGoals = childGoalGroups.flat().filter((childGoal) => !childGoal.deletedAt);
 
         const taskGroups = await Promise.all(
-          loadedChildGoals.map((childGoal) => dataRepository.listTasks(currentUser.id, childGoal.id, { includeDeleted: true })),
+          [...loadedGoals.map((goal) => goal.id), ...loadedChildGoals.map((childGoal) => childGoal.id), null].map(
+            (taskOwnerId) => dataRepository.listTasks(currentUser.id, taskOwnerId, { includeDeleted: true }),
+          ),
         );
-        const loadedTasks = taskGroups.flat().filter((task) => !task.deletedAt);
+        const loadedTasks = Array.from(
+          new Map(
+            taskGroups
+              .flat()
+              .filter((task) => !task.deletedAt)
+              .map((task) => [task.id, task]),
+          ).values(),
+        );
 
         const loadedHabits = await dataRepository.listHabits(currentUser.id);
         const activeHabits = loadedHabits.filter((habit) => !habit.deletedAt && habit.status !== "archived");
@@ -175,6 +189,30 @@ export function DashboardInsights({
 
   const goalMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
   const childGoalMap = useMemo(() => new Map(childGoals.map((childGoal) => [childGoal.id, childGoal])), [childGoals]);
+  const taskParentOptions = useMemo(
+    () => {
+      const optionsById = new Map<string, { id: string; label: string }>();
+
+      for (const goal of goals) {
+        if (!optionsById.has(goal.id)) {
+          optionsById.set(goal.id, { id: goal.id, label: `Goal: ${goal.title}` });
+        }
+      }
+
+      for (const childGoal of childGoals) {
+        if (!optionsById.has(childGoal.id)) {
+          const parentGoal = goalMap.get(childGoal.goalId);
+          optionsById.set(childGoal.id, {
+            id: childGoal.id,
+            label: parentGoal ? `${parentGoal.title} -> ${childGoal.title}` : childGoal.title,
+          });
+        }
+      }
+
+      return [...optionsById.values()];
+    },
+    [childGoals, goalMap, goals],
+  );
   const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const closeDayIso = useMemo(() => {
     const base = parseDate(todayIso);
@@ -341,7 +379,12 @@ export function DashboardInsights({
     return tasks
       .filter((task) => task.status === "in_progress")
       .filter((task) => {
-        const parentChildGoal = childGoalMap.get(task.goalId);
+        const parentGoalId = getTaskParentGoalId(task);
+        if (!parentGoalId) {
+          return false;
+        }
+
+        const parentChildGoal = childGoalMap.get(parentGoalId);
         if (!parentChildGoal) {
           return false;
         }
@@ -468,14 +511,20 @@ export function DashboardInsights({
     }));
 
     const taskItems: RecentlyUpdatedItem[] = tasks.map((task) => {
-      const parentChildGoal = childGoalMap.get(task.goalId);
+      const parentGoalId = getTaskParentGoalId(task);
+      const parentChildGoal = parentGoalId ? childGoalMap.get(parentGoalId) : null;
+      const parentGoal = parentChildGoal
+        ? goalMap.get(parentChildGoal.goalId)
+        : parentGoalId
+          ? goalMap.get(parentGoalId)
+          : null;
       return {
         id: task.id,
         kind: "task",
         title: task.title,
         status: task.status,
         updatedAt: task.updatedAt,
-        parentTitle: parentChildGoal?.title,
+        parentTitle: parentChildGoal?.title ?? parentGoal?.title,
       };
     });
 
@@ -536,7 +585,7 @@ export function DashboardInsights({
       const updatedTask = await dataRepository.saveTask({
         taskId: task.id,
         ownerUid: user.id,
-        goalId: task.goalId,
+        parentGoalId: getTaskParentGoalId(task),
         title: task.title,
         notes: task.notes,
         dueDate: nextDueDateIso,
@@ -555,7 +604,7 @@ export function DashboardInsights({
   }
 
   async function handleQuickTaskCreate() {
-    if (!user || !quickTaskChildGoalId || quickTaskTitle.trim().length === 0) {
+    if (!user || quickTaskTitle.trim().length === 0) {
       return;
     }
 
@@ -565,10 +614,11 @@ export function DashboardInsights({
     try {
       const createdTask = await dataRepository.saveTask({
         ownerUid: user.id,
-        goalId: quickTaskChildGoalId,
+        parentGoalId: quickTaskChildGoalId || null,
         title: quickTaskTitle,
         notes: quickTaskNotes,
         dueDate: quickTaskDueDate || null,
+        unplanned: quickTaskChildGoalId.length === 0,
       });
 
       setTasks((current) => [...current, createdTask]);
@@ -676,7 +726,7 @@ export function DashboardInsights({
       const updatedTask = await dataRepository.saveTask({
         taskId: task.id,
         ownerUid: user.id,
-        goalId: task.goalId,
+        parentGoalId: getTaskParentGoalId(task),
         title: task.title,
         notes: task.notes,
         dueDate: task.dueDate,
@@ -702,8 +752,27 @@ export function DashboardInsights({
     }
   }
 
+  function closeTaskQuickModal() {
+    setTaskModalTaskId(null);
+    setTaskModalTitle("");
+    setTaskModalNotes("");
+    setTaskModalDueDate("");
+    setTaskModalParentGoalId("");
+    setTaskModalSnoozeDays("1");
+    setTaskModalError(null);
+  }
+
   function openTaskQuickModal(taskId: string) {
+    const task = tasks.find((entry) => entry.id === taskId);
+    if (!task) {
+      return;
+    }
+
     setTaskModalTaskId(taskId);
+    setTaskModalTitle(task.title);
+    setTaskModalNotes(task.notes);
+    setTaskModalDueDate(task.dueDate ?? "");
+    setTaskModalParentGoalId(getTaskParentGoalId(task) ?? "");
     setTaskModalSnoozeDays("1");
     setTaskModalError(null);
   }
@@ -712,7 +781,7 @@ export function DashboardInsights({
     setQuickTaskTitle("");
     setQuickTaskNotes("");
     setQuickTaskDueDate(todayIso);
-    setQuickTaskChildGoalId((current) => current || childGoals[0]?.id || "");
+    setQuickTaskChildGoalId("");
     setIsQuickTaskModalOpen(true);
   }
 
@@ -742,8 +811,62 @@ export function DashboardInsights({
       return;
     }
 
-    setTaskModalTaskId(null);
+    closeTaskQuickModal();
     await handleQuickTaskDone(selectedTask.id, true);
+  }
+
+  async function handleTaskModalSave() {
+    if (!selectedTask || !user) {
+      return;
+    }
+
+    if (taskModalTitle.trim().length === 0) {
+      setTaskModalError("Task title is required.");
+      return;
+    }
+
+    const normalizedParentGoalId = taskModalParentGoalId || null;
+    setTaskModalError(null);
+    setActionInFlightId(`task-save-${selectedTask.id}`);
+
+    try {
+      const updatedTask = await dataRepository.saveTask({
+        taskId: selectedTask.id,
+        ownerUid: user.id,
+        parentGoalId: normalizedParentGoalId,
+        title: taskModalTitle,
+        notes: taskModalNotes,
+        dueDate: taskModalDueDate || null,
+        unplanned: normalizedParentGoalId === null,
+        existingTask: selectedTask,
+      });
+
+      setTasks((current) => current.map((task) => (task.id === selectedTask.id ? updatedTask : task)));
+      closeTaskQuickModal();
+    } catch (repositoryError) {
+      setTaskModalError(getErrorMessage(repositoryError, "We could not save that task."));
+    } finally {
+      setActionInFlightId(null);
+    }
+  }
+
+  async function handleTaskModalDelete() {
+    if (!selectedTask || !user) {
+      return;
+    }
+
+    setTaskModalError(null);
+    setActionInFlightId(`task-delete-${selectedTask.id}`);
+
+    try {
+      await dataRepository.softDeleteTask(user.id, selectedTask.id);
+      setTasks((current) => current.filter((task) => task.id !== selectedTask.id));
+      closeTaskQuickModal();
+    } catch (repositoryError) {
+      setTaskModalError(getErrorMessage(repositoryError, "We could not delete that task."));
+    } finally {
+      setActionInFlightId(null);
+    }
   }
 
   if (isLoading || isRefreshing) {
@@ -1271,8 +1394,13 @@ export function DashboardInsights({
               ) : (
                 <ul className="mt-2 space-y-2">
                   {blockedByParentInactivityTasks.map((task) => {
-                    const parentChildGoal = childGoalMap.get(task.goalId);
-                    const parentGoal = parentChildGoal ? goalMap.get(parentChildGoal.goalId) : null;
+                    const parentGoalId = getTaskParentGoalId(task);
+                    const parentChildGoal = parentGoalId ? childGoalMap.get(parentGoalId) : null;
+                    const parentGoal = parentChildGoal
+                      ? goalMap.get(parentChildGoal.goalId)
+                      : parentGoalId
+                        ? goalMap.get(parentGoalId)
+                        : null;
                     const parentPath = [parentGoal?.title, parentChildGoal?.title].filter((value): value is string => Boolean(value)).join(" -> ");
 
                     return (
@@ -1467,7 +1595,7 @@ export function DashboardInsights({
             <button
               type="button"
               onClick={() => void handleQuickTaskCreate()}
-              disabled={actionInFlightId === "quick-create-task" || quickTaskTitle.trim().length === 0 || !quickTaskChildGoalId}
+              disabled={actionInFlightId === "quick-create-task" || quickTaskTitle.trim().length === 0}
               className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {actionInFlightId === "quick-create-task" ? "Saving..." : "Create Task"}
@@ -1479,10 +1607,7 @@ export function DashboardInsights({
       <CrudModal
         isOpen={selectedTask !== null}
         title={selectedTask ? selectedTask.title : "Task"}
-        onClose={() => {
-          setTaskModalTaskId(null);
-          setTaskModalError(null);
-        }}
+        onClose={closeTaskQuickModal}
       >
         {selectedTask ? (
           <div className="grid gap-3">
@@ -1495,18 +1620,67 @@ export function DashboardInsights({
               <p className="text-xs text-slate-500">Last snoozed to: {formatDateLabel(selectedTask.snoozedDueDate)}</p>
             ) : null}
 
+            <label className="text-sm text-slate-700">
+              Task title
+              <input
+                value={taskModalTitle}
+                onChange={(event) => setTaskModalTitle(event.currentTarget.value)}
+                className="pdp-control mt-1 rounded-lg"
+              />
+            </label>
+
+            <label className="text-sm text-slate-700">
+              Parent goal (optional)
+              <select
+                value={taskModalParentGoalId}
+                onChange={(event) => setTaskModalParentGoalId(event.currentTarget.value)}
+                className="pdp-control mt-1 rounded-lg"
+              >
+                <option value="">No parent (unplanned)</option>
+                {taskParentOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm text-slate-700">
+              Due date
+              <input
+                type="date"
+                value={taskModalDueDate}
+                onChange={(event) => setTaskModalDueDate(event.currentTarget.value)}
+                className="pdp-control mt-1 rounded-lg"
+              />
+            </label>
+
+            <label className="text-sm text-slate-700">
+              Notes
+              <textarea
+                value={taskModalNotes}
+                onChange={(event) => setTaskModalNotes(event.currentTarget.value)}
+                rows={3}
+                className="pdp-control mt-1 rounded-lg"
+              />
+            </label>
+
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  if (selectedTask) {
-                    onOpenItem?.("task", selectedTask.id);
-                    setTaskModalTaskId(null);
-                  }
-                }}
-                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                onClick={() => void handleTaskModalSave()}
+                disabled={actionInFlightId === `task-save-${selectedTask.id}` || taskModalTitle.trim().length === 0}
+                className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Edit in Planning
+                {actionInFlightId === `task-save-${selectedTask.id}` ? "Saving..." : "Save changes"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleTaskModalDelete()}
+                disabled={actionInFlightId === `task-delete-${selectedTask.id}`}
+                className="rounded-full border border-rose-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 transition hover:border-rose-400 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {actionInFlightId === `task-delete-${selectedTask.id}` ? "Deleting..." : "Delete task"}
               </button>
               <button
                 type="button"

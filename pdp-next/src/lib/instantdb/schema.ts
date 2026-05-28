@@ -46,7 +46,6 @@ export const appSchema = i.schema({
     }),
     tasks: i.entity({
       ownerUid: i.string().indexed(),
-      goalId: i.string().indexed(),
       parentGoalId: i.string().optional().indexed(),
       title: i.string(),
       notes: i.string(),

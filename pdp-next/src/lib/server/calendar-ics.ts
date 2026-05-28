@@ -1,4 +1,5 @@
 import type { Goal, Task } from "@/lib/domain/types";
+import { getTaskParentGoalId } from "@/lib/domain/types";
 
 type BuildCalendarIcsInput = {
   goals: Goal[];
@@ -55,7 +56,8 @@ function buildTaskEvents(tasks: Task[], goals: Goal[], nowIso: string) {
       continue;
     }
 
-    const parentGoal = goalById.get(task.goalId);
+    const parentGoalId = getTaskParentGoalId(task);
+    const parentGoal = parentGoalId ? goalById.get(parentGoalId) : null;
 
     events.push(
       ...toAllDayEvent({

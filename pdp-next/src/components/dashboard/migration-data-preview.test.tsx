@@ -12,6 +12,7 @@ const {
   listTasksMock,
   listHabitsMock,
   listHabitCheckinsMock,
+  saveTaskMock,
   saveHabitMock,
   saveHabitCheckinMock,
 } = vi.hoisted(() => ({
@@ -26,6 +27,7 @@ const {
   listTasksMock: vi.fn(),
   listHabitsMock: vi.fn(),
   listHabitCheckinsMock: vi.fn(),
+  saveTaskMock: vi.fn(),
   saveHabitMock: vi.fn(),
   saveHabitCheckinMock: vi.fn(),
 }));
@@ -44,6 +46,7 @@ vi.mock("@/lib/data/repository", () => ({
     listTasks: listTasksMock,
     listHabits: listHabitsMock,
     listHabitCheckins: listHabitCheckinsMock,
+    saveTask: saveTaskMock,
     saveHabit: saveHabitMock,
     saveHabitCheckin: saveHabitCheckinMock,
   },
@@ -86,10 +89,29 @@ describe("migration data preview timeline filtering", () => {
     listGoalsMock.mockReset();
     listChildGoalsMock.mockReset();
     listTasksMock.mockReset();
+    saveTaskMock.mockReset();
 
     getUserProfileMock.mockResolvedValue(null);
     listChildGoalsMock.mockResolvedValue([]);
     listTasksMock.mockResolvedValue([]);
+    saveTaskMock.mockResolvedValue({
+      id: "task-1",
+      ownerUid: "user-1",
+      goalId: "goal-weekly",
+      title: "Outline weekly work",
+      notes: "",
+      dueDate: null,
+      unplanned: false,
+      status: "not_started",
+      percentComplete: 0,
+      orderIndex: 0,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+    });
     listHabitsMock.mockResolvedValue([
       {
         id: "habit-1",
@@ -204,6 +226,35 @@ describe("migration data preview timeline filtering", () => {
           ownerUid: "user-1",
           habitId: "habit-1",
           notes: null,
+        }),
+      );
+    });
+  });
+
+  it("allows creating a task directly under a selected goal when no child goals exist", async () => {
+    const user = userEvent.setup();
+
+    render(<MigrationDataPreview />);
+
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "+ Task" }) as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    await user.click(screen.getByRole("button", { name: "+ Task" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Create task" })).not.toBeNull();
+    });
+
+    await user.type(screen.getByLabelText("Title"), "Outline weekly work");
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => {
+      expect(saveTaskMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerUid: "user-1",
+          parentGoalId: "goal-weekly",
+          title: "Outline weekly work",
         }),
       );
     });

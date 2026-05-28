@@ -1,3 +1,71 @@
+const {
+  queryMock,
+  transactMock,
+  findOwnedGoalMock,
+  findOwnedTaskMock,
+  findOwnedHabitMock,
+  findOwnedHabitCheckinMock,
+  findOwnedJournalEntryMock,
+} = vi.hoisted(() => ({
+  queryMock: vi.fn(),
+  transactMock: vi.fn(),
+  findOwnedGoalMock: vi.fn(),
+  findOwnedTaskMock: vi.fn(),
+  findOwnedHabitMock: vi.fn(),
+  findOwnedHabitCheckinMock: vi.fn(),
+  findOwnedJournalEntryMock: vi.fn(),
+}));
+
+function createTxTable(table: string) {
+  return new Proxy(
+    {},
+    {
+      get(_, entityId) {
+        return {
+          update(payload: Record<string, unknown>) {
+            return {
+              op: "update",
+              table,
+              entityId: String(entityId),
+              payload,
+            };
+          },
+          delete() {
+            return {
+              op: "delete",
+              table,
+              entityId: String(entityId),
+            };
+          },
+        };
+      },
+    },
+  );
+}
+
+vi.mock("@/lib/instantdb/admin", () => ({
+  getInstantAdmin: () => ({
+    query: queryMock,
+    transact: transactMock,
+    tx: {
+      goals: createTxTable("goals"),
+      tasks: createTxTable("tasks"),
+      journalEntries: createTxTable("journalEntries"),
+      habits: createTxTable("habits"),
+      habitCheckins: createTxTable("habitCheckins"),
+    },
+  }),
+}));
+
+vi.mock("@/lib/server/instant-route", () => ({
+  findOwnedGoal: findOwnedGoalMock,
+  findOwnedTask: findOwnedTaskMock,
+  findOwnedHabit: findOwnedHabitMock,
+  findOwnedHabitCheckin: findOwnedHabitCheckinMock,
+  findOwnedJournalEntry: findOwnedJournalEntryMock,
+}));
+
+import { createTask, updateTask } from "@/lib/server/instant-write";
 import {
   parseHabitCheckinWritePayload,
   parseGoalWritePayload,
@@ -16,6 +84,16 @@ function buildRequest(body: unknown) {
 }
 
 describe("instant write payload parsing", () => {
+  beforeEach(() => {
+    queryMock.mockReset();
+    transactMock.mockReset();
+    findOwnedGoalMock.mockReset();
+    findOwnedTaskMock.mockReset();
+    findOwnedHabitMock.mockReset();
+    findOwnedHabitCheckinMock.mockReset();
+    findOwnedJournalEntryMock.mockReset();
+  });
+
   it("parses goal payload and normalizes empty optional date fields to null", async () => {
     const payload = await parseGoalWritePayload(
       buildRequest({
@@ -102,7 +180,7 @@ describe("instant write payload parsing", () => {
   it("parses valid task payload", async () => {
     const payload = await parseTaskWritePayload(
       buildRequest({
-        goalId: "goal-1",
+        parentGoalId: "goal-1",
         title: "Record smoke results",
         notes: "Paste URL and status",
         dueDate: "2026-05-30",
@@ -111,7 +189,7 @@ describe("instant write payload parsing", () => {
     );
 
     expect(payload).toEqual({
-      goalId: "goal-1",
+      parentGoalId: "goal-1",
       title: "Record smoke results",
       notes: "Paste URL and status",
       dueDate: "2026-05-30",
@@ -168,6 +246,108 @@ describe("instant write payload parsing", () => {
     });
 
     await expect(parseTaskWritePayload(request)).rejects.toThrow("Request body must be valid JSON.");
+  });
+
+  it("creates unplanned tasks even when existing unplanned rows have invalid orderIndex values", async () => {
+    queryMock.mockResolvedValueOnce({
+      tasks: [
+        {
+          id: "task-legacy-unplanned",
+          ownerUid: "user-1",
+          goalId: "unplanned",
+          title: "Legacy unplanned task",
+          notes: "",
+          dueDate: null,
+          unplanned: true,
+          status: "not_started",
+          percentComplete: 0,
+          orderIndex: Number.NaN,
+          createdAt: "2026-05-01T00:00:00.000Z",
+          updatedAt: "2026-05-01T00:00:00.000Z",
+          deletedAt: null,
+          deletedBy: null,
+          restoreUntil: null,
+          purgeAt: null,
+        },
+      ],
+    });
+
+    const task = await createTask("user-1", {
+      parentGoalId: null,
+      title: "Inbox triage",
+      notes: "",
+      dueDate: null,
+      unplanned: true,
+      originalDueDate: null,
+      snoozedDueDate: null,
+      snoozeCount: 0,
+    });
+
+    expect(findOwnedGoalMock).not.toHaveBeenCalled();
+    expect(task.orderIndex).toBe(0);
+    expect(transactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: "tasks",
+        payload: expect.objectContaining({
+          orderIndex: 0,
+          parentGoalId: null,
+          unplanned: true,
+        }),
+      }),
+    );
+  });
+
+  it("updates task when unchanged legacy parentGoalId cannot be resolved as a goal", async () => {
+    findOwnedTaskMock.mockResolvedValueOnce({
+      id: "task-1",
+      ownerUid: "user-1",
+      parentGoalId: "legacy-child-goal-1",
+      title: "Existing task",
+      notes: "",
+      dueDate: "2026-05-24",
+      unplanned: false,
+      originalDueDate: null,
+      snoozedDueDate: null,
+      snoozeCount: 0,
+      status: "not_started",
+      percentComplete: 0,
+      orderIndex: 3,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-20T00:00:00.000Z",
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+    });
+
+    const updatedTask = await updateTask("user-1", "task-1", {
+      parentGoalId: "legacy-child-goal-1",
+      title: "Existing task",
+      notes: "",
+      dueDate: "2026-05-27",
+      unplanned: false,
+      originalDueDate: "2026-05-24",
+      snoozedDueDate: "2026-05-27",
+      snoozeCount: 1,
+    });
+
+    expect(findOwnedGoalMock).not.toHaveBeenCalled();
+    expect(updatedTask.parentGoalId).toBe("legacy-child-goal-1");
+    expect(updatedTask.dueDate).toBe("2026-05-27");
+    expect(updatedTask.snoozedDueDate).toBe("2026-05-27");
+    expect(updatedTask.snoozeCount).toBe(1);
+    expect(transactMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: "tasks",
+        entityId: "task-1",
+        payload: expect.objectContaining({
+          parentGoalId: "legacy-child-goal-1",
+          dueDate: "2026-05-27",
+          snoozedDueDate: "2026-05-27",
+          snoozeCount: 1,
+        }),
+      }),
+    );
   });
 
   it("parses valid habit payload and defaults status", async () => {
