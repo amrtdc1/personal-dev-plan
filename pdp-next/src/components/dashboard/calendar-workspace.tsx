@@ -1280,6 +1280,7 @@ export function CalendarWorkspace() {
           title: draftTitle,
           notes: draftDetails,
           dueDate: selection.startDate,
+          unplanned: !draftParentGoalId && !draftCommitmentId,
         });
       }
 
@@ -1373,6 +1374,7 @@ export function CalendarWorkspace() {
           title: normalizedTitle,
           notes: editDetails,
           dueDate: existingTask.dueDate,
+          unplanned: !editParentChildGoalId && !editCommitmentId,
           existingTask,
         });
 

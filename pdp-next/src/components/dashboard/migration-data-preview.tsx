@@ -293,6 +293,10 @@ export function MigrationDataPreview({
       return commitment.linkedGoalId === null || commitment.linkedGoalId === selectedGoalId;
     });
   }, [editingTask?.commitmentId, planningCommitments, selectedGoal?.id]);
+  const commitmentMap = useMemo(
+    () => new Map(planningCommitments.map((c) => [c.id, c])),
+    [planningCommitments],
+  );
   const selectedHabitCheckins = useMemo(
     () => (selectedHabitId ? habitCheckinsByHabitId[selectedHabitId] ?? [] : []),
     [habitCheckinsByHabitId, selectedHabitId],
@@ -1396,6 +1400,11 @@ export function MigrationDataPreview({
                           <p className="mt-1 text-xs text-slate-600">
                             {task.dueDate ? `Due ${task.dueDate}` : "No due date"} | {task.percentComplete}% complete
                           </p>
+                          {task.commitmentId && commitmentMap.get(task.commitmentId) ? (
+                            <span className="mt-1 inline-block rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                              {commitmentMap.get(task.commitmentId)!.title}
+                            </span>
+                          ) : null}
                         </button>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <IconActionButton label="Edit task" onClick={() => startEditingTask(task)}>
