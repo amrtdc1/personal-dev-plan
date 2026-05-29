@@ -128,6 +128,7 @@ function normalizeTaskDefaults(task: Task): Task {
   return {
     ...task,
     parentGoalId: getTaskParentGoalId(task),
+    commitmentId: task.commitmentId ?? null,
     unplanned: task.unplanned ?? false,
     originalDueDate: task.originalDueDate ?? null,
     snoozedDueDate: task.snoozedDueDate ?? null,

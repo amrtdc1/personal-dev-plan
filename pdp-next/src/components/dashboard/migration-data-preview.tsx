@@ -26,6 +26,7 @@ import type {
   HabitCadence,
   HabitCheckin,
   ItemStatus,
+  PlanningCommitment,
   ChildGoal,
   Task,
   UserProfile,
@@ -36,6 +37,7 @@ import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { GoalTypeTag } from "@/components/ui/tags";
+import { PlanningPreviewPanel } from "@/components/dashboard/planning-preview-panel";
 import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
 
 const GOAL_TIMELINE_FILTER_STORAGE_KEY = "pdp.goalTimelineFilter";
@@ -48,19 +50,21 @@ type RepositorySnapshot = {
   tasksByChildGoalId: Record<string, Task[]>;
 };
 
+type MigrationDataPreviewProps = {
+  pendingOpenItem?: { kind: "goal" | "childGoal" | "task"; id: string } | null;
+  onPendingItemConsumed?: () => void;
+  showWorkspaceShell?: boolean;
+  enableDataHydration?: boolean;
+  showHabitsSection?: boolean;
+};
+
 export function MigrationDataPreview({
   pendingOpenItem,
   onPendingItemConsumed,
   showWorkspaceShell = true,
   enableDataHydration = true,
   showHabitsSection = true,
-}: {
-  pendingOpenItem?: { kind: "goal" | "childGoal" | "task"; id: string } | null;
-  onPendingItemConsumed?: () => void;
-  showWorkspaceShell?: boolean;
-  enableDataHydration?: boolean;
-  showHabitsSection?: boolean;
-} = {}) {
+}: MigrationDataPreviewProps = {}) {
   const { isLoading, user, error } = db.useAuth();
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -76,26 +80,19 @@ export function MigrationDataPreview({
   const [, setIsChildGoalModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [goalType, setGoalType] = useState<"professional" | "personal">("professional");
-  const [goalTimeframeLevel, setGoalTimeframeLevel] = useState<GoalTimeframeLevel>("weekly");
+  const [goalTimeframeLevel, setGoalTimeframeLevel] = useState<GoalTimeframeLevel>("annual");
   const [goalParentGoalId, setGoalParentGoalId] = useState("");
   const [goalTimelineFilter, setGoalTimelineFilter] = useState<GoalTimeframeLevel | "all">(() => {
     if (typeof window === "undefined") {
-      return "weekly";
+      return "annual";
     }
 
     const stored = window.localStorage.getItem(GOAL_TIMELINE_FILTER_STORAGE_KEY);
-    if (
-      stored === "vision_5y" ||
-      stored === "annual" ||
-      stored === "quarterly" ||
-      stored === "monthly" ||
-      stored === "weekly" ||
-      stored === "all"
-    ) {
+    if (stored === "vision_5y" || stored === "annual" || stored === "all") {
       return stored;
     }
 
-    return "weekly";
+    return "annual";
   });
   const [goalTypeFilter, setGoalTypeFilter] = useState<"all" | "professional" | "personal">(() => {
     if (typeof window === "undefined") {
@@ -126,6 +123,8 @@ export function MigrationDataPreview({
   const [taskTitle, setTaskTitle] = useState("");
   const [taskNotes, setTaskNotes] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskCommitmentId, setTaskCommitmentId] = useState("");
+  const [planningCommitments, setPlanningCommitments] = useState<PlanningCommitment[]>([]);
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [taskSaveError, setTaskSaveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -206,7 +205,7 @@ export function MigrationDataPreview({
     () =>
       activeGoals.filter((goal) => {
         const matchesTimeline =
-          goalTimelineFilter === "all" || (goal.timeframeLevel ?? "quarterly") === goalTimelineFilter;
+          goalTimelineFilter === "all" || (goal.timeframeLevel ?? "annual") === goalTimelineFilter;
         if (!matchesTimeline) {
           return false;
         }
@@ -221,11 +220,8 @@ export function MigrationDataPreview({
   );
   const goalTimelineCounts = useMemo(
     () => ({
-      vision_5y: activeGoals.filter((goal) => (goal.timeframeLevel ?? "quarterly") === "vision_5y").length,
-      annual: activeGoals.filter((goal) => (goal.timeframeLevel ?? "quarterly") === "annual").length,
-      quarterly: activeGoals.filter((goal) => (goal.timeframeLevel ?? "quarterly") === "quarterly").length,
-      monthly: activeGoals.filter((goal) => (goal.timeframeLevel ?? "quarterly") === "monthly").length,
-      weekly: activeGoals.filter((goal) => (goal.timeframeLevel ?? "quarterly") === "weekly").length,
+      vision_5y: activeGoals.filter((goal) => (goal.timeframeLevel ?? "annual") === "vision_5y").length,
+      annual: activeGoals.filter((goal) => (goal.timeframeLevel ?? "annual") === "annual").length,
       all: activeGoals.length,
     }),
     [activeGoals],
@@ -281,6 +277,22 @@ export function MigrationDataPreview({
     () => tasksForSelectedChildGoal.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasksForSelectedChildGoal],
   );
+  const availableTaskCommitments = useMemo(() => {
+    const selectedGoalId = selectedGoal?.id ?? null;
+    const currentTaskCommitmentId = editingTask?.commitmentId ?? null;
+
+    return planningCommitments.filter((commitment) => {
+      if (currentTaskCommitmentId && commitment.id === currentTaskCommitmentId) {
+        return true;
+      }
+
+      if (!selectedGoalId) {
+        return true;
+      }
+
+      return commitment.linkedGoalId === null || commitment.linkedGoalId === selectedGoalId;
+    });
+  }, [editingTask?.commitmentId, planningCommitments, selectedGoal?.id]);
   const selectedHabitCheckins = useMemo(
     () => (selectedHabitId ? habitCheckinsByHabitId[selectedHabitId] ?? [] : []),
     [habitCheckinsByHabitId, selectedHabitId],
@@ -376,6 +388,19 @@ export function MigrationDataPreview({
           dataRepository.listHabits(currentUser.id),
         ]);
 
+        let loadedCommitments: PlanningCommitment[] = [];
+        try {
+          const commitmentsResponse = await fetch("/api/planning/commitments", { cache: "no-store" });
+          if (commitmentsResponse.ok) {
+            const commitmentsBody = (await commitmentsResponse.json()) as { commitments?: PlanningCommitment[] };
+            loadedCommitments = (commitmentsBody.commitments ?? []).sort(
+              (left, right) => left.title.localeCompare(right.title),
+            );
+          }
+        } catch {
+          loadedCommitments = [];
+        }
+
         const combinedGoals = [...professionalGoals, ...personalGoals];
 
         const childGoalEntries = await Promise.all(
@@ -434,6 +459,7 @@ export function MigrationDataPreview({
             childGoalsByGoalId: rolledChildGoalsByGoalId,
             tasksByChildGoalId,
           });
+          setPlanningCommitments(loadedCommitments);
         }
       } catch (repositoryError) {
         if (!isCancelled) {
@@ -483,7 +509,7 @@ export function MigrationDataPreview({
           setMobileView("goals");
           setGoalTypeFilter(goal.type);
           setGoalType(goal.type);
-          setGoalTimeframeLevel(goal.timeframeLevel ?? "quarterly");
+          setGoalTimeframeLevel(goal.timeframeLevel ?? "annual");
           setGoalTitle(goal.title);
           setGoalDescription(goal.description);
           setGoalStartDate(goal.projectedStartDate ?? "");
@@ -861,10 +887,11 @@ export function MigrationDataPreview({
         taskId: editingTask?.id,
         ownerUid: user.id,
         parentGoalId: taskOwnerId,
+        commitmentId: taskCommitmentId || null,
         title: taskTitle,
         notes: taskNotes,
         dueDate: taskDueDate || null,
-        unplanned: taskOwnerId === null,
+        unplanned: taskOwnerId === null && taskCommitmentId.length === 0,
         existingTask: editingTask ?? undefined,
       });
 
@@ -916,7 +943,7 @@ export function MigrationDataPreview({
 
   function startEditing(goal: Goal) {
     setGoalType(goal.type);
-    setGoalTimeframeLevel(goal.timeframeLevel ?? "quarterly");
+    setGoalTimeframeLevel(goal.timeframeLevel ?? "annual");
     setGoalParentGoalId(goal.parentGoalId ?? "");
     setGoalTitle(goal.title);
     setGoalDescription(goal.description);
@@ -943,6 +970,7 @@ export function MigrationDataPreview({
     setTaskTitle(task.title);
     setTaskNotes(task.notes);
     setTaskDueDate(task.dueDate ?? "");
+    setTaskCommitmentId(task.commitmentId ?? "");
     setTaskSaveError(null);
     setEditingTaskId(task.id);
     setIsTaskModalOpen(true);
@@ -953,6 +981,7 @@ export function MigrationDataPreview({
     setTaskTitle("");
     setTaskNotes("");
     setTaskDueDate("");
+    setTaskCommitmentId("");
     setTaskSaveError(null);
     setTargetChildGoalIdForTask(null);
   }
@@ -960,7 +989,7 @@ export function MigrationDataPreview({
   function resetGoalForm() {
     setEditingGoalId(null);
     setGoalType("professional");
-    setGoalTimeframeLevel("weekly");
+    setGoalTimeframeLevel("annual");
     setGoalParentGoalId("");
     setGoalTitle("");
     setGoalDescription("");
@@ -1052,9 +1081,6 @@ export function MigrationDataPreview({
           {[
             ["vision_5y", "Long-term", goalTimelineCounts.vision_5y],
             ["annual", "Yearly", goalTimelineCounts.annual],
-            ["quarterly", "Quarterly", goalTimelineCounts.quarterly],
-            ["monthly", "Monthly", goalTimelineCounts.monthly],
-            ["weekly", "Weekly", goalTimelineCounts.weekly],
             ["all", "All", goalTimelineCounts.all],
           ].map(([value, label, count]) => (
             <button
@@ -1097,7 +1123,7 @@ export function MigrationDataPreview({
         </div>
       </div>
 
-      <p className="text-xs text-slate-600">Filter by timeframe level first, then drill into goals and tasks.</p>
+      <p className="text-xs text-slate-600">Goals are long-horizon anchors; weekly and quarterly execution now lives in commitments.</p>
     </div>
   );
 
@@ -1183,6 +1209,8 @@ export function MigrationDataPreview({
 
             {isFilterPanelOpen ? <div className="mt-3">{timelineNav}</div> : null}
           </div>
+
+          <PlanningPreviewPanel goals={activeGoals} tasks={allTasks} />
 
           <div className="pdp-card pdp-card-mobile-flat sticky top-2 z-10 mt-4 px-3 py-2 text-[11px] leading-5 text-slate-500 shadow-sm backdrop-blur sm:text-xs lg:static lg:shadow-none">
         <span className="font-semibold uppercase tracking-wide text-slate-500">Relationship path:</span>{" "}
@@ -1272,7 +1300,7 @@ export function MigrationDataPreview({
                                   </div>
                                   <p className="mt-1 text-xs text-slate-600">{goal.percentComplete}% complete</p>
                                   <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                    {getGoalTimeframeLevelLabel(goal.timeframeLevel ?? "quarterly")}
+                                    {getGoalTimeframeLevelLabel(goal.timeframeLevel ?? "annual")}
                                   </p>
                                 </button>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1624,10 +1652,8 @@ export function MigrationDataPreview({
             >
               <option value="vision_5y">Long-term</option>
               <option value="annual">Yearly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="monthly">Monthly</option>
-              <option value="weekly">Weekly</option>
             </select>
+            <p className="mt-1 text-xs text-slate-500">Use commitments for quarterly and weekly priorities.</p>
           </label>
 
           <label className="block text-sm text-slate-700">
@@ -1845,6 +1871,21 @@ export function MigrationDataPreview({
               onChange={(event) => setTaskNotes(event.target.value)}
               className="pdp-control mt-1 min-h-20 rounded-xl"
             />
+          </label>
+          <label className="block text-sm text-slate-700">
+            Related commitment (optional)
+            <select
+              value={taskCommitmentId}
+              onChange={(event) => setTaskCommitmentId(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+            >
+              <option value="">No commitment</option>
+              {availableTaskCommitments.map((commitment) => (
+                <option key={commitment.id} value={commitment.id}>
+                  {commitment.level} #{commitment.rank} - {commitment.title}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="block text-sm text-slate-700">
             Due date
@@ -2069,18 +2110,6 @@ function deriveRollupStatus(statuses: ItemStatus[]): ItemStatus {
 }
 
 function getGoalTimeframeLevelLabel(timeframeLevel: GoalTimeframeLevel) {
-  if (timeframeLevel === "weekly") {
-    return "Weekly";
-  }
-
-  if (timeframeLevel === "monthly") {
-    return "Monthly";
-  }
-
-  if (timeframeLevel === "quarterly") {
-    return "Quarterly";
-  }
-
   if (timeframeLevel === "annual") {
     return "Yearly";
   }
@@ -2089,6 +2118,6 @@ function getGoalTimeframeLevelLabel(timeframeLevel: GoalTimeframeLevel) {
     return "Long-term";
   }
 
-  return "Quarterly";
+  return "Yearly";
 }
 

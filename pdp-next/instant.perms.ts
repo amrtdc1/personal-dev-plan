@@ -42,6 +42,9 @@ const rules = {
   pushSubscriptions: ownerScopedRules,
   notificationPreferences: ownerScopedRules,
   notificationDeliveries: ownerScopedRules,
+  planningCycles: ownerScopedRules,
+  planningCommitments: ownerScopedRules,
+  dailyFocusPlans: ownerScopedRules,
   $default: {
     allow: {
       $default: "false",

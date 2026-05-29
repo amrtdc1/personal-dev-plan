@@ -1,45 +1,28 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
-import type { Goal, Habit, HabitCheckin, ItemStatus, ChildGoal, Task } from "@/lib/domain/types";
+import type { Goal, Habit, HabitCheckin, ItemStatus, ChildGoal, PlanningCommitment, Task } from "@/lib/domain/types";
 import { getTaskParentGoalId } from "@/lib/domain/types";
-import { KindTag } from "@/components/ui/tags";
 import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
 import { CrudModal } from "@/components/ui/crud-modal";
 
-type RecentlyUpdatedItem = {
-  id: string;
-  kind: "goal" | "childGoal" | "task";
-  title: string;
-  status: ItemStatus;
-  updatedAt: string;
-  parentTitle?: string;
-};
-
-type DashboardInsightsMode = "today" | "plan" | "review" | "risks" | "close_day";
+type DashboardInsightsMode = "today" | "close_day";
 type TodayQueueSortMode = "urgent" | "quick_wins";
 type TodayTaskFilterMode = "all" | "overdue";
 
-const DUE_SOON_LOOKAHEAD_DAYS = 10;
-const STALE_IN_PROGRESS_DAYS = 3;
-const PARENT_INACTIVITY_DAYS = 5;
 const DASHBOARD_INSIGHTS_VIEW_STORAGE_KEY = "pdp.dashboardInsightsView";
 const DASHBOARD_TODAY_QUEUE_SORT_STORAGE_KEY = "pdp.dashboardTodayQueueSort";
 const QUICK_ACTION_BUTTON_CLASS =
   "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-50";
 
-export function DashboardInsights({
-  onOpenItem,
-}: {
-  onOpenItem?: (kind: "goal" | "childGoal" | "task", id: string) => void;
-  onNavigateToPlanning?: () => void;
-} = {}) {
+export function DashboardInsights() {
   const { isLoading, user, error } = db.useAuth();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [childGoals, setChildGoals] = useState<ChildGoal[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [planningCommitments, setPlanningCommitments] = useState<PlanningCommitment[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [habitCheckinsByHabitId, setHabitCheckinsByHabitId] = useState<Record<string, HabitCheckin[]>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -47,21 +30,24 @@ export function DashboardInsights({
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInFlightId, setActionInFlightId] = useState<string | null>(null);
   const [closeDaySavedAt, setCloseDaySavedAt] = useState<string | null>(null);
+  const [closeDayBackfillOpen, setCloseDayBackfillOpen] = useState(false);
+  const [closeDayTargetDate, setCloseDayTargetDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [closeDayWhatWentRight, setCloseDayWhatWentRight] = useState("");
   const [closeDayWhatWentWrong, setCloseDayWhatWentWrong] = useState("");
   const [closeDayWhatToAdjust, setCloseDayWhatToAdjust] = useState("");
   const [closeDayAdditionalThoughts, setCloseDayAdditionalThoughts] = useState("");
-  const [closeDayDateOffset, setCloseDayDateOffset] = useState(0);
   const [isQuickTaskModalOpen, setIsQuickTaskModalOpen] = useState(false);
   const [quickTaskTitle, setQuickTaskTitle] = useState("");
   const [quickTaskNotes, setQuickTaskNotes] = useState("");
   const [quickTaskDueDate, setQuickTaskDueDate] = useState("");
   const [quickTaskChildGoalId, setQuickTaskChildGoalId] = useState("");
+  const [quickTaskCommitmentId, setQuickTaskCommitmentId] = useState("");
   const [taskModalTaskId, setTaskModalTaskId] = useState<string | null>(null);
   const [taskModalTitle, setTaskModalTitle] = useState("");
   const [taskModalNotes, setTaskModalNotes] = useState("");
   const [taskModalDueDate, setTaskModalDueDate] = useState("");
   const [taskModalParentGoalId, setTaskModalParentGoalId] = useState("");
+  const [taskModalCommitmentId, setTaskModalCommitmentId] = useState("");
   const [taskModalSnoozeDays, setTaskModalSnoozeDays] = useState("1");
   const [taskModalError, setTaskModalError] = useState<string | null>(null);
   const [pendingTaskDoneId, setPendingTaskDoneId] = useState<string | null>(null);
@@ -82,12 +68,7 @@ export function DashboardInsights({
     }
 
     const stored = window.localStorage.getItem(DASHBOARD_INSIGHTS_VIEW_STORAGE_KEY);
-    if (
-      stored === "plan" ||
-      stored === "review" ||
-      stored === "risks" ||
-      stored === "close_day"
-    ) {
+    if (stored === "close_day") {
       return stored;
     }
 
@@ -149,6 +130,19 @@ export function DashboardInsights({
           ).values(),
         );
 
+        let loadedCommitments: PlanningCommitment[] = [];
+        try {
+          const commitmentsResponse = await fetch("/api/planning/commitments", { cache: "no-store" });
+          if (commitmentsResponse.ok) {
+            const commitmentsBody = (await commitmentsResponse.json()) as { commitments?: PlanningCommitment[] };
+            loadedCommitments = (commitmentsBody.commitments ?? []).sort(
+              (left, right) => left.title.localeCompare(right.title),
+            );
+          }
+        } catch {
+          loadedCommitments = [];
+        }
+
         const loadedHabits = await dataRepository.listHabits(currentUser.id);
         const activeHabits = loadedHabits.filter((habit) => !habit.deletedAt && habit.status !== "archived");
         const checkinEntries = await Promise.all(
@@ -166,6 +160,7 @@ export function DashboardInsights({
           setGoals(loadedGoals);
           setChildGoals(loadedChildGoals);
           setTasks(loadedTasks);
+          setPlanningCommitments(loadedCommitments);
           setHabits(activeHabits);
           setHabitCheckinsByHabitId(checkinsByHabitId);
         }
@@ -188,7 +183,6 @@ export function DashboardInsights({
   }, [user]);
 
   const goalMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
-  const childGoalMap = useMemo(() => new Map(childGoals.map((childGoal) => [childGoal.id, childGoal])), [childGoals]);
   const taskParentOptions = useMemo(
     () => {
       const optionsById = new Map<string, { id: string; label: string }>();
@@ -213,17 +207,20 @@ export function DashboardInsights({
     },
     [childGoals, goalMap, goals],
   );
+  const commitmentOptions = useMemo(
+    () =>
+      planningCommitments.map((commitment) => {
+        const linkedGoal = commitment.linkedGoalId ? goalMap.get(commitment.linkedGoalId) : null;
+        const goalSuffix = linkedGoal ? ` | Goal: ${linkedGoal.title}` : "";
+        return {
+          id: commitment.id,
+          label: `${commitment.level} #${commitment.rank} - ${commitment.title}${goalSuffix}`,
+        };
+      }),
+    [goalMap, planningCommitments],
+  );
   const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const closeDayIso = useMemo(() => {
-    const base = parseDate(todayIso);
-    if (!base) {
-      return todayIso;
-    }
-
-    const date = new Date(base);
-    date.setDate(date.getDate() + closeDayDateOffset);
-    return toIsoDate(date);
-  }, [todayIso, closeDayDateOffset]);
+  const closeDayIso = closeDayTargetDate;
 
   const selectedTask = useMemo(
     () => (taskModalTaskId ? tasks.find((task) => task.id === taskModalTaskId) ?? null : null),
@@ -294,110 +291,6 @@ export function DashboardInsights({
     [tasks, todayIso],
   );
 
-  const dueThisWeekTasks = (() => {
-    const today = parseDate(todayIso);
-    if (!today) {
-      return [] as Task[];
-    }
-
-    const dueBy = new Date(today);
-    dueBy.setDate(today.getDate() + 6);
-
-    return tasks
-      .filter((task) => task.status !== "done" && Boolean(task.dueDate))
-      .filter((task) => {
-        const dueDate = parseDate(task.dueDate);
-        return Boolean(dueDate && dueDate >= today && dueDate <= dueBy);
-      })
-      .sort(compareTasksByDueDate)
-      .slice(0, 4);
-  })();
-
-  const dueSoonTasks = useMemo(() => {
-    const now = startOfDay(new Date());
-    const dueBy = new Date(now);
-    dueBy.setDate(now.getDate() + DUE_SOON_LOOKAHEAD_DAYS);
-
-    return tasks
-      .filter((task) => task.status !== "done" && task.dueDate)
-      .filter((task) => {
-        const dueDate = parseDate(task.dueDate);
-        return Boolean(dueDate && dueDate >= now && dueDate <= dueBy);
-      })
-      .sort(compareTasksByDueDate);
-  }, [tasks]);
-
-  const dueSoonBeyondThisWeekTasks = (() => {
-    const now = parseDate(todayIso);
-    if (!now) {
-      return [] as Task[];
-    }
-
-    const dueAfter = new Date(now);
-    dueAfter.setDate(now.getDate() + 6);
-
-    return dueSoonTasks
-      .filter((task) => {
-        const dueDate = parseDate(task.dueDate);
-        return Boolean(dueDate && dueDate > dueAfter);
-      })
-      .slice(0, 6);
-  })();
-
-  const staleInProgressTasks = (() => {
-    const today = parseDate(todayIso);
-    if (!today) {
-      return [] as Task[];
-    }
-
-    const staleCutoff = new Date(today);
-    staleCutoff.setDate(today.getDate() - STALE_IN_PROGRESS_DAYS);
-
-    return tasks
-      .filter((task) => task.status === "in_progress")
-      .filter((task) => {
-        const updatedAt = new Date(task.updatedAt);
-        return !Number.isNaN(updatedAt.getTime()) && updatedAt < staleCutoff;
-      })
-      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
-      .slice(0, 4);
-  })();
-
-  const blockedByParentInactivityTasks = (() => {
-    const today = parseDate(todayIso);
-    if (!today) {
-      return [] as Task[];
-    }
-
-    const inactivityCutoff = new Date(today);
-    inactivityCutoff.setDate(today.getDate() - PARENT_INACTIVITY_DAYS);
-    const isStaleIsoDate = (isoDateTime: string) => {
-      const parsed = new Date(isoDateTime);
-      return !Number.isNaN(parsed.getTime()) && parsed < inactivityCutoff;
-    };
-
-    return tasks
-      .filter((task) => task.status === "in_progress")
-      .filter((task) => {
-        const parentGoalId = getTaskParentGoalId(task);
-        if (!parentGoalId) {
-          return false;
-        }
-
-        const parentChildGoal = childGoalMap.get(parentGoalId);
-        if (!parentChildGoal) {
-          return false;
-        }
-
-        const isChildGoalStale = isStaleIsoDate(parentChildGoal.updatedAt);
-        const parentGoal = goalMap.get(parentChildGoal.goalId);
-        const isGoalStale = parentGoal ? isStaleIsoDate(parentGoal.updatedAt) : false;
-        return isChildGoalStale || isGoalStale;
-      })
-      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
-      .slice(0, 4);
-  })();
-
   const habitsCheckedInToday = useMemo(
     () =>
       habits.filter((habit) =>
@@ -420,11 +313,6 @@ export function DashboardInsights({
     [habits, habitCheckinsByHabitId, todayIso],
   );
 
-  const currentFocusGoals = useMemo(
-    () => goals.filter((goal) => goal.isFocus && goal.status !== "done").sort(compareByUpdatedAtDesc).slice(0, 3),
-    [goals],
-  );
-
   const quickActionTasks = useMemo(() => {
     const openTasks = tasks.filter((task) => task.status !== "done");
 
@@ -440,10 +328,6 @@ export function DashboardInsights({
       for (const task of tasksDueToday.sort(compareTasksByDueDate)) {
         taskMap.set(task.id, task);
       }
-      for (const task of dueSoonTasks) {
-        taskMap.set(task.id, task);
-      }
-
       const prioritized = Array.from(taskMap.values()).slice(0, 8);
       if (prioritized.length > 0) {
         return prioritized;
@@ -457,7 +341,7 @@ export function DashboardInsights({
     }
 
     return [...openTasks].sort(compareTasksByDueDate).slice(0, 8);
-  }, [dueSoonTasks, overdueTasks, tasks, tasksDueToday, todayQueueSortMode, todayTaskFilterMode]);
+  }, [overdueTasks, tasks, tasksDueToday, todayQueueSortMode, todayTaskFilterMode]);
 
   const completedTodayTasks = useMemo(
     () =>
@@ -467,71 +351,6 @@ export function DashboardInsights({
         .slice(0, 4),
     [tasks, todayIso],
   );
-
-  const overviewStats = useMemo(() => {
-    const professional = goals.filter((goal) => goal.type === "professional");
-    const personal = goals.filter((goal) => goal.type === "personal");
-
-    const professionalOpen = professional.filter((goal) => goal.status !== "done").length;
-    const professionalDone = professional.filter((goal) => goal.status === "done").length;
-    const personalOpen = personal.filter((goal) => goal.status !== "done").length;
-    const personalDone = personal.filter((goal) => goal.status === "done").length;
-
-    const totalGoals = goals.length;
-    const totalDone = professionalDone + personalDone;
-    const overallPercent = totalGoals === 0 ? 0 : Math.round((totalDone / totalGoals) * 100);
-
-    return {
-      professionalOpen,
-      professionalDone,
-      personalOpen,
-      personalDone,
-      totalGoals,
-      totalDone,
-      overallPercent,
-    };
-  }, [goals]);
-
-  const recentlyUpdated = useMemo<RecentlyUpdatedItem[]>(() => {
-    const goalItems: RecentlyUpdatedItem[] = goals.map((goal) => ({
-      id: goal.id,
-      kind: "goal",
-      title: goal.title,
-      status: goal.status,
-      updatedAt: goal.updatedAt,
-    }));
-
-    const childGoalItems: RecentlyUpdatedItem[] = childGoals.map((childGoal) => ({
-      id: childGoal.id,
-      kind: "childGoal",
-      title: childGoal.title,
-      status: childGoal.status,
-      updatedAt: childGoal.updatedAt,
-      parentTitle: goalMap.get(childGoal.goalId)?.title,
-    }));
-
-    const taskItems: RecentlyUpdatedItem[] = tasks.map((task) => {
-      const parentGoalId = getTaskParentGoalId(task);
-      const parentChildGoal = parentGoalId ? childGoalMap.get(parentGoalId) : null;
-      const parentGoal = parentChildGoal
-        ? goalMap.get(parentChildGoal.goalId)
-        : parentGoalId
-          ? goalMap.get(parentGoalId)
-          : null;
-      return {
-        id: task.id,
-        kind: "task",
-        title: task.title,
-        status: task.status,
-        updatedAt: task.updatedAt,
-        parentTitle: parentChildGoal?.title ?? parentGoal?.title,
-      };
-    });
-
-    return [...goalItems, ...childGoalItems, ...taskItems]
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, 8);
-  }, [goals, childGoals, tasks, goalMap, childGoalMap]);
 
   async function handleQuickTaskDone(taskId: string, requireConfirmation = true) {
     if (!user) {
@@ -586,6 +405,7 @@ export function DashboardInsights({
         taskId: task.id,
         ownerUid: user.id,
         parentGoalId: getTaskParentGoalId(task),
+        commitmentId: task.commitmentId,
         title: task.title,
         notes: task.notes,
         dueDate: nextDueDateIso,
@@ -615,16 +435,18 @@ export function DashboardInsights({
       const createdTask = await dataRepository.saveTask({
         ownerUid: user.id,
         parentGoalId: quickTaskChildGoalId || null,
+        commitmentId: quickTaskCommitmentId || null,
         title: quickTaskTitle,
         notes: quickTaskNotes,
         dueDate: quickTaskDueDate || null,
-        unplanned: quickTaskChildGoalId.length === 0,
+        unplanned: quickTaskChildGoalId.length === 0 && quickTaskCommitmentId.length === 0,
       });
 
       setTasks((current) => [...current, createdTask]);
       setQuickTaskTitle("");
       setQuickTaskNotes("");
       setQuickTaskDueDate(todayIso);
+      setQuickTaskCommitmentId("");
       setIsQuickTaskModalOpen(false);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not create that task."));
@@ -678,6 +500,11 @@ export function DashboardInsights({
       return;
     }
 
+    if (closeDayTargetDate > todayIso) {
+      setActionError("Close day date cannot be in the future.");
+      return;
+    }
+
     setActionError(null);
     setCloseDaySavedAt(null);
     setActionInFlightId("close-day-journal");
@@ -702,6 +529,8 @@ export function DashboardInsights({
       setCloseDayWhatWentWrong("");
       setCloseDayWhatToAdjust("");
       setCloseDayAdditionalThoughts("");
+      setCloseDayBackfillOpen(false);
+      setCloseDayTargetDate(todayIso);
     } catch (repositoryError) {
       setActionError(getErrorMessage(repositoryError, "We could not save your close day journal note."));
     } finally {
@@ -727,6 +556,7 @@ export function DashboardInsights({
         taskId: task.id,
         ownerUid: user.id,
         parentGoalId: getTaskParentGoalId(task),
+        commitmentId: task.commitmentId,
         title: task.title,
         notes: task.notes,
         dueDate: task.dueDate,
@@ -758,6 +588,7 @@ export function DashboardInsights({
     setTaskModalNotes("");
     setTaskModalDueDate("");
     setTaskModalParentGoalId("");
+    setTaskModalCommitmentId("");
     setTaskModalSnoozeDays("1");
     setTaskModalError(null);
   }
@@ -773,6 +604,7 @@ export function DashboardInsights({
     setTaskModalNotes(task.notes);
     setTaskModalDueDate(task.dueDate ?? "");
     setTaskModalParentGoalId(getTaskParentGoalId(task) ?? "");
+    setTaskModalCommitmentId(task.commitmentId ?? "");
     setTaskModalSnoozeDays("1");
     setTaskModalError(null);
   }
@@ -782,6 +614,7 @@ export function DashboardInsights({
     setQuickTaskNotes("");
     setQuickTaskDueDate(todayIso);
     setQuickTaskChildGoalId("");
+    setQuickTaskCommitmentId("");
     setIsQuickTaskModalOpen(true);
   }
 
@@ -826,6 +659,7 @@ export function DashboardInsights({
     }
 
     const normalizedParentGoalId = taskModalParentGoalId || null;
+    const normalizedCommitmentId = taskModalCommitmentId || null;
     setTaskModalError(null);
     setActionInFlightId(`task-save-${selectedTask.id}`);
 
@@ -834,10 +668,11 @@ export function DashboardInsights({
         taskId: selectedTask.id,
         ownerUid: user.id,
         parentGoalId: normalizedParentGoalId,
+        commitmentId: normalizedCommitmentId,
         title: taskModalTitle,
         notes: taskModalNotes,
         dueDate: taskModalDueDate || null,
-        unplanned: normalizedParentGoalId === null,
+        unplanned: normalizedParentGoalId === null && normalizedCommitmentId === null,
         existingTask: selectedTask,
       });
 
@@ -898,9 +733,6 @@ export function DashboardInsights({
 
   const modeItems: Array<{ mode: DashboardInsightsMode; label: string; count: number | null }> = [
     { mode: "today", label: "Today", count: tasksDueToday.length },
-    { mode: "plan", label: "Plan", count: overdueTasks.length + dueThisWeekTasks.length },
-    { mode: "review", label: "Review", count: completedTodayCount },
-    { mode: "risks", label: "Risks", count: overdueTasks.length },
     { mode: "close_day", label: "Close Day", count: null },
   ];
 
@@ -1196,38 +1028,55 @@ export function DashboardInsights({
             <div className="mt-3 pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-slate-700">Close day guided journal</p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setCloseDayDateOffset((current) => current - 1);
-                  setCloseDaySavedAt(null);
-                }}
-                className="rounded-full border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                aria-label="Previous close day date"
-              >
-                ←
-              </button>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{formatDateLabel(closeDayIso)}</span>
-              {closeDayDateOffset < 0 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCloseDayDateOffset((current) => Math.min(current + 1, 0));
-                    setCloseDaySavedAt(null);
-                  }}
-                  className="rounded-full border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                  aria-label="Next close day date"
-                >
-                  →
-                </button>
-              ) : null}
-              {closeDaySavedAt ? <p className="text-xs text-emerald-700">Saved {formatDateTimeLabel(closeDaySavedAt)}</p> : null}
-            </div>
+            {closeDaySavedAt ? <p className="text-xs text-emerald-700">Saved {formatDateTimeLabel(closeDaySavedAt)}</p> : null}
           </div>
           <p className="mt-1 text-xs text-slate-600">
             End your day with prompts, then add any free-write thoughts.
           </p>
+
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Closeout date</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {closeDayBackfillOpen ? "Choose an earlier day to backfill." : "Defaults to today unless you need a prior day."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCloseDayBackfillOpen((current) => {
+                    if (current) {
+                      setCloseDayTargetDate(todayIso);
+                    }
+
+                    return !current;
+                  });
+                }}
+                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                {closeDayBackfillOpen ? "Use today" : "Close a past day"}
+              </button>
+            </div>
+
+            {closeDayBackfillOpen ? (
+              <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Day to close
+                <input
+                  type="date"
+                  value={closeDayTargetDate}
+                  max={todayIso}
+                  onChange={(event) => {
+                    setCloseDayTargetDate(event.currentTarget.value);
+                    setCloseDaySavedAt(null);
+                  }}
+                  className="pdp-control mt-1 rounded-md"
+                />
+              </label>
+            ) : (
+              <p className="mt-3 text-sm font-medium text-slate-800">Closing for today: {formatDateLabel(todayIso)}</p>
+            )}
+          </div>
 
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -1292,246 +1141,6 @@ export function DashboardInsights({
             </div>
           ) : null}
 
-          {dashboardMode === "plan" ? (
-            <div className="mt-3 grid gap-3 xl:grid-cols-2">
-              <div className="pdp-card-mobile-ghost rounded-xl border border-rose-200 bg-rose-50/50 px-3 py-3">
-                <p className="text-sm font-semibold text-rose-700">Past due</p>
-                {overdueTasks.length === 0 ? (
-                  <p className="mt-2 text-sm text-rose-700">No overdue tasks.</p>
-                ) : (
-                  <ul className="mt-2 space-y-2">
-                    {overdueTasks.slice(0, 6).map((task) => (
-                      <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-rose-200 bg-white px-2 py-2">
-                        <button
-                          type="button"
-                          onClick={() => openTaskQuickModal(task.id)}
-                          className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
-                        >
-                          {task.title}
-                        </button>
-                        <p className="mt-1 text-xs text-rose-700">Due {formatDateLabel(task.dueDate)} (overdue)</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div className="pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
-                <p className="text-sm font-semibold text-slate-700">Due this week</p>
-                {dueThisWeekTasks.length === 0 ? (
-                  <p className="mt-2 text-sm text-slate-600">No open tasks due in the next 7 days.</p>
-                ) : (
-                  <ul className="mt-2 space-y-2">
-                    {dueThisWeekTasks.map((task) => (
-                      <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 px-2 py-2">
-                        <button
-                          type="button"
-                          onClick={() => openTaskQuickModal(task.id)}
-                          className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
-                          data-testid={`due-week-task-title-${task.id}`}
-                        >
-                          {task.title}
-                        </button>
-                        <p className="mt-1 text-xs text-slate-600">Due {formatDateLabel(task.dueDate)}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div className="pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
-                <p className="text-sm font-semibold text-slate-700">Tasks due soon</p>
-                {dueSoonBeyondThisWeekTasks.length === 0 ? (
-                  <p className="mt-2 text-sm text-slate-600">No tasks in the due-soon window.</p>
-                ) : (
-                  <ul className="mt-2 space-y-2">
-                    {dueSoonBeyondThisWeekTasks.map((task) => (
-                      <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 px-2 py-2">
-                        <button
-                          type="button"
-                          onClick={() => openTaskQuickModal(task.id)}
-                          className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
-                        >
-                          {task.title}
-                        </button>
-                        <p className="mt-1 text-xs text-slate-600">Due {formatDateLabel(task.dueDate)}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          ) : null}
-
-          {dashboardMode === "risks" ? (
-            <div className="mt-3 grid min-w-0 gap-2 xl:grid-cols-2">
-
-            <div className="min-w-0 pdp-card-mobile-ghost rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-3">
-              <p className="text-sm font-semibold text-rose-800">Stale in-progress</p>
-              {staleInProgressTasks.length === 0 ? (
-                <p className="mt-2 text-sm text-rose-700">No stale in-progress tasks.</p>
-              ) : (
-                <ul className="mt-2 space-y-2">
-                  {staleInProgressTasks.map((task) => (
-                    <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-rose-200 bg-white px-2 py-2">
-                      <button
-                        type="button"
-                        onClick={() => onOpenItem?.("task", task.id)}
-                        className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
-                        data-testid={`stale-task-title-${task.id}`}
-                      >
-                        {task.title}
-                      </button>
-                      <p className="mt-1 text-xs text-slate-600">Updated {formatDateLabel(task.updatedAt.slice(0, 10))}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="min-w-0 pdp-card-mobile-ghost rounded-xl border border-violet-200 bg-violet-50/40 px-3 py-3">
-              <p className="text-sm font-semibold text-violet-800">Blocked by parent inactivity</p>
-              {blockedByParentInactivityTasks.length === 0 ? (
-                <p className="mt-2 text-sm text-violet-700">No parent-chain blockers flagged.</p>
-              ) : (
-                <ul className="mt-2 space-y-2">
-                  {blockedByParentInactivityTasks.map((task) => {
-                    const parentGoalId = getTaskParentGoalId(task);
-                    const parentChildGoal = parentGoalId ? childGoalMap.get(parentGoalId) : null;
-                    const parentGoal = parentChildGoal
-                      ? goalMap.get(parentChildGoal.goalId)
-                      : parentGoalId
-                        ? goalMap.get(parentGoalId)
-                        : null;
-                    const parentPath = [parentGoal?.title, parentChildGoal?.title].filter((value): value is string => Boolean(value)).join(" -> ");
-
-                    return (
-                      <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-violet-200 bg-white px-2 py-2">
-                        <button
-                          type="button"
-                          onClick={() => onOpenItem?.("task", task.id)}
-                          className="w-full truncate text-left text-sm font-medium text-slate-900 hover:underline"
-                          data-testid={`blocked-task-title-${task.id}`}
-                        >
-                          {task.title}
-                        </button>
-                        <p className="mt-1 truncate text-xs text-slate-600">{parentPath || "Parent chain"}</p>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-            </div>
-          ) : null}
-
-          {dashboardMode === "review" ? (
-            <section className="mt-3 space-y-4">
-              <article className="pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Overview</h3>
-
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <div className="pdp-card pdp-card-mobile-ghost rounded-xl p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Professional goals
-                </p>
-                <p
-                  className="mt-1 text-4xl font-bold leading-none"
-                  style={{ color: "var(--pdp-theme-primary)" }}
-                >
-                  {overviewStats.professionalOpen}
-                </p>
-                <p className="mt-1 text-xs text-slate-600">Open</p>
-                <p className="mt-2 text-xs text-slate-600">
-                  Completed: <span className="font-semibold text-slate-800">{overviewStats.professionalDone}</span>
-                </p>
-              </div>
-
-              <div className="pdp-card pdp-card-mobile-ghost rounded-xl p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Personal goals</p>
-                <p
-                  className="mt-1 text-4xl font-bold leading-none"
-                  style={{ color: "var(--pdp-theme-primary)" }}
-                >
-                  {overviewStats.personalOpen}
-                </p>
-                <p className="mt-1 text-xs text-slate-600">Open</p>
-                <p className="mt-2 text-xs text-slate-600">
-                  Completed: <span className="font-semibold text-slate-800">{overviewStats.personalDone}</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-3">
-              <div className="flex items-center justify-between text-xs text-slate-600">
-                <span className="font-semibold uppercase tracking-wide">Overall completion</span>
-                <span>{overviewStats.overallPercent}% complete</span>
-              </div>
-              <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-slate-200">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{
-                    width: `${overviewStats.overallPercent}%`,
-                    backgroundColor: "var(--pdp-theme-primary)",
-                  }}
-                  role="progressbar"
-                  aria-valuenow={overviewStats.overallPercent}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                />
-              </div>
-            </div>
-              </article>
-
-              <div className="grid gap-3 xl:grid-cols-2">
-                <article className="pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Current Focus</h3>
-              {currentFocusGoals.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-600">No active focus goal yet.</p>
-              ) : (
-                <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  {currentFocusGoals.map((goal) => (
-                    <li key={goal.id}>
-                      <DashboardItemButton onClick={() => onOpenItem?.("goal", goal.id)}>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium text-slate-900">{goal.title}</p>
-                          <KindTag kind="goal" />
-                        </div>
-                        <p className="mt-1 text-xs uppercase tracking-wide text-slate-600">
-                          {formatStatus(goal.status)}
-                        </p>
-                      </DashboardItemButton>
-                    </li>
-                  ))}
-                </ul>
-              )}
-                </article>
-                <article className="pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Recently Updated</h3>
-              {recentlyUpdated.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-600">No recent updates yet.</p>
-              ) : (
-                <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  {recentlyUpdated.map((item) => (
-                    <li key={`${item.kind}-${item.id}`}>
-                      <DashboardItemButton onClick={() => onOpenItem?.(item.kind, item.id)}>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium text-slate-900">{item.title}</p>
-                          <KindTag kind={item.kind} />
-                        </div>
-                        <p className="mt-1 text-xs text-slate-600">
-                          {formatStatus(item.status)} | Updated {formatDateTimeLabel(item.updatedAt)}
-                          {item.parentTitle ? ` | ${item.parentTitle}` : ""}
-                        </p>
-                      </DashboardItemButton>
-                    </li>
-                  ))}
-                </ul>
-              )}
-                </article>
-              </div>
-            </section>
-          ) : null}
       </article>
 
       <CrudModal
@@ -1561,6 +1170,22 @@ export function DashboardInsights({
               {childGoals.map((childGoal) => (
                 <option key={childGoal.id} value={childGoal.id}>
                   {childGoal.title}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="text-sm text-slate-700">
+            Related commitment (optional)
+            <select
+              value={quickTaskCommitmentId}
+              onChange={(event) => setQuickTaskCommitmentId(event.currentTarget.value)}
+              className="pdp-control mt-1 rounded-lg"
+            >
+              <option value="">No commitment</option>
+              {commitmentOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -1640,6 +1265,22 @@ export function DashboardInsights({
               >
                 <option value="">No parent (unplanned)</option>
                 {taskParentOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm text-slate-700">
+              Related commitment (optional)
+              <select
+                value={taskModalCommitmentId}
+                onChange={(event) => setTaskModalCommitmentId(event.currentTarget.value)}
+                className="pdp-control mt-1 rounded-lg"
+              >
+                <option value="">No commitment</option>
+                {commitmentOptions.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
                   </option>
@@ -1795,28 +1436,6 @@ export function DashboardInsights({
   );
 }
 
-function DashboardItemButton({
-  onClick,
-  children,
-}: {
-  onClick?: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="pdp-card block w-full rounded-lg px-3 py-2 text-left transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
-    >
-      {children}
-    </button>
-  );
-}
-
-function compareByUpdatedAtDesc(a: { updatedAt: string }, b: { updatedAt: string }) {
-  return b.updatedAt.localeCompare(a.updatedAt);
-}
-
 function compareTasksByDueDate(a: Task, b: Task) {
   const aDate = a.dueDate ?? "";
   const bDate = b.dueDate ?? "";
@@ -1847,10 +1466,6 @@ function compareTasksByQuickWins(a: Task, b: Task) {
   return b.updatedAt.localeCompare(a.updatedAt);
 }
 
-function startOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
 function parseDate(dateValue: string | null) {
   if (!dateValue) {
     return null;
@@ -1858,19 +1473,6 @@ function parseDate(dateValue: string | null) {
 
   const parsed = new Date(`${dateValue}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function formatStatus(status: ItemStatus) {
-  switch (status) {
-    case "not_started":
-      return "Not Started";
-    case "in_progress":
-      return "In Progress";
-    case "done":
-      return "Done";
-    default:
-      return status;
-  }
 }
 
 function formatDateLabel(isoDate: string | null) {
@@ -1935,10 +1537,6 @@ function buildCloseDayJournalContent(input: {
     "## Additional thoughts",
     extra,
   ].join("\n");
-}
-
-function toIsoDate(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function buildTaskDueLabel(task: Task, todayIso: string) {

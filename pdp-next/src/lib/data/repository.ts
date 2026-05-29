@@ -12,6 +12,7 @@ import type {
   HabitState,
   ItemStatus,
   JournalEntry,
+  PlanningCommitment,
   ChildGoal,
   Task,
   UserProfile,
@@ -84,6 +85,7 @@ export type SaveTaskInput = {
   taskId?: string;
   ownerUid: string;
   parentGoalId?: string | null;
+  commitmentId?: string | null;
   title: string;
   notes: string;
   dueDate: string | null;
@@ -937,6 +939,9 @@ export const dataRepository: DataRepository = {
   async saveTask(input) {
     ensureClientMutationSupport();
     const normalizedParentGoalId = input.parentGoalId ?? null;
+    const normalizedCommitmentId = input.commitmentId ?? input.existingTask?.commitmentId ?? null;
+
+    await assertTaskCommitmentGoalAlignment(input.ownerUid, normalizedParentGoalId, normalizedCommitmentId);
 
     const now = new Date().toISOString();
     const { trimmedTitle, trimmedNotes } = validateTaskWrite(input);
@@ -953,6 +958,7 @@ export const dataRepository: DataRepository = {
       id: taskId,
       ownerUid: input.ownerUid,
       parentGoalId: normalizedParentGoalId,
+      commitmentId: normalizedCommitmentId,
       title: trimmedTitle,
       notes: trimmedNotes,
       dueDate: input.dueDate,
@@ -988,6 +994,7 @@ export const dataRepository: DataRepository = {
               db.tx.tasks[taskId].update({
                 ownerUid: task.ownerUid,
                 parentGoalId: task.parentGoalId,
+                commitmentId: task.commitmentId,
                 title: task.title,
                 notes: task.notes,
                 dueDate: task.dueDate,
@@ -1743,6 +1750,54 @@ async function findGoalById(ownerUid: string, goalId: string) {
   return (data.goals ?? []).find((goal) => goal.id === goalId) ?? null;
 }
 
+async function findPlanningCommitmentById(ownerUid: string, commitmentId: string) {
+  if (canUseProtectedApiRoutes()) {
+    const response = await invokeProtectedRead<{ commitments?: PlanningCommitment[] }>("/api/planning/commitments");
+    return (response.commitments ?? []).find((commitment) => commitment.id === commitmentId) ?? null;
+  }
+
+  const data = await runClientQuery<{ planningCommitments?: PlanningCommitment[] }>({
+    planningCommitments: {
+      $: {
+        where: {
+          ownerUid,
+        },
+      },
+    },
+  });
+
+  return (data.planningCommitments ?? []).find((commitment) => commitment.id === commitmentId) ?? null;
+}
+
+async function assertTaskCommitmentGoalAlignment(
+  ownerUid: string,
+  parentGoalId: string | null,
+  commitmentId: string | null,
+) {
+  if (!commitmentId) {
+    return;
+  }
+
+  const commitment = await findPlanningCommitmentById(ownerUid, commitmentId);
+  if (!commitment) {
+    throw new Error("Task commitment was not found for this user.");
+  }
+
+  if (!parentGoalId || !commitment.linkedGoalId) {
+    return;
+  }
+
+  const parentGoal = await findGoalById(ownerUid, parentGoalId);
+  if (!parentGoal) {
+    throw new Error("Task parent goal was not found for this user.");
+  }
+
+  const taskRootGoalId = parentGoal.parentGoalId ?? parentGoal.id;
+  if (taskRootGoalId !== commitment.linkedGoalId) {
+    throw new Error("Task parent goal conflicts with the selected commitment goal.");
+  }
+}
+
 async function findChildGoalById(ownerUid: string, childGoalId: string) {
   const data = await runClientQuery<{ goals?: Goal[] }>({
     goals: {
@@ -2143,6 +2198,7 @@ function normalizeTaskDefaults(task: Task): Task {
   return {
     ...task,
     parentGoalId: getTaskParentGoalId(task),
+    commitmentId: task.commitmentId ?? null,
     unplanned: task.unplanned ?? false,
     originalDueDate: task.originalDueDate ?? null,
     snoozedDueDate: task.snoozedDueDate ?? null,
@@ -2156,6 +2212,7 @@ async function saveTaskViaApi(task: Task, isUpdate: boolean) {
 
   const basePayload = {
     parentGoalId: task.parentGoalId,
+    commitmentId: task.commitmentId,
     title: task.title,
     notes: task.notes,
     dueDate: task.dueDate,

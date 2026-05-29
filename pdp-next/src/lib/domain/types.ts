@@ -3,6 +3,11 @@ export type GoalTimeframeLevel = "vision_5y" | "annual" | "quarterly" | "monthly
 export type ItemStatus = "not_started" | "in_progress" | "done";
 export type HabitCadence = "daily" | "weekly";
 export type HabitState = "active" | "paused" | "archived";
+export type PlanningCycleType = "weekly" | "quarterly";
+export type PlanningCycleStatus = "active" | "completed" | "archived";
+export type PlanningCommitmentLevel = "weekly" | "quarterly";
+export type PlanningCommitmentDomain = GoalType | "mixed";
+export type PlanningCommitmentStatus = "not_started" | "in_progress" | "done" | "dropped";
 
 export type SoftDeleteFields = {
   deletedAt: string | null;
@@ -56,6 +61,7 @@ export type Task = SoftDeleteFields & {
   ownerUid: string;
   goalId?: string | null;
   parentGoalId: string | null;
+  commitmentId?: string | null;
   title: string;
   notes: string;
   dueDate: string | null;
@@ -128,4 +134,43 @@ export type UserProfile = {
 export type GoalAggregate = {
   goal: Goal;
   tasksByGoalId: Record<string, Task[]>;
+};
+
+export type PlanningCycle = {
+  id: string;
+  ownerUid: string;
+  cycleType: PlanningCycleType;
+  startDate: string;
+  endDate: string;
+  status: PlanningCycleStatus;
+  reviewSummary: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PlanningCommitment = {
+  id: string;
+  ownerUid: string;
+  cycleId: string;
+  level: PlanningCommitmentLevel;
+  domain: PlanningCommitmentDomain;
+  title: string;
+  linkedGoalId: string | null;
+  rank: 1 | 2 | 3;
+  status: PlanningCommitmentStatus;
+  carryoverFromCommitmentId: string | null;
+  confidenceScore: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DailyFocusPlan = {
+  id: string;
+  ownerUid: string;
+  planDate: string;
+  commitmentIds: string[];
+  taskIds: string[];
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
 };

@@ -5,6 +5,7 @@ import type {
   HabitCheckin,
   ItemStatus,
   JournalEntry,
+  PlanningCommitment,
   Task,
 } from "@/lib/domain/types";
 import { getTaskParentGoalId } from "@/lib/domain/types";
@@ -201,11 +202,14 @@ export async function createTask(ownerUid: string, payload: ParsedTaskWritePaylo
     await findOwnedGoal(ownerUid, payload.parentGoalId);
   }
 
+  await assertTaskCommitmentGoalAlignment(ownerUid, payload.parentGoalId, payload.commitmentId);
+
   const now = new Date().toISOString();
   const nextOrderIndex = await getNextTaskOrderIndex(ownerUid, payload.parentGoalId);
   const { trimmedTitle, trimmedNotes } = validateTaskWrite({
     ownerUid,
     parentGoalId: payload.parentGoalId,
+    commitmentId: payload.commitmentId,
     title: payload.title,
     notes: payload.notes,
     dueDate: payload.dueDate,
@@ -217,6 +221,7 @@ export async function createTask(ownerUid: string, payload: ParsedTaskWritePaylo
     id: taskId,
     ownerUid,
     parentGoalId: payload.parentGoalId,
+    commitmentId: payload.commitmentId,
     title: trimmedTitle,
     notes: trimmedNotes,
     dueDate: payload.dueDate,
@@ -239,6 +244,7 @@ export async function createTask(ownerUid: string, payload: ParsedTaskWritePaylo
     instantAdmin.tx.tasks[taskId].update({
       ownerUid: task.ownerUid,
       parentGoalId: task.parentGoalId,
+      commitmentId: task.commitmentId,
       title: task.title,
       notes: task.notes,
       dueDate: task.dueDate,
@@ -272,12 +278,16 @@ export async function updateTask(
   if (parentGoalChanged && payload.parentGoalId) {
     await findOwnedGoal(ownerUid, payload.parentGoalId);
   }
+
+  await assertTaskCommitmentGoalAlignment(ownerUid, payload.parentGoalId, payload.commitmentId);
+
   const now = new Date().toISOString();
 
   const { trimmedTitle, trimmedNotes } = validateTaskWrite({
     taskId,
     ownerUid,
     parentGoalId: payload.parentGoalId,
+    commitmentId: payload.commitmentId,
     title: payload.title,
     notes: payload.notes,
     dueDate: payload.dueDate,
@@ -292,6 +302,7 @@ export async function updateTask(
   const task: Task = {
     ...existingTask,
     parentGoalId: payload.parentGoalId,
+    commitmentId: payload.commitmentId,
     title: trimmedTitle,
     notes: trimmedNotes,
     dueDate: payload.dueDate,
@@ -306,6 +317,7 @@ export async function updateTask(
   await instantAdmin.transact(
     instantAdmin.tx.tasks[taskId].update({
       parentGoalId: task.parentGoalId,
+      commitmentId: task.commitmentId,
       title: task.title,
       notes: task.notes,
       dueDate: task.dueDate,
@@ -621,7 +633,50 @@ function normalizeTaskParentGoal(task: Task): Task {
   return {
     ...task,
     parentGoalId: getTaskParentGoalId(task),
+    commitmentId: task.commitmentId ?? null,
   };
+}
+
+async function assertTaskCommitmentGoalAlignment(
+  ownerUid: string,
+  parentGoalId: string | null,
+  commitmentId: string | null,
+) {
+  if (!commitmentId) {
+    return;
+  }
+
+  const commitment = await findOwnedPlanningCommitment(ownerUid, commitmentId);
+  if (!parentGoalId || !commitment.linkedGoalId) {
+    return;
+  }
+
+  const parentGoal = await findOwnedGoal(ownerUid, parentGoalId);
+  const taskRootGoalId = parentGoal.parentGoalId ?? parentGoal.id;
+  if (taskRootGoalId !== commitment.linkedGoalId) {
+    throw new InstantRouteBadRequestError("Task parent goal conflicts with the selected commitment goal.");
+  }
+}
+
+async function findOwnedPlanningCommitment(ownerUid: string, commitmentId: string) {
+  const instantAdmin = getInstantAdmin();
+  const { planningCommitments = [] } = await instantAdmin.query({
+    planningCommitments: {
+      $: {
+        where: {
+          ownerUid,
+          id: commitmentId,
+        },
+      },
+    },
+  });
+
+  const commitment = planningCommitments[0] as PlanningCommitment | undefined;
+  if (!commitment) {
+    throw new InstantRouteBadRequestError("Task commitment was not found for this user.");
+  }
+
+  return commitment;
 }
 
 function buildGoalTimeframe(

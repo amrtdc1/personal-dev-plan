@@ -92,6 +92,8 @@ function buildTask(overrides: Partial<Task> = {}): Task {
     id: "task-1",
     ownerUid: "user-1",
     goalId: normalizedGoalId,
+    parentGoalId: overrides.parentGoalId ?? normalizedGoalId,
+    commitmentId: overrides.commitmentId ?? null,
     title: "Task",
     notes: "Notes",
     dueDate: null,
@@ -767,6 +769,7 @@ describe("dataRepository soft-delete cascade", () => {
     expect(parsedBody).toEqual(
       expect.objectContaining({
         parentGoalId: "childGoal-1",
+        commitmentId: null,
         title: "Task",
         notes: "Notes",
         dueDate: null,
@@ -775,6 +778,52 @@ describe("dataRepository soft-delete cascade", () => {
     );
 
     fetchSpy.mockRestore();
+  });
+
+  it("rejects task save when parent goal conflicts with commitment linked goal", async () => {
+    queryOnceMock
+      .mockResolvedValueOnce({
+        data: {
+          planningCommitments: [
+            {
+              id: "commitment-1",
+              ownerUid: "user-1",
+              cycleId: "cycle-1",
+              level: "weekly",
+              domain: "professional",
+              title: "Weekly priority",
+              linkedGoalId: "goal-root-a",
+              rank: 1,
+              status: "not_started",
+              carryoverFromCommitmentId: null,
+              confidenceScore: null,
+              createdAt: "2026-05-01T00:00:00.000Z",
+              updatedAt: "2026-05-01T00:00:00.000Z",
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          goals: [
+            buildGoal({
+              id: "child-goal-1",
+              parentGoalId: "goal-root-b",
+            }),
+          ],
+        },
+      });
+
+    await expect(
+      dataRepository.saveTask({
+        ownerUid: "user-1",
+        parentGoalId: "child-goal-1",
+        commitmentId: "commitment-1",
+        title: "Task with mismatch",
+        notes: "",
+        dueDate: null,
+      }),
+    ).rejects.toThrow("Task parent goal conflicts with the selected commitment goal.");
   });
 
   it("reorders goals using the supplied id order", async () => {

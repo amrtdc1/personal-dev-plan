@@ -190,6 +190,7 @@ describe("instant write payload parsing", () => {
 
     expect(payload).toEqual({
       parentGoalId: "goal-1",
+      commitmentId: null,
       title: "Record smoke results",
       notes: "Paste URL and status",
       dueDate: "2026-05-30",
@@ -210,9 +211,23 @@ describe("instant write payload parsing", () => {
     );
 
     expect(payload.unplanned).toBe(false);
+    expect(payload.commitmentId).toBeNull();
     expect(payload.originalDueDate).toBeNull();
     expect(payload.snoozedDueDate).toBeNull();
     expect(payload.snoozeCount).toBe(0);
+  });
+
+  it("parses optional task commitment id", async () => {
+    const payload = await parseTaskWritePayload(
+      buildRequest({
+        parentGoalId: "goal-1",
+        commitmentId: " commitment-1 ",
+        title: "Record smoke results",
+        notes: "Paste URL and status",
+      }),
+    );
+
+    expect(payload.commitmentId).toBe("commitment-1");
   });
 
   it("rejects task payload when unplanned is not a boolean", async () => {
@@ -274,6 +289,7 @@ describe("instant write payload parsing", () => {
 
     const task = await createTask("user-1", {
       parentGoalId: null,
+      commitmentId: null,
       title: "Inbox triage",
       notes: "",
       dueDate: null,
@@ -322,6 +338,7 @@ describe("instant write payload parsing", () => {
 
     const updatedTask = await updateTask("user-1", "task-1", {
       parentGoalId: "legacy-child-goal-1",
+      commitmentId: null,
       title: "Existing task",
       notes: "",
       dueDate: "2026-05-27",
@@ -348,6 +365,48 @@ describe("instant write payload parsing", () => {
         }),
       }),
     );
+  });
+
+  it("rejects task create when parent goal conflicts with commitment linked goal", async () => {
+    findOwnedGoalMock.mockResolvedValue({
+      id: "child-goal-1",
+      ownerUid: "user-1",
+      parentGoalId: "goal-root-b",
+      title: "Child goal",
+    });
+    queryMock.mockResolvedValueOnce({
+      planningCommitments: [
+        {
+          id: "commitment-1",
+          ownerUid: "user-1",
+          cycleId: "cycle-1",
+          level: "weekly",
+          domain: "professional",
+          title: "Weekly priority",
+          linkedGoalId: "goal-root-a",
+          rank: 1,
+          status: "not_started",
+          carryoverFromCommitmentId: null,
+          confidenceScore: null,
+          createdAt: "2026-05-01T00:00:00.000Z",
+          updatedAt: "2026-05-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    await expect(
+      createTask("user-1", {
+        parentGoalId: "child-goal-1",
+        commitmentId: "commitment-1",
+        title: "Mismatch task",
+        notes: "",
+        dueDate: null,
+        unplanned: false,
+        originalDueDate: null,
+        snoozedDueDate: null,
+        snoozeCount: 0,
+      }),
+    ).rejects.toThrow("Task parent goal conflicts with the selected commitment goal.");
   });
 
   it("parses valid habit payload and defaults status", async () => {

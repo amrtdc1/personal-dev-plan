@@ -20,6 +20,7 @@ type GoalWritePayload = {
 
 type TaskWritePayload = {
   parentGoalId?: string | null;
+  commitmentId?: string | null;
   title?: string;
   notes?: string;
   dueDate?: string | null;
@@ -63,6 +64,7 @@ export type ParsedGoalWritePayload = {
 
 export type ParsedTaskWritePayload = {
   parentGoalId: string | null;
+  commitmentId: string | null;
   title: string;
   notes: string;
   dueDate: string | null;
@@ -153,6 +155,7 @@ export async function parseTaskWritePayload(request: Request): Promise<ParsedTas
 
   return {
     parentGoalId: parseOptionalTrimmedString(payload.parentGoalId),
+    commitmentId: parseOptionalTrimmedString(payload.commitmentId),
     title: payload.title,
     notes: payload.notes,
     dueDate: parseOptionalString(payload.dueDate),

@@ -625,10 +625,7 @@ function SignedInShell() {
       {activeSection === "dashboard" ? (
         <>
           <OfflineSyncStatus />
-          <DashboardInsights
-            onOpenItem={handleOpenItemFromDashboard}
-            onNavigateToPlanning={handleNavigateToPlanning}
-          />
+          <DashboardInsights />
         </>
       ) : null}
 
