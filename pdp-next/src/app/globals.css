@@ -317,6 +317,79 @@ h1, h2, h3, h4, h5, h6,
   backdrop-filter: none;
 }
 
+.pdp-panel-mobile-flat {
+  border-radius: 1rem;
+}
+
+.pdp-panel-muted-mobile-flat {
+  border-radius: 0.75rem;
+}
+
+.pdp-card-mobile-flat {
+  border-radius: 0.75rem;
+}
+
+.pdp-card-mobile-ghost {
+  border-radius: 0.75rem;
+}
+
+.pdp-divider-list > * + * {
+  border-top: 1px solid color-mix(in srgb, var(--pdp-border) 70%, transparent);
+  padding-top: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 768px) {
+  .pdp-panel-mobile-flat {
+    border-radius: 0.9rem;
+    padding: 1rem;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .pdp-panel-muted-mobile-flat {
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    padding: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .pdp-card-mobile-flat {
+    border-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .pdp-card-mobile-ghost {
+    border-color: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .pdp-mobile-surface .pdp-panel-muted {
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .pdp-mobile-surface .pdp-card,
+  .pdp-mobile-surface .pdp-solid-surface {
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .pdp-mobile-surface .rounded-xl.border,
+  .pdp-mobile-surface .rounded-lg.border {
+    border-color: transparent;
+    box-shadow: none;
+  }
+}
+
 .pdp-shell .pdp-selectable-row {
   transition: background-color 160ms ease;
   box-shadow: none;

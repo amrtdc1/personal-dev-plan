@@ -1133,6 +1133,8 @@ export function MigrationDataPreview({
       {showWorkspaceShell ? (
         <WorkspaceShell
           title="Planning"
+          sectionClassName="pdp-panel-mobile-flat pdp-mobile-surface"
+          leftRailClassName="pdp-panel-muted-mobile-flat"
           titleTrailing={
             <span className="sm:hidden">
               <InfoPopover className="self-center" label="Planning help">
@@ -1167,7 +1169,7 @@ export function MigrationDataPreview({
             </>
           }
         >
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 pdp-panel-muted-mobile-flat">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">PLANNING FILTERS</p>
               <button
@@ -1182,7 +1184,7 @@ export function MigrationDataPreview({
             {isFilterPanelOpen ? <div className="mt-3">{timelineNav}</div> : null}
           </div>
 
-          <div className="pdp-card sticky top-2 z-10 mt-4 px-3 py-2 text-[11px] leading-5 text-slate-500 shadow-sm backdrop-blur sm:text-xs lg:static lg:shadow-none">
+          <div className="pdp-card pdp-card-mobile-flat sticky top-2 z-10 mt-4 px-3 py-2 text-[11px] leading-5 text-slate-500 shadow-sm backdrop-blur sm:text-xs lg:static lg:shadow-none">
         <span className="font-semibold uppercase tracking-wide text-slate-500">Relationship path:</span>{" "}
         <span className="font-semibold text-slate-700">{selectedGoal?.title ?? "Select a goal"}</span>{" "}
         <span>&gt;</span>{" "}
@@ -1192,7 +1194,7 @@ export function MigrationDataPreview({
             <div className="mt-3 lg:hidden">{detailLaneNav}</div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <article className={`${mobileView === "goals" ? "block" : "hidden"} pdp-panel-muted lg:block`}>
+        <article className={`${mobileView === "goals" ? "block" : "hidden"} pdp-panel-muted pdp-panel-muted-mobile-flat lg:block`}>
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Goals</h3>
             <div className="flex items-center gap-2">
@@ -1232,7 +1234,7 @@ export function MigrationDataPreview({
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{groupLabel}</p>
                 {groupGoals.length === 0 ? (
                   <ul className="mt-2 space-y-2">
-                    <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+                    <li className="pdp-card-mobile-ghost rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
                       No {groupLabel.toLowerCase()} goals yet.
                     </li>
                   </ul>
@@ -1305,7 +1307,7 @@ export function MigrationDataPreview({
           </div>
         </article>
 
-        <article className={`${mobileView === "tasks" ? "block" : "hidden"} pdp-panel-muted lg:block`}>
+        <article className={`${mobileView === "tasks" ? "block" : "hidden"} pdp-panel-muted pdp-panel-muted-mobile-flat lg:block`}>
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Tasks</h3>
             <button
@@ -1336,7 +1338,7 @@ export function MigrationDataPreview({
 
           <ul className="mt-3 space-y-2">
             {tasksForSelectedChildGoal.length === 0 ? (
-              <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+              <li className="pdp-card-mobile-ghost rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
                 No tasks yet.
               </li>
             ) : (
@@ -1397,7 +1399,7 @@ export function MigrationDataPreview({
       </div>
 
       {showHabitsSection ? (
-      <article className="pdp-panel-muted mt-5">
+      <article className="pdp-panel-muted pdp-panel-muted-mobile-flat mt-5">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Habits</h3>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
@@ -1444,7 +1446,7 @@ export function MigrationDataPreview({
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           <ul className="space-y-2">
             {habits.length === 0 ? (
-              <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+              <li className="pdp-card-mobile-ghost rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
                 No habits yet.
               </li>
             ) : (
@@ -1452,7 +1454,7 @@ export function MigrationDataPreview({
                 const isSelected = selectedHabitId === habit.id;
                 const checkinCount = habitCheckinsByHabitId[habit.id]?.length ?? 0;
                 return (
-                  <li key={habit.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <li key={habit.id} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-white px-3 py-2">
                     <button
                       type="button"
                       onClick={() => setSelectedHabitId(habit.id)}
@@ -1479,7 +1481,7 @@ export function MigrationDataPreview({
             )}
           </ul>
 
-          <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+          <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-white px-3 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent check-ins</p>
             {selectedHabitId ? (
               <ul className="mt-2 space-y-1 text-sm text-slate-700">
@@ -1504,7 +1506,7 @@ export function MigrationDataPreview({
       ) : null}
 
       {showArchivedGoals && hasAnyArchived ? (
-        <article className="pdp-panel-muted mt-5">
+        <article className="pdp-panel-muted pdp-panel-muted-mobile-flat mt-5">
           <h3 className="text-sm font-semibold text-slate-900">
             Archived ({archivedGoals.length} goal{archivedGoals.length === 1 ? "" : "s"}, {orphanArchivedTasks.length} task
             {orphanArchivedTasks.length === 1 ? "" : "s"})
@@ -1517,7 +1519,7 @@ export function MigrationDataPreview({
               </p>
               <ul className="mt-2 space-y-2 text-sm text-slate-700">
                 {archivedGoals.map((goal) => (
-                  <li key={goal.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <li key={goal.id} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-white px-3 py-2">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-medium text-slate-900">{goal.title}</p>
@@ -1558,7 +1560,7 @@ export function MigrationDataPreview({
                   const taskParentGoalId = getTaskParentGoalId(task);
                   const parentChildGoal = allChildGoals.find((childGoal) => childGoal.id === taskParentGoalId);
                   return (
-                    <li key={task.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-white px-3 py-2">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium text-slate-900">{task.title}</p>

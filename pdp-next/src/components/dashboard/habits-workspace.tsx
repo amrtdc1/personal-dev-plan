@@ -353,6 +353,7 @@ export function HabitsWorkspace() {
   return (
     <WorkspaceShell
       title="Habits"
+      sectionClassName="pdp-panel-mobile-flat pdp-mobile-surface"
       description="Track recurring routines and keep your streaks alive with fast daily check-ins."
       notices={
         <>
@@ -427,7 +428,7 @@ export function HabitsWorkspace() {
       <div className="mt-4 grid min-w-0 gap-3 lg:grid-cols-2">
         <ul className="min-w-0 space-y-2">
           {activeHabits.length === 0 ? (
-            <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+            <li className="pdp-card-mobile-ghost rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
               No habits yet.
             </li>
           ) : (
@@ -444,7 +445,7 @@ export function HabitsWorkspace() {
               const streakFill = Math.max(6, Math.min(100, Math.round((metrics.currentStreak / Math.max(1, metrics.bestStreak || 1)) * 100)));
 
               return (
-                <li key={habit.id} className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <li key={habit.id} className="pdp-card-mobile-ghost min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2">
                   <button
                     type="button"
                     onClick={() => setSelectedHabitId(habit.id)}
@@ -462,7 +463,7 @@ export function HabitsWorkspace() {
                     </p>
 
                     <div className="mt-2 grid min-w-0 gap-2 md:grid-cols-3">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                      <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">4-week adherence</p>
                         <p className="mt-0.5 text-sm font-semibold text-slate-900">{metrics.adherence28dPercent}%</p>
                         <div className="mt-1 h-1.5 rounded-full bg-slate-200">
@@ -473,7 +474,7 @@ export function HabitsWorkspace() {
                         </div>
                       </div>
 
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                      <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Streak</p>
                         <p className="mt-0.5 text-sm font-semibold text-slate-900">{metrics.currentStreak} / {metrics.bestStreak}</p>
                         <div className="mt-1 h-1.5 rounded-full bg-slate-200">
@@ -484,7 +485,7 @@ export function HabitsWorkspace() {
                         </div>
                       </div>
 
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                      <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Recent activity</p>
                         <div className="mt-1 grid grid-cols-7 gap-1">
                           {activityCells.map((isActive, index) => (
@@ -530,7 +531,7 @@ export function HabitsWorkspace() {
           )}
         </ul>
 
-        <div className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-3">
+        <div className="pdp-card-mobile-ghost min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent check-in days</p>
           {recentDailyCheckins.length === 0 ? (
             <p className="mt-2 text-xs text-slate-500">No check-ins yet.</p>
@@ -541,7 +542,7 @@ export function HabitsWorkspace() {
                   <button
                     type="button"
                     onClick={() => setSelectedDailyCheckinDate(daily.date)}
-                    className="w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-left transition hover:border-slate-300 hover:bg-white"
+                    className="pdp-card-mobile-ghost w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-left transition hover:border-slate-300 hover:bg-white"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-slate-800">{daily.date}</span>
@@ -562,11 +563,11 @@ export function HabitsWorkspace() {
       </div>
 
       {archivedHabits.length > 0 ? (
-        <div className="mt-4 rounded-lg border border-slate-200 bg-white px-3 py-3">
+        <div className="mt-4 pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-white px-3 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Archived habits</p>
           <ul className="mt-2 space-y-2">
             {archivedHabits.map((habit) => (
-              <li key={habit.id} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              <li key={habit.id} className="pdp-card-mobile-ghost rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-medium text-slate-800">{habit.title}</p>
@@ -649,7 +650,7 @@ export function HabitsWorkspace() {
             </p>
             <ul className="space-y-2">
               {selectedDailyCheckinSummary.checkins.map((checkin) => (
-                <li key={checkin.checkinId} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <li key={checkin.checkinId} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   <p className="text-sm font-semibold text-slate-900">{checkin.habitTitle}</p>
                   <p className="mt-1 text-xs text-slate-500">
                     {checkin.cadence === "daily" ? "Daily" : "Weekly"} target {checkin.targetCount}

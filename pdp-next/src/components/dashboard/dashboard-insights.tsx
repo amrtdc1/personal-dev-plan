@@ -907,6 +907,8 @@ export function DashboardInsights({
   return (
     <WorkspaceShell
       title="Today Workspace"
+      sectionClassName="pdp-panel-mobile-flat pdp-mobile-surface"
+      leftRailClassName="pdp-panel-muted-mobile-flat"
       headerAside={
         <button
           type="button"
@@ -976,7 +978,7 @@ export function DashboardInsights({
         </nav>
       }
     >
-      <article className="pdp-panel-muted min-w-0 overflow-x-clip">
+      <article className="pdp-panel-muted pdp-panel-muted-mobile-flat min-w-0 overflow-x-clip">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-lg font-semibold text-slate-900">{modeItems.find((item) => item.mode === dashboardMode)?.label}</h3>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -991,12 +993,12 @@ export function DashboardInsights({
               </div>
 
               <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="pdp-solid-surface rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
+          <div className="pdp-solid-surface pdp-card-mobile-ghost rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
             <p className="text-sm font-semibold text-slate-700">Tasks due today</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{tasksDueToday.length}</p>
             <p className="text-xs text-slate-600">Need action</p>
           </div>
-          <div className="pdp-solid-surface rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
+          <div className="pdp-solid-surface pdp-card-mobile-ghost rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
             <p className="text-sm font-semibold text-slate-700">Habit check-ins</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{habitsCheckedInTodayCount}</p>
             <p className="text-xs text-slate-600">of {habits.length} active habits</p>
@@ -1007,14 +1009,14 @@ export function DashboardInsights({
               </p>
             ) : null}
           </div>
-          <div className="pdp-solid-surface rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
+          <div className="pdp-solid-surface pdp-card-mobile-ghost rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
             <p className="text-sm font-semibold text-slate-700">Tasks completed</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{completedTodayCount}</p>
             <p className="text-xs text-slate-600" data-testid="planned-unplanned-summary">
               {plannedVsUnplannedToday.planned} planned | {plannedVsUnplannedToday.unplanned} unplanned
             </p>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 shadow-sm">
+          <div className="pdp-card-mobile-ghost rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 shadow-sm">
             <p className="text-sm font-semibold text-amber-800">Overdue now</p>
             <p className="mt-1 text-2xl font-semibold text-amber-900">{overdueTasks.length}</p>
             {overdueTasks.length > 0 ? (
@@ -1036,7 +1038,7 @@ export function DashboardInsights({
               </div>
 
                 <div className="mt-4 grid min-w-0 gap-3 xl:[grid-template-columns:repeat(2,minmax(0,1fr))]">
-              <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <div className="min-w-0 pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-slate-700">Quick task actions</p>
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
@@ -1084,7 +1086,7 @@ export function DashboardInsights({
                 {quickActionTasks.length > 0 ? (
                   <ul className="space-y-2">
                     {quickActionTasks.map((task) => (
-                      <li key={task.id} className="flex min-w-0 flex-wrap items-start justify-between gap-2 rounded-lg border border-slate-200 px-2 py-2">
+                      <li key={task.id} className="pdp-card-mobile-ghost flex min-w-0 flex-wrap items-start justify-between gap-2 rounded-lg border border-slate-200 px-2 py-2">
                         <div className="min-w-0 flex-1">
                           <button
                             type="button"
@@ -1135,7 +1137,7 @@ export function DashboardInsights({
                     <p className="text-xs font-semibold text-slate-500">Completed today</p>
                     <ul className="space-y-2">
                       {completedTodayTasks.map((task) => (
-                        <li key={task.id} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+                        <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
                           <button
                             type="button"
                             onClick={() => openTaskQuickModal(task.id)}
@@ -1164,14 +1166,14 @@ export function DashboardInsights({
             )}
           </div>
 
-          <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3">
+          <div className="min-w-0 pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
             <p className="text-sm font-semibold text-slate-700">Quick habit check-ins</p>
             {habitsNeedingCheckin.slice(0, 20).length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">All tracked habits are checked in today.</p>
             ) : (
               <ul className="mt-2 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                 {habitsNeedingCheckin.slice(0, 20).map((habit) => (
-                  <li key={habit.id} className="min-w-0 rounded-lg border border-slate-200 px-2 py-2">
+                  <li key={habit.id} className="pdp-card-mobile-ghost min-w-0 rounded-lg border border-slate-200 px-2 py-2">
                     <p className="truncate text-sm font-medium text-slate-900">{habit.title}</p>
                     <button
                       type="button"
@@ -1191,7 +1193,7 @@ export function DashboardInsights({
           ) : null}
 
           {dashboardMode === "close_day" ? (
-            <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
+            <div className="mt-3 pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-slate-700">Close day guided journal</p>
             <div className="flex items-center gap-2">
@@ -1292,14 +1294,14 @@ export function DashboardInsights({
 
           {dashboardMode === "plan" ? (
             <div className="mt-3 grid gap-3 xl:grid-cols-2">
-              <div className="rounded-xl border border-rose-200 bg-rose-50/50 px-3 py-3">
+              <div className="pdp-card-mobile-ghost rounded-xl border border-rose-200 bg-rose-50/50 px-3 py-3">
                 <p className="text-sm font-semibold text-rose-700">Past due</p>
                 {overdueTasks.length === 0 ? (
                   <p className="mt-2 text-sm text-rose-700">No overdue tasks.</p>
                 ) : (
                   <ul className="mt-2 space-y-2">
                     {overdueTasks.slice(0, 6).map((task) => (
-                      <li key={task.id} className="rounded-lg border border-rose-200 bg-white px-2 py-2">
+                      <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-rose-200 bg-white px-2 py-2">
                         <button
                           type="button"
                           onClick={() => openTaskQuickModal(task.id)}
@@ -1314,14 +1316,14 @@ export function DashboardInsights({
                 )}
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <div className="pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
                 <p className="text-sm font-semibold text-slate-700">Due this week</p>
                 {dueThisWeekTasks.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-600">No open tasks due in the next 7 days.</p>
                 ) : (
                   <ul className="mt-2 space-y-2">
                     {dueThisWeekTasks.map((task) => (
-                      <li key={task.id} className="rounded-lg border border-slate-200 px-2 py-2">
+                      <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 px-2 py-2">
                         <button
                           type="button"
                           onClick={() => openTaskQuickModal(task.id)}
@@ -1337,14 +1339,14 @@ export function DashboardInsights({
                 )}
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <div className="pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
                 <p className="text-sm font-semibold text-slate-700">Tasks due soon</p>
                 {dueSoonBeyondThisWeekTasks.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-600">No tasks in the due-soon window.</p>
                 ) : (
                   <ul className="mt-2 space-y-2">
                     {dueSoonBeyondThisWeekTasks.map((task) => (
-                      <li key={task.id} className="rounded-lg border border-slate-200 px-2 py-2">
+                      <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 px-2 py-2">
                         <button
                           type="button"
                           onClick={() => openTaskQuickModal(task.id)}
@@ -1364,14 +1366,14 @@ export function DashboardInsights({
           {dashboardMode === "risks" ? (
             <div className="mt-3 grid min-w-0 gap-2 xl:grid-cols-2">
 
-            <div className="min-w-0 rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-3">
+            <div className="min-w-0 pdp-card-mobile-ghost rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-3">
               <p className="text-sm font-semibold text-rose-800">Stale in-progress</p>
               {staleInProgressTasks.length === 0 ? (
                 <p className="mt-2 text-sm text-rose-700">No stale in-progress tasks.</p>
               ) : (
                 <ul className="mt-2 space-y-2">
                   {staleInProgressTasks.map((task) => (
-                    <li key={task.id} className="rounded-lg border border-rose-200 bg-white px-2 py-2">
+                    <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-rose-200 bg-white px-2 py-2">
                       <button
                         type="button"
                         onClick={() => onOpenItem?.("task", task.id)}
@@ -1387,7 +1389,7 @@ export function DashboardInsights({
               )}
             </div>
 
-            <div className="min-w-0 rounded-xl border border-violet-200 bg-violet-50/40 px-3 py-3">
+            <div className="min-w-0 pdp-card-mobile-ghost rounded-xl border border-violet-200 bg-violet-50/40 px-3 py-3">
               <p className="text-sm font-semibold text-violet-800">Blocked by parent inactivity</p>
               {blockedByParentInactivityTasks.length === 0 ? (
                 <p className="mt-2 text-sm text-violet-700">No parent-chain blockers flagged.</p>
@@ -1404,7 +1406,7 @@ export function DashboardInsights({
                     const parentPath = [parentGoal?.title, parentChildGoal?.title].filter((value): value is string => Boolean(value)).join(" -> ");
 
                     return (
-                      <li key={task.id} className="rounded-lg border border-violet-200 bg-white px-2 py-2">
+                      <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-violet-200 bg-white px-2 py-2">
                         <button
                           type="button"
                           onClick={() => onOpenItem?.("task", task.id)}
@@ -1425,11 +1427,11 @@ export function DashboardInsights({
 
           {dashboardMode === "review" ? (
             <section className="mt-3 space-y-4">
-              <article className="rounded-xl border border-slate-200 bg-white p-4">
+              <article className="pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white p-4">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Overview</h3>
 
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <div className="pdp-card rounded-xl p-4">
+              <div className="pdp-card pdp-card-mobile-ghost rounded-xl p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                   Professional goals
                 </p>
@@ -1445,7 +1447,7 @@ export function DashboardInsights({
                 </p>
               </div>
 
-              <div className="pdp-card rounded-xl p-4">
+              <div className="pdp-card pdp-card-mobile-ghost rounded-xl p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Personal goals</p>
                 <p
                   className="mt-1 text-4xl font-bold leading-none"
@@ -1482,7 +1484,7 @@ export function DashboardInsights({
               </article>
 
               <div className="grid gap-3 xl:grid-cols-2">
-                <article className="rounded-xl border border-slate-200 bg-white p-4">
+                <article className="pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Current Focus</h3>
               {currentFocusGoals.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-600">No active focus goal yet.</p>
@@ -1504,7 +1506,7 @@ export function DashboardInsights({
                 </ul>
               )}
                 </article>
-                <article className="rounded-xl border border-slate-200 bg-white p-4">
+                <article className="pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Recently Updated</h3>
               {recentlyUpdated.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-600">No recent updates yet.</p>

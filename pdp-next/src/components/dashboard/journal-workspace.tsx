@@ -278,7 +278,7 @@ export function JournalWorkspace() {
   }
 
   return (
-    <section className="pdp-panel">
+    <section className="pdp-panel pdp-panel-mobile-flat pdp-mobile-surface">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <h2 className="pdp-section-title text-slate-900">Journal</h2>
@@ -409,7 +409,7 @@ export function JournalWorkspace() {
         </form>
       </CrudModal>
 
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-3">
+      <div className="mt-4 pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">JOURNAL FILTERS</p>
           <button
@@ -500,7 +500,7 @@ export function JournalWorkspace() {
           pagedEntries.map((entry) => (
             <article
               key={entry.id}
-              className={`pdp-card rounded-xl border p-4 ${entry.deletedAt ? "border-amber-200 bg-amber-50/40" : "border-slate-200 bg-white"}`}
+              className={`pdp-card pdp-card-mobile-ghost rounded-xl border p-4 ${entry.deletedAt ? "border-amber-200 bg-amber-50/40" : "border-slate-200 bg-white"}`}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -556,7 +556,7 @@ export function JournalWorkspace() {
               ) : null}
 
               <div
-                className="journal-markdown pdp-panel-muted mt-3 rounded-lg text-sm text-slate-800"
+                className="journal-markdown pdp-panel-muted pdp-panel-muted-mobile-flat mt-3 rounded-lg text-sm text-slate-800"
                 dangerouslySetInnerHTML={{ __html: renderStrictMarkdownToHtml(entry.content) }}
               />
             </article>
