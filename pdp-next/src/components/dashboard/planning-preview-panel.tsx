@@ -54,6 +54,10 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
     () => tasks.filter((task) => task.deletedAt === null && task.status !== "done"),
     [tasks],
   );
+  const goalTitleById = useMemo(
+    () => new Map(activeGoals.map((goal) => [goal.id, goal.title])),
+    [activeGoals],
+  );
 
   const cycleType: PlanningCycleType = planningSurface === "quarterly" ? "quarterly" : "weekly";
 
@@ -66,6 +70,36 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
     () => commitments.filter((commitment) => commitment.cycleId === activeCycleId),
     [activeCycleId, commitments],
   );
+  const tasksByCommitmentId = useMemo(() => {
+    const grouped = new Map<string, Task[]>();
+
+    for (const task of activeTasks) {
+      if (!task.commitmentId) {
+        continue;
+      }
+
+      const existing = grouped.get(task.commitmentId) ?? [];
+      existing.push(task);
+      grouped.set(task.commitmentId, existing);
+    }
+
+    for (const entries of grouped.values()) {
+      entries.sort((left, right) => {
+        if (left.dueDate && right.dueDate) {
+          return left.dueDate.localeCompare(right.dueDate);
+        }
+        if (left.dueDate) {
+          return -1;
+        }
+        if (right.dueDate) {
+          return 1;
+        }
+        return right.updatedAt.localeCompare(left.updatedAt);
+      });
+    }
+
+    return grouped;
+  }, [activeTasks]);
 
   const longTermGoals = useMemo(
     () =>
@@ -495,16 +529,54 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
               <ul className="mt-2 space-y-2">
                 {cycleCommitments
                   .sort((left, right) => left.rank - right.rank)
-                  .map((commitment) => (
-                    <li key={commitment.id} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-sm">
-                      <p className="font-medium text-slate-900">
-                        #{commitment.rank} {commitment.title}
-                      </p>
-                      <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-500">
-                        {commitment.domain} | {commitment.status.replace("_", " ")}
-                      </p>
-                    </li>
-                  ))}
+                  .map((commitment) => {
+                    const linkedTasks = tasksByCommitmentId.get(commitment.id) ?? [];
+                    const linkedGoalTitle = commitment.linkedGoalId ? goalTitleById.get(commitment.linkedGoalId) : null;
+
+                    return (
+                      <li key={commitment.id} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="font-medium text-slate-900">
+                              #{commitment.rank} {commitment.title}
+                            </p>
+                            <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-500">
+                              {commitment.domain} | {commitment.status.replace("_", " ")}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1">
+                            {linkedGoalTitle ? (
+                              <span className="rounded-full bg-slate-200 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                                Goal: {linkedGoalTitle}
+                              </span>
+                            ) : null}
+                            <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                              {linkedTasks.length} task{linkedTasks.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                        </div>
+                        {linkedTasks.length > 0 ? (
+                          <ul className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-xs text-slate-600">
+                            {linkedTasks.slice(0, 3).map((task) => (
+                              <li key={task.id} className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-medium text-slate-700">{task.title}</span>
+                                <span>{task.dueDate ? `Due ${task.dueDate}` : "No due date"}</span>
+                              </li>
+                            ))}
+                            {linkedTasks.length > 3 ? (
+                              <li className="text-[11px] uppercase tracking-wide text-slate-500">
+                                +{linkedTasks.length - 3} more linked tasks
+                              </li>
+                            ) : null}
+                          </ul>
+                        ) : (
+                          <p className="mt-2 border-t border-slate-200 pt-2 text-xs text-slate-500">
+                            No tasks linked yet. Add execution tasks against this commitment from Planning or Today.
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
               </ul>
             )}
           </div>

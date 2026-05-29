@@ -22,25 +22,6 @@ export function FocusTodayPanel({ tasks, onOpenTask }: FocusTodayPanelProps) {
   const [isSaving, setIsSaving] = useState(false);
 
   const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const candidateTasks = useMemo(
-    () =>
-      tasks
-        .filter((task) => task.deletedAt === null && task.status !== "done")
-        .sort((left, right) => {
-          if (left.dueDate && right.dueDate) {
-            return left.dueDate.localeCompare(right.dueDate);
-          }
-          if (left.dueDate) {
-            return -1;
-          }
-          if (right.dueDate) {
-            return 1;
-          }
-          return left.createdAt.localeCompare(right.createdAt);
-        })
-        .slice(0, 12),
-    [tasks],
-  );
 
   const selectedCommitments = useMemo(
     () => weeklyCommitments.filter((commitment) => selectedCommitmentIds.includes(commitment.id)),
@@ -66,6 +47,43 @@ export function FocusTodayPanel({ tasks, onOpenTask }: FocusTodayPanelProps) {
 
     return [...scoped].sort((left, right) => left.rank - right.rank || right.updatedAt.localeCompare(left.updatedAt));
   }, [handoffCycleId, weeklyCommitments]);
+  const commitmentById = useMemo(
+    () => new Map(weeklyCommitments.map((commitment) => [commitment.id, commitment])),
+    [weeklyCommitments],
+  );
+  const cycleScopedCommitmentIds = useMemo(
+    () => new Set(cycleScopedCommitments.map((commitment) => commitment.id)),
+    [cycleScopedCommitments],
+  );
+  const selectedCommitmentIdSet = useMemo(
+    () => new Set(selectedCommitmentIds),
+    [selectedCommitmentIds],
+  );
+  const candidateTasks = useMemo(
+    () =>
+      tasks
+        .filter((task) => task.deletedAt === null && task.status !== "done")
+        .sort((left, right) => {
+          const leftPriority = getTaskFocusPriority(left, selectedCommitmentIdSet, cycleScopedCommitmentIds);
+          const rightPriority = getTaskFocusPriority(right, selectedCommitmentIdSet, cycleScopedCommitmentIds);
+
+          if (leftPriority !== rightPriority) {
+            return leftPriority - rightPriority;
+          }
+          if (left.dueDate && right.dueDate) {
+            return left.dueDate.localeCompare(right.dueDate);
+          }
+          if (left.dueDate) {
+            return -1;
+          }
+          if (right.dueDate) {
+            return 1;
+          }
+          return left.createdAt.localeCompare(right.createdAt);
+        })
+        .slice(0, 12),
+    [cycleScopedCommitmentIds, selectedCommitmentIdSet, tasks],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -235,6 +253,9 @@ export function FocusTodayPanel({ tasks, onOpenTask }: FocusTodayPanelProps) {
       <p className="mt-2 text-xs text-slate-600">
         Pick up to 3 commitments and 3 tasks for today. Weekly planning stays in Planning workspace.
       </p>
+      <p className="mt-1 text-[11px] text-slate-500">
+        Tasks tied to your selected or current-cycle commitments surface first so Today reflects the planning handoff.
+      </p>
 
       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -310,6 +331,9 @@ export function FocusTodayPanel({ tasks, onOpenTask }: FocusTodayPanelProps) {
               {candidateTasks.map((task) => {
                 const checked = selectedTaskIds.includes(task.id);
                 const disabled = !checked && selectedTaskIds.length >= 3;
+                const linkedCommitment = task.commitmentId ? commitmentById.get(task.commitmentId) ?? null : null;
+                const isLinkedToSelectedCommitment = Boolean(task.commitmentId && selectedCommitmentIdSet.has(task.commitmentId));
+                const isLinkedToVisibleCycle = Boolean(task.commitmentId && cycleScopedCommitmentIds.has(task.commitmentId));
                 return (
                   <li key={task.id}>
                     <div className={`rounded-md border px-2 py-2 ${checked ? "border-slate-300 bg-slate-50" : "border-slate-200 bg-white"} ${disabled ? "opacity-50" : ""}`}>
@@ -326,6 +350,24 @@ export function FocusTodayPanel({ tasks, onOpenTask }: FocusTodayPanelProps) {
                           <span className="ml-1 text-xs text-slate-500">{task.dueDate ? `Due ${task.dueDate}` : "No due date"}</span>
                         </span>
                       </label>
+                      {linkedCommitment ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                          <span className={`rounded-full px-2 py-1 ${isLinkedToSelectedCommitment ? "bg-emerald-100 text-emerald-700" : isLinkedToVisibleCycle ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-600"}`}>
+                            #{linkedCommitment.rank} {linkedCommitment.title}
+                          </span>
+                          <span className="rounded-full bg-white px-2 py-1 text-slate-500">
+                            {isLinkedToSelectedCommitment
+                              ? "Selected commitment"
+                              : isLinkedToVisibleCycle
+                                ? "Current cycle"
+                                : "Other commitment"}
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                          Standalone task
+                        </p>
+                      )}
                       {onOpenTask ? (
                         <button
                           type="button"
@@ -369,6 +411,26 @@ export function FocusTodayPanel({ tasks, onOpenTask }: FocusTodayPanelProps) {
       </div>
     </section>
   );
+}
+
+function getTaskFocusPriority(
+  task: Task,
+  selectedCommitmentIds: Set<string>,
+  cycleScopedCommitmentIds: Set<string>,
+) {
+  if (task.commitmentId && selectedCommitmentIds.has(task.commitmentId)) {
+    return 0;
+  }
+
+  if (task.commitmentId && cycleScopedCommitmentIds.has(task.commitmentId)) {
+    return 1;
+  }
+
+  if (task.commitmentId) {
+    return 2;
+  }
+
+  return 3;
 }
 
 function formatCycleRange(cycle: PlanningCycle) {

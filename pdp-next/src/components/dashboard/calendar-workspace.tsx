@@ -14,7 +14,7 @@ import type {
   EventDropArg,
   EventInput,
 } from "@fullcalendar/core";
-import type { Goal, GoalTimeframeLevel, GoalType, ItemStatus, ChildGoal, Task } from "@/lib/domain/types";
+import type { Goal, GoalTimeframeLevel, GoalType, ItemStatus, ChildGoal, PlanningCommitment, Task } from "@/lib/domain/types";
 import { getTaskParentGoalId } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
@@ -86,6 +86,7 @@ export function CalendarWorkspace() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [childGoals, setChildGoals] = useState<ChildGoal[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [planningCommitments, setPlanningCommitments] = useState<PlanningCommitment[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -96,7 +97,8 @@ export function CalendarWorkspace() {
   const [goalType, setGoalType] = useState<GoalType>(() => readCalendarGoalTypePreference());
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDetails, setDraftDetails] = useState("");
-  const [draftChildGoalId, setDraftChildGoalId] = useState<string>(() => readCalendarParentChildGoalPreference());
+  const [draftParentGoalId, setDraftParentGoalId] = useState<string>(() => readCalendarParentChildGoalPreference());
+  const [draftCommitmentId, setDraftCommitmentId] = useState("");
   const [selectedEventRef, setSelectedEventRef] = useState<SelectedEventRef | null>(null);
 
   const [editTitle, setEditTitle] = useState("");
@@ -105,6 +107,7 @@ export function CalendarWorkspace() {
   const [editGoalType, setEditGoalType] = useState<GoalType>("professional");
   const [editParentGoalId, setEditParentGoalId] = useState("");
   const [editParentChildGoalId, setEditParentChildGoalId] = useState("");
+  const [editCommitmentId, setEditCommitmentId] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -130,7 +133,45 @@ export function CalendarWorkspace() {
 
   const goalMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
   const childGoalMap = useMemo(() => new Map(childGoals.map((childGoal) => [childGoal.id, childGoal])), [childGoals]);
+  const commitmentMap = useMemo(
+    () => new Map(planningCommitments.map((commitment) => [commitment.id, commitment])),
+    [planningCommitments],
+  );
   const eventColors = getCalendarEventColors();
+  const taskParentOptions = useMemo(() => {
+    const optionsById = new Map<string, { id: string; label: string }>();
+
+    for (const goal of goals) {
+      if (!optionsById.has(goal.id)) {
+        optionsById.set(goal.id, { id: goal.id, label: `Goal: ${goal.title}` });
+      }
+    }
+
+    for (const childGoal of childGoals) {
+      if (!optionsById.has(childGoal.id)) {
+        const parentGoal = goalMap.get(childGoal.goalId);
+        optionsById.set(childGoal.id, {
+          id: childGoal.id,
+          label: parentGoal ? `${parentGoal.title} -> ${childGoal.title}` : childGoal.title,
+        });
+      }
+    }
+
+    return [...optionsById.values()];
+  }, [childGoals, goalMap, goals]);
+  const commitmentOptions = useMemo(
+    () =>
+      planningCommitments.map((commitment) => {
+        const linkedGoal = commitment.linkedGoalId ? goalMap.get(commitment.linkedGoalId) : null;
+        const goalSuffix = linkedGoal ? ` | Goal: ${linkedGoal.title}` : "";
+
+        return {
+          id: commitment.id,
+          label: `${commitment.level} #${commitment.rank} - ${commitment.title}${goalSuffix}`,
+        };
+      }),
+    [goalMap, planningCommitments],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -189,13 +230,13 @@ export function CalendarWorkspace() {
       return;
     }
 
-    if (!draftChildGoalId) {
+    if (!draftParentGoalId) {
       window.localStorage.removeItem(CALENDAR_PARENT_CHILD_GOAL_STORAGE_KEY);
       return;
     }
 
-    window.localStorage.setItem(CALENDAR_PARENT_CHILD_GOAL_STORAGE_KEY, draftChildGoalId);
-  }, [draftChildGoalId]);
+    window.localStorage.setItem(CALENDAR_PARENT_CHILD_GOAL_STORAGE_KEY, draftParentGoalId);
+  }, [draftParentGoalId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -448,9 +489,11 @@ export function CalendarWorkspace() {
       setLoadError(null);
 
       try {
-        const [professionalGoals, personalGoals] = await Promise.all([
+        const [professionalGoals, personalGoals, weeklyCommitmentsResponse, quarterlyCommitmentsResponse] = await Promise.all([
           dataRepository.listGoals(currentUser.id, "professional", { includeDeleted: true }),
           dataRepository.listGoals(currentUser.id, "personal", { includeDeleted: true }),
+          fetch("/api/planning/commitments?level=weekly", { cache: "no-store" }),
+          fetch("/api/planning/commitments?level=quarterly", { cache: "no-store" }),
         ]);
         const loadedGoals = [...professionalGoals, ...personalGoals].filter((goal) => !goal.deletedAt);
 
@@ -472,17 +515,37 @@ export function CalendarWorkspace() {
               .map((task) => [task.id, task]),
           ).values(),
         );
+        const weeklyCommitmentsBody = (await weeklyCommitmentsResponse.json()) as {
+          commitments?: PlanningCommitment[];
+          error?: string;
+        };
+        if (!weeklyCommitmentsResponse.ok) {
+          throw new Error(weeklyCommitmentsBody.error ?? "Could not load weekly planning commitments.");
+        }
+
+        const quarterlyCommitmentsBody = (await quarterlyCommitmentsResponse.json()) as {
+          commitments?: PlanningCommitment[];
+          error?: string;
+        };
+        if (!quarterlyCommitmentsResponse.ok) {
+          throw new Error(quarterlyCommitmentsBody.error ?? "Could not load quarterly planning commitments.");
+        }
+
+        const loadedCommitments = [...(weeklyCommitmentsBody.commitments ?? []), ...(quarterlyCommitmentsBody.commitments ?? [])].sort(
+          (left, right) => left.level.localeCompare(right.level) || left.rank - right.rank || right.updatedAt.localeCompare(left.updatedAt),
+        );
 
         if (!isCancelled) {
           setGoals(loadedGoals);
           setChildGoals(loadedChildGoals);
           setTasks(loadedTasks);
-          setDraftChildGoalId((current) => {
-            if (current && loadedChildGoals.some((childGoal) => childGoal.id === current)) {
+          setPlanningCommitments(loadedCommitments);
+          setDraftParentGoalId((current) => {
+            if (current && [...loadedGoals, ...loadedChildGoals].some((entry) => entry.id === current)) {
               return current;
             }
 
-            return loadedChildGoals[0]?.id || "";
+            return loadedChildGoals[0]?.id || loadedGoals[0]?.id || "";
           });
         }
       } catch (loadCalendarError) {
@@ -598,6 +661,7 @@ export function CalendarWorkspace() {
       const hierarchyBits = [
         parentGoal ? `Goal: ${parentGoal.title}` : null,
         parentChildGoal ? `Child goal: ${parentChildGoal.title}` : null,
+        buildCommitmentHierarchyBit(task.commitmentId ? commitmentMap.get(task.commitmentId) ?? null : null),
       ].filter((bit): bit is string => Boolean(bit));
 
       builtEvents.push({
@@ -630,6 +694,7 @@ export function CalendarWorkspace() {
     statusFilter,
     childGoalMap,
     childGoals,
+    commitmentMap,
     eventColors,
     tasks,
   ]);
@@ -716,6 +781,7 @@ export function CalendarWorkspace() {
       const hierarchyBits = [
         parentGoal ? `Goal: ${parentGoal.title}` : null,
         parentChildGoal ? `Child goal: ${parentChildGoal.title}` : null,
+        buildCommitmentHierarchyBit(task.commitmentId ? commitmentMap.get(task.commitmentId) ?? null : null),
       ].filter((bit): bit is string => Boolean(bit));
 
       agendaItems.push({
@@ -751,6 +817,7 @@ export function CalendarWorkspace() {
     statusFilter,
     childGoalMap,
     childGoals,
+    commitmentMap,
     tasks,
   ]);
 
@@ -767,9 +834,11 @@ export function CalendarWorkspace() {
     setIsRefreshing(true);
     setActionError(null);
     try {
-      const [professionalGoals, personalGoals] = await Promise.all([
+      const [professionalGoals, personalGoals, weeklyCommitmentsResponse, quarterlyCommitmentsResponse] = await Promise.all([
         dataRepository.listGoals(currentUser.id, "professional", { includeDeleted: true }),
         dataRepository.listGoals(currentUser.id, "personal", { includeDeleted: true }),
+        fetch("/api/planning/commitments?level=weekly", { cache: "no-store" }),
+        fetch("/api/planning/commitments?level=quarterly", { cache: "no-store" }),
       ]);
       const loadedGoals = [...professionalGoals, ...personalGoals].filter((goal) => !goal.deletedAt);
       const childGoalGroups = await Promise.all(
@@ -789,10 +858,30 @@ export function CalendarWorkspace() {
             .map((task) => [task.id, task]),
         ).values(),
       );
+      const weeklyCommitmentsBody = (await weeklyCommitmentsResponse.json()) as {
+        commitments?: PlanningCommitment[];
+        error?: string;
+      };
+      if (!weeklyCommitmentsResponse.ok) {
+        throw new Error(weeklyCommitmentsBody.error ?? "Could not load weekly planning commitments.");
+      }
+
+      const quarterlyCommitmentsBody = (await quarterlyCommitmentsResponse.json()) as {
+        commitments?: PlanningCommitment[];
+        error?: string;
+      };
+      if (!quarterlyCommitmentsResponse.ok) {
+        throw new Error(quarterlyCommitmentsBody.error ?? "Could not load quarterly planning commitments.");
+      }
+
+      const loadedCommitments = [...(weeklyCommitmentsBody.commitments ?? []), ...(quarterlyCommitmentsBody.commitments ?? [])].sort(
+        (left, right) => left.level.localeCompare(right.level) || left.rank - right.rank || right.updatedAt.localeCompare(left.updatedAt),
+      );
 
       setGoals(loadedGoals);
       setChildGoals(loadedChildGoals);
       setTasks(loadedTasks);
+      setPlanningCommitments(loadedCommitments);
     } catch (reloadError) {
       setActionError(getErrorMessage(reloadError, "We could not refresh calendar data."));
     } finally {
@@ -865,6 +954,7 @@ export function CalendarWorkspace() {
       setEditGoalType(selectedGoal.type);
       setEditParentGoalId("");
       setEditParentChildGoalId("");
+      setEditCommitmentId("");
     } else if (kind === "childGoal") {
       const selectedChildGoal = childGoals.find((childGoal) => childGoal.id === id);
       if (!selectedChildGoal) {
@@ -878,6 +968,7 @@ export function CalendarWorkspace() {
       setEditGoalType("professional");
       setEditParentGoalId(selectedChildGoal.goalId);
       setEditParentChildGoalId("");
+      setEditCommitmentId("");
     } else {
       const selectedTask = tasks.find((task) => task.id === id);
       if (!selectedTask) {
@@ -891,6 +982,7 @@ export function CalendarWorkspace() {
       setEditGoalType("professional");
       setEditParentGoalId("");
       setEditParentChildGoalId(getTaskParentGoalId(selectedTask) ?? "");
+      setEditCommitmentId(selectedTask.commitmentId ?? "");
     }
 
     setSelectedEventRef({ kind, id });
@@ -1006,6 +1098,7 @@ export function CalendarWorkspace() {
     const hierarchyBits = [
       parentGoal ? `Goal: ${parentGoal.title}` : null,
       parentChildGoal ? `Child goal: ${parentChildGoal.title}` : null,
+      buildCommitmentHierarchyBit(task.commitmentId ? commitmentMap.get(task.commitmentId) ?? null : null),
     ].filter((bit): bit is string => Boolean(bit));
 
     return {
@@ -1133,6 +1226,7 @@ export function CalendarWorkspace() {
           taskId: existingTask.id,
           ownerUid: user.id,
           parentGoalId: getTaskParentGoalId(existingTask),
+          commitmentId: existingTask.commitmentId ?? null,
           title: existingTask.title,
           notes: existingTask.notes,
           dueDate: nextStart,
@@ -1179,13 +1273,10 @@ export function CalendarWorkspace() {
           isFocus: false,
         });
       } else {
-        if (!draftChildGoalId) {
-          throw new Error("Select a parent child goal before creating a task.");
-        }
-
         await dataRepository.saveTask({
           ownerUid: user.id,
-          parentGoalId: draftChildGoalId,
+          parentGoalId: draftParentGoalId || null,
+          commitmentId: draftCommitmentId || null,
           title: draftTitle,
           notes: draftDetails,
           dueDate: selection.startDate,
@@ -1194,6 +1285,7 @@ export function CalendarWorkspace() {
 
       setDraftTitle("");
       setDraftDetails("");
+      setDraftCommitmentId("");
       setIsCreateModalOpen(false);
       await reloadData();
     } catch (saveError) {
@@ -1273,14 +1365,11 @@ export function CalendarWorkspace() {
           throw new Error("The selected task no longer exists.");
         }
 
-        if (!editParentChildGoalId) {
-          throw new Error("Select a parent child goal for this task.");
-        }
-
         const updatedTask = await dataRepository.saveTask({
           taskId: existingTask.id,
           ownerUid: user.id,
-          parentGoalId: editParentChildGoalId,
+          parentGoalId: editParentChildGoalId || null,
+          commitmentId: editCommitmentId || null,
           title: normalizedTitle,
           notes: editDetails,
           dueDate: existingTask.dueDate,
@@ -1308,6 +1397,7 @@ export function CalendarWorkspace() {
     setEditStatus("not_started");
     setEditParentGoalId("");
     setEditParentChildGoalId("");
+    setEditCommitmentId("");
     setIsEditModalOpen(false);
   }
 
@@ -1422,8 +1512,8 @@ export function CalendarWorkspace() {
       {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
 
       <div className="mt-5">
-        <div className="pdp-card-mobile-ghost rounded-xl bg-slate-50/70 p-3">
-          <div className="mb-3 pdp-card-mobile-ghost rounded-lg bg-white/80 p-3">
+        <div className="pdp-panel-muted pdp-panel-muted-mobile-flat rounded-xl p-3">
+          <div className="mb-3 pdp-card pdp-card-mobile-flat rounded-lg p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Calendar filters</p>
               <button
@@ -1648,7 +1738,7 @@ export function CalendarWorkspace() {
           {previewCardNode && typeof document !== "undefined" ? createPortal(previewCardNode, document.body) : null}
 
           {isMobileCalendar ? (
-            <div className="pdp-card-mobile-ghost sticky top-2 z-20 mt-3 rounded-lg bg-white/85 p-3 text-xs text-slate-700 backdrop-blur">
+            <div className="pdp-card pdp-card-mobile-flat sticky top-2 z-20 mt-3 rounded-lg p-3 text-xs text-slate-700 backdrop-blur">
               <p className="font-semibold uppercase tracking-wide text-slate-500">Glyph legend</p>
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <span className="inline-flex items-center gap-1.5">
@@ -1675,14 +1765,14 @@ export function CalendarWorkspace() {
               </div>
             </div>
           ) : (
-            <div className="mt-3 grid gap-2 pdp-card-mobile-ghost rounded-lg bg-white/80 p-3 text-xs text-slate-700 sm:grid-cols-3">
+            <div className="pdp-card pdp-card-mobile-flat mt-3 grid gap-2 rounded-lg p-3 text-xs text-slate-700 sm:grid-cols-3">
               <p><span className="font-semibold text-blue-700">G</span> Goal range events</p>
               <p><span className="font-semibold text-amber-600">GC</span> Goal child range events</p>
               <p><span className="font-semibold text-emerald-600">T</span> Task due-date markers</p>
             </div>
           )}
 
-          <div className="mt-3 pdp-card-mobile-ghost rounded-lg bg-white/80 p-3">
+          <div className="pdp-card pdp-card-mobile-flat mt-3 rounded-lg p-3">
             <h3 className="text-sm font-semibold text-slate-900">Today&apos;s agenda</h3>
             {todaysAgenda.length > 0 ? (
               <ul className="pdp-divider-list mt-2 space-y-0">
@@ -1742,16 +1832,34 @@ export function CalendarWorkspace() {
 
               {createType === "task" ? (
                 <label className="block text-sm text-slate-700">
-                  Parent child goal
+                  Parent goal or child goal (optional)
                   <select
-                    value={draftChildGoalId}
-                    onChange={(event) => setDraftChildGoalId(event.target.value)}
+                    value={draftParentGoalId}
+                    onChange={(event) => setDraftParentGoalId(event.target.value)}
                     className="pdp-control mt-1"
                   >
-                    <option value="">Select child goal</option>
-                    {childGoals.map((childGoal) => (
-                      <option key={childGoal.id} value={childGoal.id}>
-                        {childGoal.title}
+                    <option value="">No parent</option>
+                    {taskParentOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              {createType === "task" ? (
+                <label className="block text-sm text-slate-700">
+                  Related commitment (optional)
+                  <select
+                    value={draftCommitmentId}
+                    onChange={(event) => setDraftCommitmentId(event.target.value)}
+                    className="pdp-control mt-1"
+                  >
+                    <option value="">No commitment</option>
+                    {commitmentOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -1870,16 +1978,34 @@ export function CalendarWorkspace() {
 
                   {selectedEventRef.kind === "task" ? (
                     <label className="block text-sm text-slate-700">
-                      Parent child goal
+                      Parent goal or child goal (optional)
                       <select
                         value={editParentChildGoalId}
                         onChange={(event) => setEditParentChildGoalId(event.target.value)}
                         className="pdp-control mt-1"
                       >
-                        <option value="">Select child goal</option>
-                        {childGoals.map((childGoal) => (
-                          <option key={childGoal.id} value={childGoal.id}>
-                            {childGoal.title}
+                        <option value="">No parent</option>
+                        {taskParentOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
+                  {selectedEventRef.kind === "task" ? (
+                    <label className="block text-sm text-slate-700">
+                      Related commitment (optional)
+                      <select
+                        value={editCommitmentId}
+                        onChange={(event) => setEditCommitmentId(event.target.value)}
+                        className="pdp-control mt-1"
+                      >
+                        <option value="">No commitment</option>
+                        {commitmentOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
                           </option>
                         ))}
                       </select>
@@ -2008,6 +2134,14 @@ function agendaLabel(kind: CalendarItemKind) {
   }
 
   return "T";
+}
+
+function buildCommitmentHierarchyBit(commitment: PlanningCommitment | null) {
+  if (!commitment) {
+    return null;
+  }
+
+  return `Commitment: ${commitment.title}`;
 }
 
 function readCalendarFilterPreferences(): CalendarFilterPreferences {

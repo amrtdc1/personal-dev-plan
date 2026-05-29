@@ -461,23 +461,11 @@ function SignedInShell() {
     setActiveSection(section);
   }
 
-  function handleOpenItemFromDashboard(
-    kind: "goal" | "childGoal" | "task",
-    id: string,
-  ) {
-    setPendingOpenItem({ kind, id });
-    setActiveSection("goals");
-  }
-
   function handleOpenItemFromNodeMap(
     kind: "goal" | "childGoal" | "task",
     id: string,
   ) {
     setPendingOpenItem({ kind, id });
-    setActiveSection("goals");
-  }
-
-  function handleNavigateToPlanning() {
     setActiveSection("goals");
   }
 
