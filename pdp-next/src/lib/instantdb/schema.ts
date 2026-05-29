@@ -1,5 +1,14 @@
 import { i } from "@instantdb/react";
-import type { GoalTimeframeLevel, GoalType, ItemStatus } from "@/lib/domain/types";
+import type {
+  GoalTimeframeLevel,
+  GoalType,
+  ItemStatus,
+  PlanningCommitmentDomain,
+  PlanningCommitmentLevel,
+  PlanningCommitmentStatus,
+  PlanningCycleStatus,
+  PlanningCycleType,
+} from "@/lib/domain/types";
 
 export const appSchema = i.schema({
   entities: {
@@ -47,6 +56,7 @@ export const appSchema = i.schema({
     tasks: i.entity({
       ownerUid: i.string().indexed(),
       parentGoalId: i.string().optional().indexed(),
+      commitmentId: i.string().optional().indexed(),
       title: i.string(),
       notes: i.string(),
       dueDate: i.string().optional().indexed(),
@@ -136,6 +146,39 @@ export const appSchema = i.schema({
       errorCode: i.string().optional(),
       errorMessage: i.string().optional(),
       createdAt: i.string().indexed(),
+    }),
+    planningCycles: i.entity({
+      ownerUid: i.string().indexed(),
+      cycleType: i.string<PlanningCycleType>().indexed(),
+      startDate: i.string().indexed(),
+      endDate: i.string().indexed(),
+      status: i.string<PlanningCycleStatus>().indexed(),
+      reviewSummary: i.string().optional(),
+      createdAt: i.string().indexed(),
+      updatedAt: i.string(),
+    }),
+    planningCommitments: i.entity({
+      ownerUid: i.string().indexed(),
+      cycleId: i.string().indexed(),
+      level: i.string<PlanningCommitmentLevel>().indexed(),
+      domain: i.string<PlanningCommitmentDomain>().indexed(),
+      title: i.string(),
+      linkedGoalId: i.string().optional().indexed(),
+      rank: i.number().indexed(),
+      status: i.string<PlanningCommitmentStatus>().indexed(),
+      carryoverFromCommitmentId: i.string().optional().indexed(),
+      confidenceScore: i.number().optional(),
+      createdAt: i.string().indexed(),
+      updatedAt: i.string(),
+    }),
+    dailyFocusPlans: i.entity({
+      ownerUid: i.string().indexed(),
+      planDate: i.string().indexed(),
+      commitmentIds: i.json<string[]>(),
+      taskIds: i.json<string[]>(),
+      notes: i.string().optional(),
+      createdAt: i.string().indexed(),
+      updatedAt: i.string(),
     }),
   },
   links: {},
