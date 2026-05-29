@@ -1,5 +1,9 @@
 # Baseline Security Checklist
 
+Status: Active Reference
+Last Updated: 2026-05-29
+Owner: Engineering
+
 ## Purpose
 Track minimum security controls required before parity cutover.
 

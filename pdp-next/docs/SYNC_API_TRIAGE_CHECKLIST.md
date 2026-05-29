@@ -1,5 +1,9 @@
 # Sync and API Failure Triage Checklist
 
+Status: Active Reference
+Last Updated: 2026-05-29
+Owner: Engineering
+
 Use this checklist for fast diagnosis when offline sync or API requests fail.
 
 ## Where Signals Appear

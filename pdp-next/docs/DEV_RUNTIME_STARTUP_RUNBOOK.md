@@ -1,5 +1,9 @@
 # Dev Runtime Startup Runbook
 
+Status: Active Reference
+Last Updated: 2026-05-29
+Owner: Engineering
+
 Use this runbook to keep local `next dev` startup stable and fast to recover.
 
 ## Confirm Current Runtime State

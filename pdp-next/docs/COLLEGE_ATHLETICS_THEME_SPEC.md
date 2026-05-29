@@ -1,5 +1,9 @@
 # College Athletics Theme System (Short Technical Spec)
 
+Status: Active Reference
+Last Updated: 2026-05-29
+Owner: Product + Engineering
+
 ## Purpose
 Add an optional college athletics theming mode where users can select a school and automatically apply:
 - School logo

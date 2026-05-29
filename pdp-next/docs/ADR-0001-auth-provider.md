@@ -1,5 +1,9 @@
 # ADR-0001: Authentication Provider Strategy
 
+Status: Active Reference
+Last Updated: 2026-05-29
+Owner: Engineering
+
 ## Status
 Accepted
 
