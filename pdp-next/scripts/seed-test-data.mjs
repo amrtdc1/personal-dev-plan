@@ -121,6 +121,8 @@ try {
     console.log(`   - Habits: ${clearResult.habitsDeleted}`);
     console.log(`   - Habit Checkins: ${clearResult.habitCheckinsDeleted}`);
     console.log(`   - Journal Entries: ${clearResult.journalEntriesDeleted}`);
+    console.log(`   - Planning Commitments: ${clearResult.planningCommitmentsDeleted}`);
+    console.log(`   - Planning Cycles: ${clearResult.planningCyclesDeleted}`);
   }
 
   // Generate dataset
@@ -134,6 +136,9 @@ try {
 
   console.log(`✅ Generated dataset:`);
   console.log(`   - Goals: ${dataset.goals.length}`);
+  console.log(`   - Child Goals: ${dataset.childGoals.length}`);
+  console.log(`   - Planning Cycles: ${dataset.planningCycles.length}`);
+  console.log(`   - Planning Commitments: ${dataset.planningCommitments.length}`);
   console.log(`   - Tasks: ${dataset.tasks.length}`);
   console.log(`   - Habits: ${dataset.habits.length}`);
   console.log(`   - Habit Checkins: ${dataset.habitCheckins.length}`);
@@ -169,6 +174,24 @@ try {
   );
   await batchWrite(goalOps, `Goals`, 10);
 
+  // Write child goals (stored in goals entity with parentGoalId set)
+  const childGoalOps = dataset.childGoals.map((cg) =>
+    admin.tx.goals[cg.id].update(cg)
+  );
+  await batchWrite(childGoalOps, `Child Goals`, 10);
+
+  // Write planning cycles before commitments (commitments reference cycles)
+  const cycleOps = dataset.planningCycles.map((cycle) =>
+    admin.tx.planningCycles[cycle.id].update(cycle)
+  );
+  await batchWrite(cycleOps, `Planning Cycles`, 10);
+
+  // Write planning commitments
+  const commitmentOps = dataset.planningCommitments.map((commitment) =>
+    admin.tx.planningCommitments[commitment.id].update(commitment)
+  );
+  await batchWrite(commitmentOps, `Planning Commitments`, 10);
+
   // Write tasks in batches
   const taskOps = dataset.tasks.map((task) =>
     admin.tx.tasks[task.id].update(task)
@@ -199,6 +222,9 @@ try {
   console.log(`   Total errors: ${totalErrors}`);
   console.log(`   Expected records: ${
     dataset.goals.length +
+    dataset.childGoals.length +
+    dataset.planningCycles.length +
+    dataset.planningCommitments.length +
     dataset.tasks.length +
     dataset.habits.length +
     dataset.habitCheckins.length +

@@ -79,7 +79,7 @@ const GOAL_DESCRIPTIONS = {
 };
 
 export function generateGoals(options) {
-  const { ownerUid, count = 28, withParents = true } = options;
+  const { ownerUid, count = 28 } = options;
   const goals = [];
   const parentIdsByTimeframe = new Map();
   const goalIdsByTimeframe = new Map();
@@ -114,11 +114,8 @@ export function generateGoals(options) {
         "done",
       ]);
 
-      const availableParents = parentIdsByTimeframe.get(timeframe) || [];
-      const parentGoalId =
-        withParents && availableParents.length > 0 && Math.random() > 0.7
-          ? pickRandom(availableParents)
-          : null;
+      // Goals do not nest in the current model; parentGoalId is reserved for child goals
+      const parentGoalId = null;
 
       // Calculate dates based on timeframe
       let projectedStartDate = null;
@@ -201,7 +198,7 @@ export function generateGoals(options) {
     });
   });
 
-  return [goals, parentIdMap];
+  return [goals, parentIdMap, goalIdsByTimeframe];
 }
 
 // ============================================================================
@@ -226,11 +223,14 @@ const TASK_TITLES = [
 ];
 
 export function generateTasks(options) {
-  const { ownerUid, goalIds, count = 55, unplannedRatio = 0.15 } = options;
+  const { ownerUid, goalIds, commitmentIds = [], count = 55, unplannedRatio = 0.15, commitmentLinkedRatio = 0.35 } = options;
   const tasks = [];
 
   const unplannedCount = Math.ceil(count * unplannedRatio);
   const plannedCount = count - unplannedCount;
+
+  // Subset of planned tasks that are also linked to a commitment
+  const commitmentLinkedCount = commitmentIds.length > 0 ? Math.ceil(plannedCount * commitmentLinkedRatio) : 0;
 
   // Generate planned tasks (linked to goals)
   for (let i = 0; i < plannedCount; i++) {
@@ -239,11 +239,13 @@ export function generateTasks(options) {
       addDays(new Date(), Math.floor(Math.random() * 30) - 5)
     );
     const goalId = pickRandom(goalIds);
+    const commitmentId = i < commitmentLinkedCount ? pickRandom(commitmentIds) : null;
 
     const task = {
       id: generateId(),
       ownerUid,
       parentGoalId: goalId,
+      commitmentId,
       title: pickRandom(TASK_TITLES),
       notes: Math.random() > 0.6 ? "Additional notes for this task" : "",
       dueDate,
@@ -272,6 +274,7 @@ export function generateTasks(options) {
       id: generateId(),
       ownerUid,
       parentGoalId: null,
+      commitmentId: null,
       title: `Unplanned: ${pickRandom(TASK_TITLES)}`,
       notes: "This is an unplanned task",
       dueDate,
@@ -295,6 +298,231 @@ export function generateTasks(options) {
 
 // ============================================================================
 // HABIT GENERATOR
+// ============================================================================
+
+// ============================================================================
+// CHILD GOAL GENERATOR
+// ============================================================================
+
+const CHILD_GOAL_TITLES = [
+  "Research phase",
+  "Planning and scoping",
+  "Initial implementation",
+  "Testing and QA",
+  "Documentation",
+  "Review and iterate",
+  "Deploy and monitor",
+  "Retrospective",
+];
+
+const CHILD_GOAL_DESCRIPTIONS = [
+  "Break down the first phase of this objective",
+  "Define scope and acceptance criteria",
+  "Build the initial working version",
+  "Validate correctness and edge cases",
+  "Write clear docs for future reference",
+  "Incorporate feedback and refine",
+  "Ship and track post-launch metrics",
+  "Capture lessons learned",
+];
+
+/**
+ * Generates child goals stored as goals with parentGoalId set.
+ * @param {{ ownerUid: string, parentGoalIds: string[], count?: number }} options
+ * @returns {Array} array of child goal objects
+ */
+export function generateChildGoals(options) {
+  const { ownerUid, parentGoalIds, count = 20 } = options;
+  const childGoals = [];
+
+  for (let i = 0; i < count; i++) {
+    const status = pickRandom(["not_started", "not_started", "in_progress", "done"]);
+    const parentGoalId = pickRandom(parentGoalIds);
+    const childGoal = {
+      id: generateId(),
+      ownerUid,
+      type: pickRandom(["professional", "personal"]),
+      parentGoalId,
+      timeframeLevel: "monthly",
+      title: pickRandom(CHILD_GOAL_TITLES),
+      description: pickRandom(CHILD_GOAL_DESCRIPTIONS),
+      timeframe: "monthly",
+      projectedStartDate: formatISODate(addDays(new Date(), -15)),
+      projectedEndDate: formatISODate(addDays(new Date(), 15)),
+      actualStartDate: status !== "not_started" ? formatISODate(addDays(new Date(), -10)) : null,
+      actualEndDate: status === "done" ? formatISODate(new Date()) : null,
+      status,
+      percentComplete: status === "done" ? 100 : status === "in_progress" ? 50 : 0,
+      isFocus: false,
+      themeColor: pickRandom(["#ec4899", "#3b82f6", "#10b981", "#f59e0b", "#ef4444"]),
+      orderIndex: i,
+      createdAt: formatISODate(addDays(new Date(), -60)),
+      updatedAt: formatISODate(addDays(new Date(), -5)),
+      deletedAt: null,
+      deletedBy: null,
+      restoreUntil: null,
+      purgeAt: null,
+    };
+    childGoals.push(childGoal);
+  }
+
+  return childGoals;
+}
+
+// ============================================================================
+// PLANNING CYCLE GENERATOR
+// ============================================================================
+
+/**
+ * Generates planning cycles (one active weekly, one active quarterly, plus recent completed ones).
+ * @param {{ ownerUid: string }} options
+ * @returns {{ cycles: Array, weeklyActiveCycleId: string|null, quarterlyActiveCycleId: string|null }}
+ */
+export function generatePlanningCycles(options) {
+  const { ownerUid } = options;
+  const cycles = [];
+
+  const now = new Date();
+  // Active weekly cycle (current week Mon–Sun)
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - now.getDay() + 1); // Monday
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+
+  const activeWeeklyCycle = {
+    id: generateId(),
+    ownerUid,
+    cycleType: "weekly",
+    startDate: formatISODate(weekStart),
+    endDate: formatISODate(weekEnd),
+    status: "active",
+    reviewSummary: null,
+    createdAt: formatISODate(weekStart),
+    updatedAt: formatISODate(now),
+  };
+  cycles.push(activeWeeklyCycle);
+
+  // Two completed weekly cycles before this one
+  for (let w = 1; w <= 2; w++) {
+    const prevStart = addDays(weekStart, -7 * w);
+    const prevEnd = addDays(prevStart, 6);
+    cycles.push({
+      id: generateId(),
+      ownerUid,
+      cycleType: "weekly",
+      startDate: formatISODate(prevStart),
+      endDate: formatISODate(prevEnd),
+      status: "completed",
+      reviewSummary: "Good week overall. Carried over one commitment.",
+      createdAt: formatISODate(prevStart),
+      updatedAt: formatISODate(prevEnd),
+    });
+  }
+
+  // Active quarterly cycle (current quarter)
+  const qMonth = Math.floor(now.getMonth() / 3) * 3;
+  const qStart = new Date(now.getFullYear(), qMonth, 1);
+  const qEnd = new Date(now.getFullYear(), qMonth + 3, 0);
+  const activeQuarterlyCycle = {
+    id: generateId(),
+    ownerUid,
+    cycleType: "quarterly",
+    startDate: formatISODate(qStart),
+    endDate: formatISODate(qEnd),
+    status: "active",
+    reviewSummary: null,
+    createdAt: formatISODate(qStart),
+    updatedAt: formatISODate(now),
+  };
+  cycles.push(activeQuarterlyCycle);
+
+  return {
+    cycles,
+    weeklyActiveCycleId: activeWeeklyCycle.id,
+    quarterlyActiveCycleId: activeQuarterlyCycle.id,
+  };
+}
+
+// ============================================================================
+// PLANNING COMMITMENT GENERATOR
+// ============================================================================
+
+const COMMITMENT_TITLES = [
+  "Ship authentication refactor",
+  "Complete onboarding flow",
+  "Write Q2 performance review",
+  "Run team retrospective",
+  "Prototype new dashboard",
+  "Fix critical bugs in checkout",
+  "Finish TypeScript migration",
+  "Publish blog post on architecture",
+  "Improve test coverage",
+  "Set up monitoring and alerts",
+  "Read two books this month",
+  "Exercise 4x per week",
+  "Meal prep Sundays",
+  "Reconnect with old colleague",
+];
+
+/**
+ * Generates planning commitments linked to cycles and optionally to goals.
+ * @param {{ ownerUid: string, weeklyActiveCycleId: string, quarterlyActiveCycleId: string, goalIds: string[] }} options
+ * @returns {{ commitments: Array, allCommitmentIds: string[] }}
+ */
+export function generatePlanningCommitments(options) {
+  const { ownerUid, weeklyActiveCycleId, quarterlyActiveCycleId, goalIds } = options;
+  const commitments = [];
+
+  const now = formatISODate(new Date());
+
+  // 3 weekly commitments (rank 1–3)
+  for (let rank = 1; rank <= 3; rank++) {
+    const linkedGoalId = Math.random() > 0.4 ? pickRandom(goalIds) : null;
+    commitments.push({
+      id: generateId(),
+      ownerUid,
+      cycleId: weeklyActiveCycleId,
+      level: "weekly",
+      domain: linkedGoalId ? pickRandom(["professional", "personal"]) : "mixed",
+      title: pickRandom(COMMITMENT_TITLES),
+      linkedGoalId,
+      rank,
+      status: rank === 1 ? "in_progress" : "not_started",
+      carryoverFromCommitmentId: null,
+      confidenceScore: Math.random() > 0.5 ? Math.round(Math.random() * 30 + 60) : null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  // 3 quarterly commitments (rank 1–3)
+  for (let rank = 1; rank <= 3; rank++) {
+    const linkedGoalId = Math.random() > 0.5 ? pickRandom(goalIds) : null;
+    commitments.push({
+      id: generateId(),
+      ownerUid,
+      cycleId: quarterlyActiveCycleId,
+      level: "quarterly",
+      domain: linkedGoalId ? pickRandom(["professional", "personal"]) : "mixed",
+      title: pickRandom(COMMITMENT_TITLES),
+      linkedGoalId,
+      rank,
+      status: rank === 1 ? "in_progress" : "not_started",
+      carryoverFromCommitmentId: null,
+      confidenceScore: Math.random() > 0.5 ? Math.round(Math.random() * 20 + 70) : null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  return {
+    commitments,
+    allCommitmentIds: commitments.map((c) => c.id),
+  };
+}
+
+// ============================================================================
+// HABIT GENERATOR (original — continued below)
 // ============================================================================
 
 const HABIT_TITLES = [
@@ -525,6 +753,7 @@ export function generateDataset(options) {
     userId,
     displayName,
     goalCount = 28,
+    childGoalCount = 20,
     taskCount = 55,
     habitCount = 9,
     journalCount = 58,
@@ -537,18 +766,42 @@ export function generateDataset(options) {
   });
 
   // Generate goals
-  const [goals] = generateGoals({
+  const [goals, , goalIdsByTimeframe] = generateGoals({
     ownerUid: userId,
     count: goalCount,
-    withParents: true,
   });
 
   const goalIds = goals.map((g) => g.id);
 
-  // Generate tasks
+  // Generate child goals (stored as goals with parentGoalId set)
+  // Use annual and quarterly goals as parent candidates
+  const childGoalParentCandidates = [
+    ...(goalIdsByTimeframe.get("annual") ?? []),
+    ...(goalIdsByTimeframe.get("quarterly") ?? []),
+  ];
+  const childGoals = childGoalParentCandidates.length > 0
+    ? generateChildGoals({ ownerUid: userId, parentGoalIds: childGoalParentCandidates, count: childGoalCount })
+    : [];
+
+  // Generate planning cycles
+  const { cycles: planningCycles, weeklyActiveCycleId, quarterlyActiveCycleId } = generatePlanningCycles({
+    ownerUid: userId,
+  });
+
+  // Generate planning commitments (linked to cycles and optionally goals)
+  const { commitments: planningCommitments, allCommitmentIds } = generatePlanningCommitments({
+    ownerUid: userId,
+    weeklyActiveCycleId,
+    quarterlyActiveCycleId,
+    goalIds,
+  });
+
+  // Tasks can link to any goal or child goal, and optionally a commitment
+  const allGoalIds = [...goalIds, ...childGoals.map((cg) => cg.id)];
   const tasks = generateTasks({
     ownerUid: userId,
-    goalIds,
+    goalIds: allGoalIds,
+    commitmentIds: allCommitmentIds,
     count: taskCount,
   });
 
@@ -575,6 +828,9 @@ export function generateDataset(options) {
     userId,
     userProfile,
     goals,
+    childGoals,
+    planningCycles,
+    planningCommitments,
     tasks,
     habits,
     habitCheckins,
@@ -685,6 +941,8 @@ export async function clearUserData(options) {
     habitsDeleted: 0,
     habitCheckinsDeleted: 0,
     journalEntriesDeleted: 0,
+    planningCommitmentsDeleted: 0,
+    planningCyclesDeleted: 0,
     totalDeleted: 0,
   };
 
@@ -731,12 +989,30 @@ export async function clearUserData(options) {
       (entry) => admin.tx.journalEntries[entry.id].delete()
     );
 
+    // Delete planning commitments before cycles (commitments reference cycles)
+    if (verbose) console.log(`[${userId}] Querying planning commitments...`);
+    result.planningCommitmentsDeleted = await deleteOwnedEntity(
+      "planningCommitments",
+      "planning commitments",
+      (commitment) => admin.tx.planningCommitments[commitment.id].delete()
+    );
+
+    // Delete planning cycles after commitments
+    if (verbose) console.log(`[${userId}] Querying planning cycles...`);
+    result.planningCyclesDeleted = await deleteOwnedEntity(
+      "planningCycles",
+      "planning cycles",
+      (cycle) => admin.tx.planningCycles[cycle.id].delete()
+    );
+
     result.totalDeleted =
       result.goalsDeleted +
       result.tasksDeleted +
       result.habitsDeleted +
       result.habitCheckinsDeleted +
-      result.journalEntriesDeleted;
+      result.journalEntriesDeleted +
+      result.planningCommitmentsDeleted +
+      result.planningCyclesDeleted;
 
     return result;
   } catch (error) {
