@@ -1,7 +1,7 @@
 # Implementation Tracker
 
 Status: Active
-Last Updated: 2026-05-29 (Planning Redesign — UX Layer)
+Last Updated: 2026-06-02 (Planning Redesign — Commitment Hierarchy QA Closed)
 Owner: Engineering
 
 ## Source of Truth Links
@@ -23,14 +23,14 @@ Planning redesign UX layer — surfacing the Goals → Commitments → Tasks dat
 - `unplanned` flag: `true` when `parentGoalId === null && commitmentId === null`
 
 ## Now
-1. Visual QA across Planning, Today, and Calendar surfaces for commitment badges and priority sorting.
-2. Audit remaining task creation paths for correct `unplanned` derivation.
-3. Validate node-map and journal workspaces for any stale task-card patterns.
+1. Refine carryover workflow guardrails to clarify target-cycle readiness before carry action.
+2. Expand quarterly rollup with confidence/risk capture editing (beyond read-only summary chips).
+3. Scope and stage data export + calendar subscription interoperability work.
 
 ## Next
-1. Commitment carryover UX — surface the carryover workflow in Planning panel when a weekly cycle ends.
-2. Quarterly preview — show commitment rollup aggregated to quarterly level in Planning panel.
-3. Commitment-scoped task filtering — allow filtering task views by commitment in Calendar and Today.
+1. PWA offline mutation queue UX: surface queued mutation count and allow manual flush.
+2. Remove or archive any remaining legacy planning code paths.
+3. Add a lightweight visual regression sweep for hierarchy labels/chips on mobile-width breakpoints.
 
 ## Later
 1. Data export and calendar interoperability (iCalendar subscription link for tasks/goals).
@@ -60,6 +60,21 @@ Planning redesign UX layer — surfacing the Goals → Commitments → Tasks dat
 - ✅ Goal task card (migration-data-preview): commitment badge shown inline on task cards
 - ✅ Calendar filter panel, legend, and Today's agenda panel theming fixed (pdp-card / pdp-panel-muted)
 - ✅ `home-experience.tsx` dead handler cleanup
+- ✅ Planning Panel carryover UX: previous-cycle carry candidates surfaced with per-item carry-forward action
+- ✅ Planning Panel quarterly rollup: aggregate commitment status/task summary and confidence signal for current quarterly cycle
+- ✅ Commitment-scoped task filtering in active Today and Calendar surfaces
+- ✅ Node-map stale task-card audit: task nodes/freestanding task list now surface commitment context where present
+- ✅ Journal stale task-card audit: no task-card render paths present; no commitment hierarchy drift found
+- ✅ Final regression pass completed (`lint`, full `vitest`, and `next build` all green)
+- ✅ `dashboard-insights.test.tsx` fixture corrected to eliminate duplicate React key warnings during quick-complete test flow
+- ✅ Added dedicated commitment hierarchy visual QA artifact (`COMMITMENT_HIERARCHY_VISUAL_QA_CHECKLIST.md`)
+- ✅ Audited active task-creation paths for `unplanned` derivation; normalized `migration-data-preview` task payload derivation (`parentGoalId`/`commitmentId`)
+- ✅ Targeted Today smoke pass completed via `dashboard-insights.test.tsx` (quick actions + close-day flow)
+- ✅ Node Map commitment hierarchy smoke coverage validated via targeted tests (`node-map-workspace` + `graph-adapter`)
+- ✅ Added deterministic manual execution script for remaining Planning/Calendar visual QA pass
+- ✅ Commitment hierarchy visual QA checklist executed across all target surfaces and recorded as pass (`docs/archive/history/COMMITMENT_HIERARCHY_VISUAL_QA_RUN_2026-05-29.md`)
+- ✅ Manual Planning + Calendar visual pass completed using deterministic execution script
+- ✅ Final quick dashboard regression sweep completed (targeted dashboard suites: 23/23 passing)
 
 ## Notes
 - App is pre-production; intentional destructive cleanup is allowed when it removes conflicting legacy patterns.

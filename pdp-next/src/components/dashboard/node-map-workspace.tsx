@@ -5,7 +5,7 @@ import { buildNodeGraphModel, type NodeGraphForceProfile } from "@/components/da
 import { NodeGraphCanvas } from "@/components/dashboard/node-map/node-graph-canvas";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
-import type { Goal, GoalTimeframeLevel, GoalType, ItemStatus, Task } from "@/lib/domain/types";
+import type { Goal, GoalTimeframeLevel, GoalType, ItemStatus, PlanningCommitment, Task } from "@/lib/domain/types";
 import { getTaskParentGoalId } from "@/lib/domain/types";
 
 type TimeframeFilter = "all" | GoalTimeframeLevel;
@@ -30,6 +30,7 @@ export function NodeMapWorkspace({
   const { user, isLoading, error } = db.useAuth();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [planningCommitments, setPlanningCommitments] = useState<PlanningCommitment[]>([]);
   const [timeframeFilter, setTimeframeFilter] = useState<TimeframeFilter>("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -115,9 +116,21 @@ export function NodeMapWorkspace({
         );
         const nextTasks = uniqueById(taskGroups.flat()).filter((task) => !task.deletedAt);
 
+        let loadedCommitments: PlanningCommitment[] = [];
+        try {
+          const commitmentsResponse = await fetch("/api/planning/commitments", { cache: "no-store" });
+          if (commitmentsResponse.ok) {
+            const commitmentsBody = (await commitmentsResponse.json()) as { commitments?: PlanningCommitment[] };
+            loadedCommitments = commitmentsBody.commitments ?? [];
+          }
+        } catch {
+          loadedCommitments = [];
+        }
+
         if (!cancelled) {
           setGoals(activeGoals);
           setTasks(nextTasks);
+          setPlanningCommitments(loadedCommitments);
         }
       } catch (caughtError) {
         if (!cancelled) {
@@ -138,6 +151,10 @@ export function NodeMapWorkspace({
   }, [user]);
 
   const goalMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
+  const commitmentTitleById = useMemo(
+    () => new Map(planningCommitments.map((commitment) => [commitment.id, commitment.title])),
+    [planningCommitments],
+  );
 
   const filteredGoals = useMemo(() => {
     return goals
@@ -256,8 +273,9 @@ export function NodeMapWorkspace({
         timeframeOrder: TIMEFRAME_ORDER,
         includeFreestandingTasks,
         forceProfile,
+        commitmentTitleById,
       }),
-    [filteredGoals, forceProfile, graphTasks, includeFreestandingTasks],
+    [commitmentTitleById, filteredGoals, forceProfile, graphTasks, includeFreestandingTasks],
   );
 
   if (isLoading) {
@@ -566,6 +584,11 @@ export function NodeMapWorkspace({
                     >
                       {task.title}
                     </button>
+                    {task.commitmentId && commitmentTitleById.get(task.commitmentId) ? (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Commitment: {commitmentTitleById.get(task.commitmentId)}
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>

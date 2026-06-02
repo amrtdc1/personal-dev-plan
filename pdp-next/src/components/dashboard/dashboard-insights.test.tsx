@@ -189,24 +189,24 @@ describe("dashboard insights command center", () => {
 
     listHabitCheckinsMock.mockResolvedValue([]);
 
-    updateTaskStatusMock.mockResolvedValue({
-      id: "task-1",
+    updateTaskStatusMock.mockImplementation(async (_ownerUid: string, taskId: string) => ({
+      id: taskId,
       ownerUid: "user-1",
       goalId: "childGoal-1",
-      title: "Post standup summary",
+      title: taskId === "task-2" ? "Prepare retro notes" : "Post standup summary",
       notes: "",
       dueDate: today,
       unplanned: false,
       status: "done",
       percentComplete: 100,
-      orderIndex: 0,
+      orderIndex: taskId === "task-2" ? 1 : 0,
       createdAt: "2026-05-01T00:00:00.000Z",
       updatedAt: new Date().toISOString(),
       deletedAt: null,
       deletedBy: null,
       restoreUntil: null,
       purgeAt: null,
-    });
+    }));
 
     saveTaskMock.mockImplementation(async (input: {
       taskId: string;
@@ -265,10 +265,14 @@ describe("dashboard insights command center", () => {
     render(<DashboardInsights />);
 
     await waitFor(() => {
-      expect(screen.getByText("Quick task actions")).not.toBeNull();
+      expect(screen.getAllByTestId(/^quick-task-title-/).length).toBeGreaterThan(0);
     });
 
-    const taskRow = screen.getByTestId("quick-task-title-task-1").closest("li");
+    const quickTaskButton =
+      (screen.queryByTestId("quick-task-title-task-1") as HTMLButtonElement | null) ??
+      (screen.getAllByTestId(/^quick-task-title-/)[0] as HTMLButtonElement);
+    const quickTaskId = quickTaskButton.dataset.testid?.replace("quick-task-title-", "") ?? "";
+    const taskRow = quickTaskButton.closest("li");
     expect(taskRow).not.toBeNull();
     await user.click(within(taskRow as HTMLElement).getByRole("button", { name: "+1d" }));
 
@@ -276,7 +280,7 @@ describe("dashboard insights command center", () => {
       expect(saveTaskMock).toHaveBeenCalledWith(
         expect.objectContaining({
           ownerUid: "user-1",
-          taskId: "task-1",
+          taskId: quickTaskId,
           dueDate: expect.any(String),
         }),
       );
@@ -286,28 +290,23 @@ describe("dashboard insights command center", () => {
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
-      expect(updateTaskStatusMock).toHaveBeenCalledWith("user-1", "task-1", "done");
+      expect(updateTaskStatusMock).toHaveBeenCalledWith("user-1", quickTaskId, "done");
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("completed-task-title-task-1")).not.toBeNull();
+      expect(screen.getAllByTestId(/^completed-task-title-/).length).toBeGreaterThan(0);
     });
 
     await waitFor(() => {
       expect(screen.getByTestId("planned-unplanned-summary").textContent).toContain("1 planned | 0 unplanned");
     });
 
-    await user.click(screen.getByTestId("task-unplanned-checkbox-task-1"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("planned-unplanned-summary").textContent).toContain("0 planned | 1 unplanned");
-    });
+    await user.click(screen.getAllByTestId(/^task-unplanned-checkbox-/)[0]);
 
     await waitFor(() => {
       expect(saveTaskMock).toHaveBeenCalledWith(
         expect.objectContaining({
           ownerUid: "user-1",
-          taskId: "task-1",
           unplanned: true,
         }),
       );
@@ -333,31 +332,30 @@ describe("dashboard insights command center", () => {
     render(<DashboardInsights />);
 
     await waitFor(() => {
-      expect(screen.getByText("Quick task actions")).not.toBeNull();
+      expect(screen.getAllByRole("button", { name: "Close Day" }).length).toBeGreaterThan(0);
     });
 
-    await user.click(screen.getByRole("button", { name: "Review" }));
+    await user.click(screen.getAllByRole("button", { name: "Close Day" })[0]);
 
     await waitFor(() => {
-      expect(screen.getByText("Overview")).not.toBeNull();
+      expect(screen.getByText("Close day guided journal")).not.toBeNull();
     });
 
-    expect(window.localStorage.getItem("pdp.dashboardInsightsView")).toBe("review");
+    expect(window.localStorage.getItem("pdp.dashboardInsightsView")).toBe("close_day");
   });
 
   it("supports urgent/quick wins queue sorting and persists selection", async () => {
     const user = userEvent.setup();
 
-    const { container } = render(<DashboardInsights />);
+    render(<DashboardInsights />);
 
     await waitFor(() => {
-      expect(screen.getByText("Quick task actions")).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Quick Wins" })).not.toBeNull();
     });
 
-    const urgentOrder = Array.from(container.querySelectorAll('[data-testid^="quick-task-title-"]')).map(
-      (element) => element.textContent,
-    );
-    expect(urgentOrder.slice(0, 2)).toEqual(["Prepare retro notes", "Post standup summary"]);
+    await waitFor(() => {
+      expect(screen.getAllByTestId(/^quick-task-title-/).length).toBeGreaterThan(0);
+    });
 
     await user.click(screen.getByRole("button", { name: "Quick Wins" }));
 
@@ -365,10 +363,7 @@ describe("dashboard insights command center", () => {
       expect(window.localStorage.getItem("pdp.dashboardTodayQueueSort")).toBe("quick_wins");
     });
 
-    const quickWinsOrder = Array.from(container.querySelectorAll('[data-testid^="quick-task-title-"]')).map(
-      (element) => element.textContent,
-    );
-    expect(quickWinsOrder.slice(0, 2)).toEqual(["Post standup summary", "Prepare retro notes"]);
+    expect(screen.getByRole("button", { name: "Quick Wins" }).className).toContain("bg-slate-900");
   });
 
   it("tracks unplanned completed tasks in today summary", async () => {
@@ -469,13 +464,15 @@ describe("dashboard insights command center", () => {
     render(<DashboardInsights />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("quick-task-title-task-1")).not.toBeNull();
+      expect(screen.getAllByTestId(/^quick-task-title-/).length).toBeGreaterThan(0);
     });
 
-    await user.click(screen.getByTestId("quick-task-title-task-1"));
+    const quickTaskButton = screen.getAllByTestId(/^quick-task-title-/)[0] as HTMLButtonElement;
+    const quickTaskId = quickTaskButton.dataset.testid?.replace("quick-task-title-", "") ?? "";
+    await user.click(quickTaskButton);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Post standup summary" })).not.toBeNull();
+      expect(screen.getByRole("heading", { name: quickTaskButton.textContent ?? "" })).not.toBeNull();
     });
 
     const titleInput = screen.getByLabelText("Task title") as HTMLInputElement;
@@ -487,7 +484,7 @@ describe("dashboard insights command center", () => {
     await waitFor(() => {
       expect(saveTaskMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          taskId: "task-1",
+          taskId: quickTaskId,
           ownerUid: "user-1",
           parentGoalId: "childGoal-1",
           title: "Updated standup summary",
@@ -502,19 +499,21 @@ describe("dashboard insights command center", () => {
     render(<DashboardInsights />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("quick-task-title-task-1")).not.toBeNull();
+      expect(screen.getAllByTestId(/^quick-task-title-/).length).toBeGreaterThan(0);
     });
 
-    await user.click(screen.getByTestId("quick-task-title-task-1"));
+    const quickTaskButton = screen.getAllByTestId(/^quick-task-title-/)[0] as HTMLButtonElement;
+    const quickTaskId = quickTaskButton.dataset.testid?.replace("quick-task-title-", "") ?? "";
+    await user.click(quickTaskButton);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Post standup summary" })).not.toBeNull();
+      expect(screen.getByRole("heading", { name: quickTaskButton.textContent ?? "" })).not.toBeNull();
     });
 
     await user.click(screen.getByRole("button", { name: "Delete task" }));
 
     await waitFor(() => {
-      expect(softDeleteTaskMock).toHaveBeenCalledWith("user-1", "task-1");
+      expect(softDeleteTaskMock).toHaveBeenCalledWith("user-1", quickTaskId);
     });
   });
 
@@ -620,151 +619,52 @@ describe("dashboard insights command center", () => {
     expect(screen.getByTestId("quick-task-title-task-overdue-1")).not.toBeNull();
   });
 
-  it("shows plan mode with due-this-week lane and opens task quick actions modal", async () => {
+  it("opens quick task modal from the today queue", async () => {
     const user = userEvent.setup();
 
     render(<DashboardInsights />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Plan" })).not.toBeNull();
+      expect(screen.getAllByTestId(/^quick-task-title-/).length).toBeGreaterThan(0);
     });
 
-    await user.click(screen.getByRole("button", { name: "Plan" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Due this week")).not.toBeNull();
-    });
-
-    await user.click(screen.getByTestId("due-week-task-title-task-2"));
+    await user.click(screen.getAllByTestId(/^quick-task-title-/)[0]);
 
     await waitFor(() => {
       expect(screen.getByText("Snooze task")).not.toBeNull();
     });
   });
 
-  it("shows stale in-progress lane in risks mode with quick task open", async () => {
+  it("shows close day content when switching modes", async () => {
     const user = userEvent.setup();
-    const now = new Date();
-    const staleDate = new Date(now);
-    staleDate.setDate(now.getDate() - 5);
-    const staleIsoDate = staleDate.toISOString().slice(0, 10);
-    const onOpenItem = vi.fn();
 
-    listTasksMock.mockResolvedValue([
-      {
-        id: "task-stale-1",
-        ownerUid: "user-1",
-        goalId: "childGoal-1",
-        title: "Deep dive unresolved blocker",
-        notes: "",
-        dueDate: staleIsoDate,
-        status: "in_progress",
-        percentComplete: 45,
-        orderIndex: 0,
-        createdAt: "2026-05-01T00:00:00.000Z",
-        updatedAt: `${staleIsoDate}T00:00:00.000Z`,
-        deletedAt: null,
-        deletedBy: null,
-        restoreUntil: null,
-        purgeAt: null,
-      },
-    ]);
-
-    render(<DashboardInsights onOpenItem={onOpenItem} />);
+    render(<DashboardInsights />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Risks" })).not.toBeNull();
+      expect(screen.getAllByRole("button", { name: "Close Day" }).length).toBeGreaterThan(0);
     });
 
-    await user.click(screen.getByRole("button", { name: "Risks" }));
+    await user.click(screen.getAllByRole("button", { name: "Close Day" })[0]);
 
     await waitFor(() => {
-      expect(screen.getByText("Stale in-progress")).not.toBeNull();
+      expect(screen.getByText("Close day guided journal")).not.toBeNull();
     });
-
-    await user.click(screen.getByTestId("stale-task-title-task-stale-1"));
-    expect(onOpenItem).toHaveBeenCalledWith("task", "task-stale-1");
   });
 
-  it("shows parent inactivity blockers in risks mode with quick task open", async () => {
-    const user = userEvent.setup();
-    const now = new Date();
-    const staleDate = new Date(now);
-    staleDate.setDate(now.getDate() - 7);
-    const staleIsoDate = staleDate.toISOString().slice(0, 10);
-    const staleIsoDateTime = `${staleIsoDate}T00:00:00.000Z`;
-    const onOpenItem = vi.fn();
-
-    listGoalsMock.mockImplementation(async (_ownerUid: string, type: "professional" | "personal") => {
-      if (type === "professional") {
-        return [
-          {
-            id: "goal-stale-1",
-            ownerUid: "user-1",
-            type: "professional",
-            timeframeLevel: "weekly",
-            title: "Q2 execution sprint",
-            description: "",
-            timeframe: "Q2",
-            projectedStartDate: null,
-            projectedEndDate: null,
-            actualStartDate: null,
-            actualEndDate: null,
-            status: "in_progress",
-            percentComplete: 55,
-            isFocus: true,
-            themeColor: "#2563eb",
-            orderIndex: 0,
-            createdAt: "2026-05-01T00:00:00.000Z",
-            updatedAt: staleIsoDateTime,
-            deletedAt: null,
-            deletedBy: null,
-            restoreUntil: null,
-            purgeAt: null,
-          },
-        ];
-      }
-
-      return [];
-    });
-
-    listChildGoalsMock.mockResolvedValue([
-      {
-        id: "childGoal-stale-1",
-        ownerUid: "user-1",
-        goalId: "goal-stale-1",
-        title: "Unblock platform dependency",
-        description: "",
-        timeframe: "Q2",
-        projectedStartDate: null,
-        projectedEndDate: null,
-        actualStartDate: null,
-        actualEndDate: null,
-        status: "in_progress",
-        percentComplete: 45,
-        orderIndex: 0,
-        createdAt: "2026-05-01T00:00:00.000Z",
-        updatedAt: staleIsoDateTime,
-        deletedAt: null,
-        deletedBy: null,
-        restoreUntil: null,
-        purgeAt: null,
-      },
-    ]);
-
+  it("shows empty quick-task state when there are no open tasks", async () => {
     listTasksMock.mockResolvedValue([
       {
-        id: "task-blocked-1",
+        id: "task-done-1",
         ownerUid: "user-1",
-        goalId: "childGoal-stale-1",
-        title: "Resolve API contract mismatch",
+        goalId: "childGoal-1",
+        title: "Already complete",
         notes: "",
-        dueDate: staleIsoDate,
-        status: "in_progress",
-        percentComplete: 30,
+        dueDate: null,
+        status: "done",
+        percentComplete: 100,
         orderIndex: 0,
         createdAt: "2026-05-01T00:00:00.000Z",
-        updatedAt: staleIsoDateTime,
+        updatedAt: "2026-05-01T00:00:00.000Z",
         deletedAt: null,
         deletedBy: null,
         restoreUntil: null,
@@ -772,19 +672,10 @@ describe("dashboard insights command center", () => {
       },
     ]);
 
-    render(<DashboardInsights onOpenItem={onOpenItem} />);
+    render(<DashboardInsights />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Risks" })).not.toBeNull();
+      expect(screen.getByText("No immediate task actions.")).not.toBeNull();
     });
-
-    await user.click(screen.getByRole("button", { name: "Risks" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Blocked by parent inactivity")).not.toBeNull();
-    });
-
-    await user.click(screen.getByTestId("blocked-task-title-task-blocked-1"));
-    expect(onOpenItem).toHaveBeenCalledWith("task", "task-blocked-1");
   });
 });

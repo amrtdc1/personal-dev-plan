@@ -67,6 +67,7 @@ type CalendarFilterPreferences = {
   showTasks: boolean;
   statusFilter: StatusFilter;
   scopeGoalType: "all" | GoalType;
+  commitmentFilter: "all" | "none" | string;
 };
 
 type CalendarDensityPreference = "compact" | "comfortable";
@@ -117,6 +118,7 @@ export function CalendarWorkspace() {
   const [showTasks, setShowTasks] = useState(persistedFilters.showTasks);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(persistedFilters.statusFilter);
   const [scopeGoalType, setScopeGoalType] = useState<"all" | GoalType>(persistedFilters.scopeGoalType);
+  const [commitmentFilter, setCommitmentFilter] = useState<"all" | "none" | string>(persistedFilters.commitmentFilter);
   const [densityPreference, setDensityPreference] = useState<CalendarDensityPreference | null>(() => readCalendarDensityPreference());
   const [calendarViewPreference, setCalendarViewPreference] = useState<CalendarViewPreference>(() =>
     readCalendarViewPreference(),
@@ -172,6 +174,13 @@ export function CalendarWorkspace() {
       }),
     [goalMap, planningCommitments],
   );
+  const effectiveCommitmentFilter = useMemo(() => {
+    if (commitmentFilter === "all" || commitmentFilter === "none") {
+      return commitmentFilter;
+    }
+
+    return planningCommitments.some((commitment) => commitment.id === commitmentFilter) ? commitmentFilter : "all";
+  }, [commitmentFilter, planningCommitments]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -270,10 +279,11 @@ export function CalendarWorkspace() {
       showTasks,
       statusFilter,
       scopeGoalType,
+      commitmentFilter: effectiveCommitmentFilter,
     };
 
     window.localStorage.setItem(CALENDAR_FILTER_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
-  }, [scopeGoalType, showGoals, showGoalChildren, showTasks, statusFilter]);
+  }, [effectiveCommitmentFilter, scopeGoalType, showGoals, showGoalChildren, showTasks, statusFilter]);
 
   useEffect(() => {
     if (!eventPreview || !previewCardRef.current) {
@@ -570,6 +580,17 @@ export function CalendarWorkspace() {
     const builtEvents: EventInput[] = [];
 
     const statusMatch = (status: ItemStatus) => statusFilter === "all" || status === statusFilter;
+    const taskCommitmentMatch = (task: Task) => {
+      if (effectiveCommitmentFilter === "all") {
+        return true;
+      }
+
+      if (effectiveCommitmentFilter === "none") {
+        return !task.commitmentId;
+      }
+
+      return task.commitmentId === effectiveCommitmentFilter;
+    };
 
     for (const goal of goals) {
       if (!showGoals || !statusMatch(goal.status)) {
@@ -642,7 +663,7 @@ export function CalendarWorkspace() {
     }
 
     for (const task of tasks) {
-      if (!showTasks || !statusMatch(task.status)) {
+      if (!showTasks || !statusMatch(task.status) || !taskCommitmentMatch(task)) {
         continue;
       }
 
@@ -687,6 +708,7 @@ export function CalendarWorkspace() {
   }, [
     goalMap,
     goals,
+    effectiveCommitmentFilter,
     scopeGoalType,
     showGoals,
     showGoalChildren,
@@ -717,6 +739,17 @@ export function CalendarWorkspace() {
     const agendaItems: AgendaItem[] = [];
 
     const statusMatch = (status: ItemStatus) => statusFilter === "all" || status === statusFilter;
+    const taskCommitmentMatch = (task: Task) => {
+      if (effectiveCommitmentFilter === "all") {
+        return true;
+      }
+
+      if (effectiveCommitmentFilter === "none") {
+        return !task.commitmentId;
+      }
+
+      return task.commitmentId === effectiveCommitmentFilter;
+    };
 
     for (const goal of goals) {
       if (!showGoals || !statusMatch(goal.status)) {
@@ -766,7 +799,7 @@ export function CalendarWorkspace() {
     }
 
     for (const task of tasks) {
-      if (!showTasks || !statusMatch(task.status) || !task.dueDate || task.dueDate !== todayDate) {
+      if (!showTasks || !statusMatch(task.status) || !taskCommitmentMatch(task) || !task.dueDate || task.dueDate !== todayDate) {
         continue;
       }
 
@@ -810,6 +843,7 @@ export function CalendarWorkspace() {
   }, [
     goalMap,
     goals,
+    effectiveCommitmentFilter,
     scopeGoalType,
     showGoals,
     showGoalChildren,
@@ -930,6 +964,7 @@ export function CalendarWorkspace() {
     setShowTasks(true);
     setStatusFilter("all");
     setScopeGoalType("all");
+    setCommitmentFilter("all");
   }
 
   function handleEventClick(clickArg: EventClickArg) {
@@ -1578,6 +1613,23 @@ export function CalendarWorkspace() {
                   </label>
 
                   <label className="block text-xs text-slate-700">
+                    Commitment filter
+                    <select
+                      value={effectiveCommitmentFilter}
+                      onChange={(event) => setCommitmentFilter(event.target.value)}
+                      className="pdp-control mt-1 px-2 py-2 text-xs"
+                    >
+                      <option value="all">All commitments</option>
+                      <option value="none">No commitment</option>
+                      {commitmentOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block text-xs text-slate-700">
                     Interaction density
                     <button
                       type="button"
@@ -2153,6 +2205,7 @@ function readCalendarFilterPreferences(): CalendarFilterPreferences {
     showTasks: true,
     statusFilter: "all",
     scopeGoalType: "all",
+    commitmentFilter: "all",
   };
 
   if (typeof window === "undefined") {
@@ -2180,6 +2233,10 @@ function readCalendarFilterPreferences(): CalendarFilterPreferences {
         parsed.scopeGoalType === "all" || parsed.scopeGoalType === "professional" || parsed.scopeGoalType === "personal"
           ? parsed.scopeGoalType
           : defaults.scopeGoalType,
+      commitmentFilter:
+        typeof parsed.commitmentFilter === "string" && parsed.commitmentFilter.length > 0
+          ? parsed.commitmentFilter
+          : defaults.commitmentFilter,
     };
   } catch {
     return defaults;

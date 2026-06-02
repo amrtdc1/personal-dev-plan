@@ -85,6 +85,7 @@ export function buildNodeGraphModel(input: {
   timeframeOrder: GoalTimeframeLevel[];
   includeFreestandingTasks: boolean;
   forceProfile: NodeGraphForceProfile;
+  commitmentTitleById?: Map<string, string>;
 }): GraphModel {
   const goalsById = new Map(input.goals.map((goal) => [goal.id, goal]));
   const goalsByTimeframe = new Map<GoalTimeframeLevel, Goal[]>();
@@ -239,7 +240,10 @@ export function buildNodeGraphModel(input: {
           entityId: task.id,
           title: task.title,
           status: task.status,
-          subtitle: "Task",
+          subtitle:
+            task.commitmentId && input.commitmentTitleById?.get(task.commitmentId)
+              ? `Task | ${input.commitmentTitleById.get(task.commitmentId)}`
+              : "Task",
         },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
@@ -302,7 +306,10 @@ export function buildNodeGraphModel(input: {
           entityId: task.id,
           title: task.title,
           status: task.status,
-          subtitle: "Freestanding task",
+          subtitle:
+            task.commitmentId && input.commitmentTitleById?.get(task.commitmentId)
+              ? `Freestanding | ${input.commitmentTitleById.get(task.commitmentId)}`
+              : "Freestanding task",
         },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,

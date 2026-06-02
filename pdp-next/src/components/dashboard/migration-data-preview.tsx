@@ -882,6 +882,8 @@ export function MigrationDataPreview({
     if (!user || !taskOwnerId) {
       return;
     }
+    const normalizedParentGoalId = taskOwnerId || null;
+    const normalizedCommitmentId = taskCommitmentId || null;
 
     setIsSavingTask(true);
     setTaskSaveError(null);
@@ -890,12 +892,12 @@ export function MigrationDataPreview({
       await dataRepository.saveTask({
         taskId: editingTask?.id,
         ownerUid: user.id,
-        parentGoalId: taskOwnerId,
-        commitmentId: taskCommitmentId || null,
+        parentGoalId: normalizedParentGoalId,
+        commitmentId: normalizedCommitmentId,
         title: taskTitle,
         notes: taskNotes,
         dueDate: taskDueDate || null,
-        unplanned: taskOwnerId === null && taskCommitmentId.length === 0,
+        unplanned: normalizedParentGoalId === null && normalizedCommitmentId === null,
         existingTask: editingTask ?? undefined,
       });
 

@@ -37,6 +37,7 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
   const [cycles, setCycles] = useState<PlanningCycle[]>([]);
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
   const [commitments, setCommitments] = useState<PlanningCommitment[]>([]);
+  const [previousCycleCommitments, setPreviousCycleCommitments] = useState<PlanningCommitment[]>([]);
   const [draftByRank, setDraftByRank] = useState<Record<1 | 2 | 3, CommitmentDraft>>({
     1: { ...EMPTY_DRAFT },
     2: { ...EMPTY_DRAFT },
@@ -48,6 +49,8 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
   const [isCreatingCycle, setIsCreatingCycle] = useState(false);
   const [isClosingCycle, setIsClosingCycle] = useState(false);
   const [saveRankInFlight, setSaveRankInFlight] = useState<1 | 2 | 3 | null>(null);
+  const [carryoverInFlightId, setCarryoverInFlightId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const activeGoals = useMemo(() => goals.filter((goal) => goal.deletedAt === null), [goals]);
   const activeTasks = useMemo(
@@ -70,6 +73,25 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
     () => commitments.filter((commitment) => commitment.cycleId === activeCycleId),
     [activeCycleId, commitments],
   );
+  const sortedCycles = useMemo(
+    () => [...cycles].sort((left, right) => right.startDate.localeCompare(left.startDate)),
+    [cycles],
+  );
+  const previousCycle = useMemo(
+    () => sortedCycles.find((cycle) => cycle.id !== activeCycleId) ?? null,
+    [activeCycleId, sortedCycles],
+  );
+  const carryoverCandidates = useMemo(() => {
+    const alreadyCarriedSourceIds = new Set(
+      cycleCommitments
+        .map((commitment) => commitment.carryoverFromCommitmentId)
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    return previousCycleCommitments.filter(
+      (commitment) => commitment.status !== "done" && !alreadyCarriedSourceIds.has(commitment.id),
+    );
+  }, [cycleCommitments, previousCycleCommitments]);
   const tasksByCommitmentId = useMemo(() => {
     const grouped = new Map<string, Task[]>();
 
@@ -100,6 +122,39 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
 
     return grouped;
   }, [activeTasks]);
+  const quarterlyRollup = useMemo(() => {
+    if (planningSurface !== "quarterly") {
+      return null;
+    }
+
+    const total = cycleCommitments.length;
+    const done = cycleCommitments.filter((commitment) => commitment.status === "done").length;
+    const inProgress = cycleCommitments.filter((commitment) => commitment.status === "in_progress").length;
+    const notStarted = cycleCommitments.filter((commitment) => commitment.status === "not_started").length;
+    const dropped = cycleCommitments.filter((commitment) => commitment.status === "dropped").length;
+    const linkedTaskCount = cycleCommitments.reduce(
+      (sum, commitment) => sum + (tasksByCommitmentId.get(commitment.id)?.length ?? 0),
+      0,
+    );
+
+    const confidenceScores = cycleCommitments
+      .map((commitment) => commitment.confidenceScore)
+      .filter((score): score is number => score !== null);
+    const averageConfidence =
+      confidenceScores.length > 0
+        ? Math.round((confidenceScores.reduce((sum, score) => sum + score, 0) / confidenceScores.length) * 100)
+        : null;
+
+    return {
+      total,
+      done,
+      inProgress,
+      notStarted,
+      dropped,
+      linkedTaskCount,
+      averageConfidence,
+    };
+  }, [cycleCommitments, planningSurface, tasksByCommitmentId]);
 
   const longTermGoals = useMemo(
     () =>
@@ -134,11 +189,13 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
         }
 
         const loadedCycles = cyclesBody.cycles ?? [];
+        const sortedLoadedCycles = [...loadedCycles].sort((left, right) => right.startDate.localeCompare(left.startDate));
         const nextCycle =
           loadedCycles.find((cycle) => cycle.status === "active") ??
-          loadedCycles.sort((left, right) => right.startDate.localeCompare(left.startDate))[0] ??
+          sortedLoadedCycles[0] ??
           null;
         const selectedCycleId = nextCycle?.id ?? null;
+        const nextPreviousCycle = sortedLoadedCycles.find((cycle) => cycle.id !== selectedCycleId) ?? null;
 
         let loadedCommitments: PlanningCommitment[] = [];
         if (selectedCycleId) {
@@ -158,6 +215,28 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
           loadedCommitments = commitmentsBody.commitments ?? [];
         }
 
+        let loadedPreviousCycleCommitments: PlanningCommitment[] = [];
+        if (nextPreviousCycle) {
+          try {
+            const previousCommitmentsResponse = await fetch(
+              `/api/planning/commitments?cycleId=${encodeURIComponent(nextPreviousCycle.id)}&level=${cycleType}`,
+              { cache: "no-store" },
+            );
+            const previousCommitmentsBody = (await previousCommitmentsResponse.json()) as {
+              commitments?: PlanningCommitment[];
+              error?: string;
+            };
+
+            if (!previousCommitmentsResponse.ok) {
+              throw new Error(previousCommitmentsBody.error ?? "Could not load previous planning commitments.");
+            }
+
+            loadedPreviousCycleCommitments = previousCommitmentsBody.commitments ?? [];
+          } catch {
+            loadedPreviousCycleCommitments = [];
+          }
+        }
+
         if (cancelled) {
           return;
         }
@@ -165,6 +244,7 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
         setCycles(loadedCycles);
         setActiveCycleId(selectedCycleId);
         setCommitments(loadedCommitments);
+        setPreviousCycleCommitments(loadedPreviousCycleCommitments);
         setDraftByRank(buildDraftsFromCommitments(loadedCommitments));
       } catch (error) {
         if (!cancelled) {
@@ -182,7 +262,7 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
     return () => {
       cancelled = true;
     };
-  }, [planningSurface, cycleType]);
+  }, [planningSurface, cycleType, reloadKey]);
 
   async function handleCreateCycle() {
     if (planningSurface === "long_term") {
@@ -313,6 +393,27 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
       setActionError(getErrorMessage(error, `Could not close this ${cycleType} cycle.`));
     } finally {
       setIsClosingCycle(false);
+    }
+  }
+
+  async function handleCarryoverCommitment(commitmentId: string) {
+    setCarryoverInFlightId(commitmentId);
+    setActionError(null);
+
+    try {
+      const response = await fetch(`/api/planning/commitments/${commitmentId}/carryover`, {
+        method: "POST",
+      });
+      const body = (await response.json()) as { commitment?: PlanningCommitment; error?: string };
+      if (!response.ok || !body.commitment) {
+        throw new Error(body.error ?? "Could not carry commitment forward.");
+      }
+
+      setReloadKey((value) => value + 1);
+    } catch (error) {
+      setActionError(getErrorMessage(error, "Could not carry commitment forward."));
+    } finally {
+      setCarryoverInFlightId(null);
     }
   }
 
@@ -460,6 +561,77 @@ export function PlanningPreviewPanel({ goals, tasks }: PlanningPreviewPanelProps
           {isLoading ? <p className="mt-2 text-xs text-slate-500">Loading planning data...</p> : null}
           {loadError ? <p className="mt-2 text-sm text-red-700">{loadError}</p> : null}
           {actionError ? <p className="mt-2 text-sm text-red-700">{actionError}</p> : null}
+
+          {quarterlyRollup ? (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Quarterly rollup</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                  {quarterlyRollup.total} total
+                </span>
+                <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                  {quarterlyRollup.done} done
+                </span>
+                <span className="rounded-full bg-sky-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+                  {quarterlyRollup.inProgress} in progress
+                </span>
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                  {quarterlyRollup.notStarted} not started
+                </span>
+                <span className="rounded-full bg-rose-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-700">
+                  {quarterlyRollup.dropped} dropped
+                </span>
+                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                  {quarterlyRollup.linkedTaskCount} linked tasks
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-slate-600">
+                Avg confidence: {quarterlyRollup.averageConfidence === null ? "N/A" : `${quarterlyRollup.averageConfidence}%`}
+              </p>
+            </div>
+          ) : null}
+
+          {activeCycle?.status === "active" ? (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Carryover from previous cycle</p>
+              {previousCycle ? (
+                <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-500">
+                  Source cycle: {previousCycle.startDate} to {previousCycle.endDate}
+                </p>
+              ) : null}
+
+              {carryoverCandidates.length === 0 ? (
+                <p className="mt-2 text-xs text-slate-600">No carryover candidates right now.</p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {carryoverCandidates
+                    .sort((left, right) => left.rank - right.rank)
+                    .map((commitment) => (
+                      <li key={commitment.id} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="font-medium text-slate-900">
+                              #{commitment.rank} {commitment.title}
+                            </p>
+                            <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-500">
+                              {commitment.domain} | {commitment.status.replace("_", " ")}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleCarryoverCommitment(commitment.id)}
+                            disabled={carryoverInFlightId === commitment.id}
+                            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {carryoverInFlightId === commitment.id ? "Carrying..." : "Carry forward"}
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
 
           <div className="mt-3 grid gap-3 lg:grid-cols-3">
             {([1, 2, 3] as const).map((rank) => {

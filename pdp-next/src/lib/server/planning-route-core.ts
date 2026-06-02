@@ -455,9 +455,10 @@ export async function deletePlanningCommitment(ownerUid: string, commitmentId: s
 
 export async function carryoverPlanningCommitment(ownerUid: string, commitmentId: string) {
   const source = await findOwnedPlanningCommitment(ownerUid, commitmentId);
+  const targetCycle = await findActiveCarryoverTargetCycle(ownerUid, source);
 
   const next: ParsedPlanningCommitmentWritePayload = {
-    cycleId: source.cycleId,
+    cycleId: targetCycle.id,
     level: source.level,
     domain: source.domain,
     title: source.title,
@@ -469,6 +470,20 @@ export async function carryoverPlanningCommitment(ownerUid: string, commitmentId
   };
 
   return createPlanningCommitment(ownerUid, next);
+}
+
+async function findActiveCarryoverTargetCycle(ownerUid: string, source: PlanningCommitment) {
+  const targetCycleType: PlanningCycleType = source.level === "weekly" ? "weekly" : "quarterly";
+  const cycles = await listOwnedPlanningCycles(ownerUid, { cycleType: targetCycleType });
+  const activeTarget = cycles.find((cycle) => cycle.status === "active" && cycle.id !== source.cycleId) ?? null;
+
+  if (!activeTarget) {
+    throw new InstantRouteBadRequestError(
+      `No active ${source.level} cycle is available to carry this commitment forward. Start a new active ${source.level} cycle first.`,
+    );
+  }
+
+  return activeTarget;
 }
 
 export async function upsertDailyFocusPlan(

@@ -11,9 +11,11 @@ import { CrudModal } from "@/components/ui/crud-modal";
 type DashboardInsightsMode = "today" | "close_day";
 type TodayQueueSortMode = "urgent" | "quick_wins";
 type TodayTaskFilterMode = "all" | "overdue";
+type TodayCommitmentFilterMode = "all" | "none" | string;
 
 const DASHBOARD_INSIGHTS_VIEW_STORAGE_KEY = "pdp.dashboardInsightsView";
 const DASHBOARD_TODAY_QUEUE_SORT_STORAGE_KEY = "pdp.dashboardTodayQueueSort";
+const DASHBOARD_TODAY_COMMITMENT_FILTER_STORAGE_KEY = "pdp.dashboardTodayCommitmentFilter";
 const QUICK_ACTION_BUTTON_CLASS =
   "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -61,6 +63,18 @@ export function DashboardInsights() {
 
     const stored = window.localStorage.getItem(DASHBOARD_TODAY_QUEUE_SORT_STORAGE_KEY);
     return stored === "quick_wins" ? "quick_wins" : "urgent";
+  });
+  const [todayCommitmentFilterMode, setTodayCommitmentFilterMode] = useState<TodayCommitmentFilterMode>(() => {
+    if (typeof window === "undefined") {
+      return "all";
+    }
+
+    const stored = window.localStorage.getItem(DASHBOARD_TODAY_COMMITMENT_FILTER_STORAGE_KEY);
+    if (!stored || stored.length === 0) {
+      return "all";
+    }
+
+    return stored;
   });
   const [dashboardMode, setDashboardMode] = useState<DashboardInsightsMode>(() => {
     if (typeof window === "undefined") {
@@ -219,6 +233,27 @@ export function DashboardInsights() {
       }),
     [goalMap, planningCommitments],
   );
+  const effectiveTodayCommitmentFilterMode = useMemo(() => {
+    if (todayCommitmentFilterMode === "all" || todayCommitmentFilterMode === "none") {
+      return todayCommitmentFilterMode;
+    }
+
+    return planningCommitments.some((commitment) => commitment.id === todayCommitmentFilterMode)
+      ? todayCommitmentFilterMode
+      : "all";
+  }, [planningCommitments, todayCommitmentFilterMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      DASHBOARD_TODAY_COMMITMENT_FILTER_STORAGE_KEY,
+      effectiveTodayCommitmentFilterMode,
+    );
+  }, [effectiveTodayCommitmentFilterMode]);
+
   const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const closeDayIso = closeDayTargetDate;
 
@@ -237,19 +272,31 @@ export function DashboardInsights() {
     [pendingTaskDoneId, tasks],
   );
 
+  const commitmentScopedTasks = useMemo(() => {
+    if (effectiveTodayCommitmentFilterMode === "all") {
+      return tasks;
+    }
+
+    if (effectiveTodayCommitmentFilterMode === "none") {
+      return tasks.filter((task) => !task.commitmentId);
+    }
+
+    return tasks.filter((task) => task.commitmentId === effectiveTodayCommitmentFilterMode);
+  }, [effectiveTodayCommitmentFilterMode, tasks]);
+
   const tasksDueToday = useMemo(
-    () => tasks.filter((task) => task.status !== "done" && task.dueDate === todayIso),
-    [tasks, todayIso],
+    () => commitmentScopedTasks.filter((task) => task.status !== "done" && task.dueDate === todayIso),
+    [commitmentScopedTasks, todayIso],
   );
 
   const completedTodayCount = useMemo(
-    () => tasks.filter((task) => task.status === "done" && task.updatedAt.slice(0, 10) === todayIso).length,
-    [tasks, todayIso],
+    () => commitmentScopedTasks.filter((task) => task.status === "done" && task.updatedAt.slice(0, 10) === todayIso).length,
+    [commitmentScopedTasks, todayIso],
   );
 
   const completedTodayTasksAll = useMemo(
-    () => tasks.filter((task) => task.status === "done" && task.updatedAt.slice(0, 10) === todayIso),
-    [tasks, todayIso],
+    () => commitmentScopedTasks.filter((task) => task.status === "done" && task.updatedAt.slice(0, 10) === todayIso),
+    [commitmentScopedTasks, todayIso],
   );
 
   const plannedVsUnplannedToday = useMemo(() => {
@@ -280,7 +327,7 @@ export function DashboardInsights() {
 
   const overdueTasks = useMemo(
     () =>
-      tasks
+      commitmentScopedTasks
         .filter((task) => task.status !== "done" && Boolean(task.dueDate))
         .filter((task) => {
           const dueDate = parseDate(task.dueDate);
@@ -288,7 +335,7 @@ export function DashboardInsights() {
           return Boolean(dueDate && today && dueDate < today);
         })
         .sort(compareTasksByDueDate),
-    [tasks, todayIso],
+    [commitmentScopedTasks, todayIso],
   );
 
   const habitsCheckedInToday = useMemo(
@@ -314,7 +361,7 @@ export function DashboardInsights() {
   );
 
   const quickActionTasks = useMemo(() => {
-    const openTasks = tasks.filter((task) => task.status !== "done");
+    const openTasks = commitmentScopedTasks.filter((task) => task.status !== "done");
 
     if (todayQueueSortMode === "urgent") {
       if (todayTaskFilterMode === "overdue") {
@@ -341,15 +388,15 @@ export function DashboardInsights() {
     }
 
     return [...openTasks].sort(compareTasksByDueDate).slice(0, 8);
-  }, [overdueTasks, tasks, tasksDueToday, todayQueueSortMode, todayTaskFilterMode]);
+  }, [commitmentScopedTasks, overdueTasks, tasksDueToday, todayQueueSortMode, todayTaskFilterMode]);
 
   const completedTodayTasks = useMemo(
     () =>
-      tasks
+      commitmentScopedTasks
         .filter((task) => task.status === "done" && task.updatedAt.slice(0, 10) === todayIso)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
         .slice(0, 4),
-    [tasks, todayIso],
+    [commitmentScopedTasks, todayIso],
   );
 
   async function handleQuickTaskDone(taskId: string, requireConfirmation = true) {
@@ -900,6 +947,20 @@ export function DashboardInsights() {
                     Quick Wins
                   </button>
                 </div>
+                <select
+                  value={effectiveTodayCommitmentFilterMode}
+                  onChange={(event) => setTodayCommitmentFilterMode(event.currentTarget.value)}
+                  className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700"
+                  aria-label="Commitment filter"
+                >
+                  <option value="all">All commitments</option>
+                  <option value="none">No commitment</option>
+                  {commitmentOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
                 {todayTaskFilterMode === "overdue" ? (
                   <button
                     type="button"

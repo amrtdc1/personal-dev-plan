@@ -29,6 +29,7 @@ When two docs conflict, follow this precedence order.
 - BASELINE_SECURITY_CHECKLIST.md
 - DEV_RUNTIME_STARTUP_RUNBOOK.md
 - SYNC_API_TRIAGE_CHECKLIST.md
+- COMMITMENT_HIERARCHY_VISUAL_QA_CHECKLIST.md
 - ADR-0001-auth-provider.md
 
 ## Active Scope

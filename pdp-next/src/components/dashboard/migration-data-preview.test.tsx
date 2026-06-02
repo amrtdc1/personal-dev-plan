@@ -145,8 +145,7 @@ describe("migration data preview timeline filtering", () => {
     listGoalsMock.mockImplementation(async (_ownerUid: string, type: "professional" | "personal") => {
       if (type === "professional") {
         return [
-          buildGoal({ id: "goal-weekly", title: "Weekly planning goal", timeframeLevel: "weekly", orderIndex: 0 }),
-          buildGoal({ id: "goal-quarterly", title: "Quarterly roadmap goal", timeframeLevel: "quarterly", orderIndex: 1 }),
+          buildGoal({ id: "goal-weekly", title: "Yearly planning goal", timeframeLevel: "annual", orderIndex: 0 }),
         ];
       }
 
@@ -162,35 +161,34 @@ describe("migration data preview timeline filtering", () => {
     });
   });
 
-  it("defaults to weekly goals and can switch filters", async () => {
+  it("defaults to yearly goals and can switch filters", async () => {
     const user = userEvent.setup();
 
     render(<MigrationDataPreview />);
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "Weekly (1)" })[0]?.className).toContain("bg-slate-900");
+      expect(screen.getAllByRole("button", { name: "Yearly (1)" })[0]?.className).toContain("bg-slate-900");
     });
 
-    expect(screen.getAllByRole("button", { name: "Quarterly (1)" })[0]?.className).not.toContain("bg-slate-900");
-    expect(screen.getAllByRole("button", { name: "All (3)" })[0]?.className).not.toContain("bg-slate-900");
+    expect(screen.getAllByRole("button", { name: "Long-term (1)" })[0]?.className).not.toContain("bg-slate-900");
+    expect(screen.getAllByRole("button", { name: "All (2)" })[0]?.className).not.toContain("bg-slate-900");
 
-    expect(screen.getAllByRole("button", { name: "Weekly (1)" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "Quarterly (1)" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Yearly (1)" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "Long-term (1)" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "All (3)" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "All (2)" }).length).toBeGreaterThan(0);
 
-    await user.click(screen.getAllByRole("button", { name: "Quarterly (1)" })[0]);
+    await user.click(screen.getAllByRole("button", { name: "Long-term (1)" })[0]);
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "Quarterly (1)" })[0]?.className).toContain("bg-slate-900");
+      expect(screen.getAllByRole("button", { name: "Long-term (1)" })[0]?.className).toContain("bg-slate-900");
     });
 
-    expect(screen.getAllByRole("button", { name: "Weekly (1)" })[0]?.className).not.toContain("bg-slate-900");
+    expect(screen.getAllByRole("button", { name: "Yearly (1)" })[0]?.className).not.toContain("bg-slate-900");
 
-    await user.click(screen.getAllByRole("button", { name: "All (3)" })[0]);
+    await user.click(screen.getAllByRole("button", { name: "All (2)" })[0]);
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "All (3)" })[0]?.className).toContain("bg-slate-900");
+      expect(screen.getAllByRole("button", { name: "All (2)" })[0]?.className).toContain("bg-slate-900");
     });
 
     expect(listGoalsMock).toHaveBeenCalledWith("user-1", "professional", { includeDeleted: true });
@@ -206,7 +204,7 @@ describe("migration data preview timeline filtering", () => {
       expect(screen.getAllByRole("button", { name: "Long-term (1)" })[0]?.className).toContain("bg-slate-900");
     });
 
-    expect(screen.getAllByRole("button", { name: "Weekly (1)" })[0]?.className).not.toContain("bg-slate-900");
+    expect(screen.getAllByRole("button", { name: "Yearly (1)" })[0]?.className).not.toContain("bg-slate-900");
   });
 
   it("renders habits and supports creating today check-in", async () => {
