@@ -10,8 +10,8 @@ import {
   ChevronRight,
   ChevronsRight,
   Loader2,
+  Play,
   Plus,
-  RefreshCw,
   Trash2,
   X,
 } from "lucide-react";
@@ -771,7 +771,7 @@ export function PlanningPreviewPanel({ goals, tasks, surface }: PlanningPreviewP
                     >
                       {isCreatingCycle
                         ? <Loader2 className="h-4 w-4 animate-spin" />
-                        : <RefreshCw className="h-4 w-4" />}
+                        : <Play className="h-4 w-4" />}
                     </IconButton>
                     <IconButton
                       onClick={() => void handleCloseActiveCycle()}

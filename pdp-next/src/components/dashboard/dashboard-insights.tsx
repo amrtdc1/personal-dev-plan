@@ -13,6 +13,7 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { LoadingSection } from "@/components/ui/loading-section";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { IconButton } from "@/components/ui/icon-button";
+import { buildHabitMetrics, type HabitMetricSnapshot } from "@/components/dashboard/habit-metrics";
 import { CheckCircle2, Clock, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 
 type DashboardInsightsMode = "today" | "close_day";
@@ -62,6 +63,7 @@ export function DashboardInsights() {
   const [taskModalError, setTaskModalError] = useState<string | null>(null);
   const [pendingTaskDoneId, setPendingTaskDoneId] = useState<string | null>(null);
   const [habitCheckinModalHabitId, setHabitCheckinModalHabitId] = useState<string | null>(null);
+  const [habitDetailModalHabitId, setHabitDetailModalHabitId] = useState<string | null>(null);
   const [habitCheckinDate, setHabitCheckinDate] = useState("");
   const [todayTaskFilterMode, setTodayTaskFilterMode] = useState<TodayTaskFilterMode>("all");
   const [quickActionTaskPage, setQuickActionTaskPage] = useState(1);
@@ -278,6 +280,27 @@ export function DashboardInsights() {
     [habitCheckinModalHabitId, habits],
   );
 
+  const selectedHabitForDetail = useMemo(
+    () => (habitDetailModalHabitId ? habits.find((habit) => habit.id === habitDetailModalHabitId) ?? null : null),
+    [habitDetailModalHabitId, habits],
+  );
+
+  const selectedHabitDetailMetrics = useMemo(() => {
+    if (!selectedHabitForDetail) {
+      return defaultHabitMetricSnapshot();
+    }
+
+    return buildHabitMetrics(selectedHabitForDetail, habitCheckinsByHabitId[selectedHabitForDetail.id] ?? []);
+  }, [habitCheckinsByHabitId, selectedHabitForDetail]);
+
+  const selectedHabitDetailActivityCells = useMemo(() => {
+    if (!selectedHabitForDetail) {
+      return [] as boolean[];
+    }
+
+    return buildRecentActivityCells(selectedHabitForDetail, habitCheckinsByHabitId[selectedHabitForDetail.id] ?? []);
+  }, [habitCheckinsByHabitId, selectedHabitForDetail]);
+
   const pendingTaskDone = useMemo(
     () => (pendingTaskDoneId ? tasks.find((task) => task.id === pendingTaskDoneId) ?? null : null),
     [pendingTaskDoneId, tasks],
@@ -370,6 +393,14 @@ export function DashboardInsights() {
       ),
     [habits, habitCheckinsByHabitId, todayIso],
   );
+
+  const quickCheckinMetricsByHabitId = useMemo(() => {
+    const map: Record<string, ReturnType<typeof buildHabitMetrics>> = {};
+    for (const habit of habitsNeedingCheckin) {
+      map[habit.id] = buildHabitMetrics(habit, habitCheckinsByHabitId[habit.id] ?? []);
+    }
+    return map;
+  }, [habitsNeedingCheckin, habitCheckinsByHabitId]);
 
   const quickActionTasks = useMemo(() => {
     const openTasks = commitmentScopedTasks.filter((task) => task.status !== "done");
@@ -879,7 +910,6 @@ export function DashboardInsights() {
           })}
         </div>
       }
-      leftRailTitle="Today Modes"
       leftRailContent={
         <nav className="space-y-2" aria-label="Today workspace modes">
             {modeItems.map((item) => {
@@ -916,7 +946,6 @@ export function DashboardInsights() {
     >
       <article className="pdp-panel-muted pdp-panel-muted-mobile-flat min-w-0 overflow-x-clip">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-lg font-semibold text-slate-900">{modeItems.find((item) => item.mode === dashboardMode)?.label}</h3>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
               {formatDateLabel(todayIso)}
             </span>
@@ -971,7 +1000,7 @@ export function DashboardInsights() {
               <div className="min-w-0 pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-slate-700">Quick task actions</p>
-              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+              <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
                 <div className="flex max-w-full flex-wrap rounded-full border border-slate-300 bg-white p-1">
                   <button
                     type="button"
@@ -1001,7 +1030,7 @@ export function DashboardInsights() {
                 <select
                   value={effectiveTodayCommitmentFilterMode}
                   onChange={(event) => setTodayCommitmentFilterMode(event.currentTarget.value)}
-                  className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700"
+                  className="w-full min-w-0 max-w-full rounded-full border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700 sm:w-auto sm:max-w-[20rem]"
                   aria-label="Commitment filter"
                 >
                   <option value="all">All commitments</option>
@@ -1135,11 +1164,16 @@ export function DashboardInsights() {
               <p className="mt-2 text-sm text-slate-600">All tracked habits are checked in today.</p>
             ) : (
               <>
-                <ul className="mt-2 grid min-w-0 grid-cols-1 gap-1 sm:grid-cols-2">
+                <ul className="mt-2 grid min-w-0 grid-cols-1 gap-1">
                   {pagedHabitsNeedingCheckin.map((habit) => (
-                  <li key={habit.id} className="pdp-card-mobile-ghost min-w-0 rounded-lg border border-slate-200 px-2 py-1">
+                  <li key={habit.id} className="pdp-card-mobile-ghost min-w-0 rounded-lg border border-slate-200 px-2 py-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-medium text-slate-900">{habit.title}</p>
+                      <button
+                        onClick={() => setHabitDetailModalHabitId(habit.id)}
+                        className="truncate flex-1 text-left text-sm font-medium text-slate-900 hover:text-slate-700 hover:underline cursor-pointer"
+                      >
+                        {habit.title}
+                      </button>
                       <IconButton
                         onClick={() => openQuickHabitCheckinModal(habit.id)}
                         disabled={actionInFlightId === `habit-${habit.id}`}
@@ -1149,6 +1183,27 @@ export function DashboardInsights() {
                         {actionInFlightId === `habit-${habit.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                       </IconButton>
                     </div>
+                    {(() => {
+                      const m = quickCheckinMetricsByHabitId[habit.id];
+                      if (!m) return null;
+                      return (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                            m.trend === "up" ? "bg-emerald-100 text-emerald-700" :
+                            m.trend === "down" ? "bg-rose-100 text-rose-700" :
+                            "bg-slate-100 text-slate-500"
+                          }`}>
+                            {m.trend === "up" ? "↑" : m.trend === "down" ? "↓" : "→"} {m.trend}
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">
+                            🔥 {m.currentStreak}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                            {m.adherence28dPercent}% 4wk
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </li>
                   ))}
                 </ul>
@@ -1563,6 +1618,65 @@ export function DashboardInsights() {
           </div>
         ) : null}
       </CrudModal>
+
+      <CrudModal
+        isOpen={selectedHabitForDetail !== null}
+        title={selectedHabitForDetail ? selectedHabitForDetail.title : "Habit details"}
+        onClose={() => setHabitDetailModalHabitId(null)}
+      >
+        {selectedHabitForDetail ? (
+          <div className="grid gap-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{selectedHabitForDetail.title}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {selectedHabitForDetail.cadence === "daily" ? "Daily" : "Weekly"} | Target {selectedHabitForDetail.targetCount} | {(habitCheckinsByHabitId[selectedHabitForDetail.id] ?? []).length} check-ins | {selectedHabitForDetail.status}
+                </p>
+              </div>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${trendBadgeClass(selectedHabitDetailMetrics.trend)}`}>
+                {selectedHabitDetailMetrics.trend}
+              </span>
+            </div>
+
+            <div className="grid min-w-0 gap-2 md:grid-cols-3">
+              <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">4-week adherence</p>
+                <p className="mt-0.5 text-sm font-semibold text-slate-900">{selectedHabitDetailMetrics.adherence28dPercent}%</p>
+                <div className="mt-1 h-1.5 rounded-full bg-slate-200">
+                  <div
+                    className="h-1.5 rounded-full bg-emerald-500 transition-all"
+                    style={{ width: `${Math.max(4, selectedHabitDetailMetrics.adherence28dPercent)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Streak</p>
+                <p className="mt-0.5 text-sm font-semibold text-slate-900">{selectedHabitDetailMetrics.currentStreak} / {selectedHabitDetailMetrics.bestStreak}</p>
+                <div className="mt-1 h-1.5 rounded-full bg-slate-200">
+                  <div
+                    className="h-1.5 rounded-full bg-sky-500 transition-all"
+                    style={{ width: `${Math.max(6, Math.min(100, Math.round((selectedHabitDetailMetrics.currentStreak / Math.max(1, selectedHabitDetailMetrics.bestStreak || 1)) * 100)))}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Recent activity</p>
+                <div className="mt-1 grid grid-cols-7 gap-1">
+                  {selectedHabitDetailActivityCells.map((isActive, index) => (
+                    <span
+                      key={`${selectedHabitForDetail.id}-detail-activity-${index}`}
+                      className={`h-2.5 rounded-sm ${isActive ? "bg-indigo-500" : "bg-slate-200"}`}
+                      aria-hidden="true"
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </CrudModal>
     </WorkspaceShell>
     </AsyncStateContainer>
   );
@@ -1596,6 +1710,73 @@ function compareTasksByQuickWins(a: Task, b: Task) {
   }
 
   return b.updatedAt.localeCompare(a.updatedAt);
+}
+
+function defaultHabitMetricSnapshot(): HabitMetricSnapshot {
+  return {
+    currentStreak: 0,
+    bestStreak: 0,
+    adherence28dPercent: 0,
+    trend: "flat",
+  };
+}
+
+function trendBadgeClass(trend: HabitMetricSnapshot["trend"]) {
+  if (trend === "up") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (trend === "down") {
+    return "bg-rose-100 text-rose-700";
+  }
+
+  return "bg-slate-100 text-slate-700";
+}
+
+function buildRecentActivityCells(habit: Habit, checkins: HabitCheckin[]) {
+  const isoDates = new Set(checkins.map((checkin) => checkin.checkInDate));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (habit.cadence === "weekly") {
+    const cells: boolean[] = [];
+    for (let index = 5; index >= 0; index -= 1) {
+      const weekStart = new Date(today);
+      const day = weekStart.getDay();
+      const diffToMonday = day === 0 ? -6 : 1 - day;
+      weekStart.setDate(weekStart.getDate() + diffToMonday - index * 7);
+
+      let count = 0;
+      for (let offset = 0; offset < 7; offset += 1) {
+        const dayDate = new Date(weekStart);
+        dayDate.setDate(weekStart.getDate() + offset);
+        const iso = toIsoDate(dayDate);
+        if (isoDates.has(iso)) {
+          count += 1;
+        }
+      }
+
+      cells.push(count >= habit.targetCount);
+    }
+
+    return cells;
+  }
+
+  const cells: boolean[] = [];
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const dayDate = new Date(today);
+    dayDate.setDate(today.getDate() - offset);
+    cells.push(isoDates.has(toIsoDate(dayDate)));
+  }
+
+  return cells;
+}
+
+function toIsoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function parseDate(dateValue: string | null) {

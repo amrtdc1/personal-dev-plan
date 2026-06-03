@@ -2400,12 +2400,27 @@ function applyProfileThemeTokens(
     themeSource === "cwm" ? "#1e4741" : blendHex(primary, isDark ? "#059669" : "#059669", 0.38);
   const eventTaskBorder = blendHex(eventTaskBackground, neutral.border, 0.68);
 
-  const statusNotStartedBackground = themeSource === "cwm" ? "#23221c" : blendHex(neutral.mutedSurface, primary, isDark ? 0.2 : 0.16);
-  const statusNotStartedText = neutral.text;
+  const statusNotStartedBackground = themeSource === "cwm" ? "#23221c" : blendHex(primary, neutral.mutedSurface, isDark ? 0.2 : 0.16);
+  const statusNotStartedText = chooseAccessibleTextColor(
+    statusNotStartedBackground,
+    neutral.text,
+    neutral.textStrong,
+    isDark ? "#f8fafc" : "#0f172a",
+  );
   const statusProgressBackground = themeSource === "cwm" ? "#1e4741" : blendHex(eventGoalProfessionalBackground, neutral.mutedSurface, isDark ? 0.34 : 0.26);
-  const statusProgressText = isDark ? "#dbeafe" : "#1e40af";
+  const statusProgressText = chooseAccessibleTextColor(
+    statusProgressBackground,
+    isDark ? "#dbeafe" : "#1e40af",
+    neutral.textStrong,
+    isDark ? "#f8fafc" : "#0f172a",
+  );
   const statusDoneBackground = themeSource === "cwm" ? "#182c28" : blendHex(eventTaskBackground, neutral.mutedSurface, isDark ? 0.34 : 0.26);
-  const statusDoneText = isDark ? "#dcfce7" : "#166534";
+  const statusDoneText = chooseAccessibleTextColor(
+    statusDoneBackground,
+    isDark ? "#dcfce7" : "#166534",
+    neutral.textStrong,
+    isDark ? "#f8fafc" : "#0f172a",
+  );
   const headerKickerText = isDark && getContrastRatio(primary, neutral.surface) < 4.5
     ? neutral.textStrong
     : primary;
@@ -2488,6 +2503,26 @@ function hexToRgb(value: string): { r: number; g: number; b: number } | null {
 function rgbToHex(r: number, g: number, b: number): string {
   const toHex = (channel: number) => channel.toString(16).padStart(2, "0");
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function chooseAccessibleTextColor(background: string, preferred: string, fallback: string, emergency: string): string {
+  const candidates = [preferred, fallback, emergency];
+  let bestColor = preferred;
+  let bestContrast = 0;
+
+  for (const color of candidates) {
+    const contrast = getContrastRatio(color, background);
+    if (contrast >= 4.5) {
+      return color;
+    }
+
+    if (contrast > bestContrast) {
+      bestContrast = contrast;
+      bestColor = color;
+    }
+  }
+
+  return bestColor;
 }
 
 function getContrastRatio(foreground: string, background: string): number {
