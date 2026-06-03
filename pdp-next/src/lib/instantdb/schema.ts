@@ -171,6 +171,12 @@ export const appSchema = i.schema({
       createdAt: i.string().indexed(),
       updatedAt: i.string(),
     }),
+    visionStatements: i.entity({
+      ownerUid: i.string().indexed(),
+      statement: i.string(),
+      createdAt: i.string().indexed(),
+      updatedAt: i.string(),
+    }),
     dailyFocusPlans: i.entity({
       ownerUid: i.string().indexed(),
       planDate: i.string().indexed(),

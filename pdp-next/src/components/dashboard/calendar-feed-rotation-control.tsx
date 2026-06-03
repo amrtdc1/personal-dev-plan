@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { IconButton } from "@/components/ui/icon-button";
+import { Check, Loader2, RotateCcw, X } from "lucide-react";
 
 export function CalendarFeedRotationControl({
   isLoading,
@@ -28,14 +30,14 @@ export function CalendarFeedRotationControl({
 
   return (
     <>
-      <button
-        type="button"
+      <IconButton
         onClick={() => void handlePrimaryClick()}
-        className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
         disabled={isLoading}
+        title={isLoading ? "Rotating..." : "Revoke & Rotate URL"}
+        variant="danger"
       >
-        {isLoading ? "Rotating..." : "Revoke & Rotate URL"}
-      </button>
+        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+      </IconButton>
 
       {isConfirmOpen ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-3">
@@ -44,22 +46,21 @@ export function CalendarFeedRotationControl({
             This will immediately invalidate the currently shared calendar URL.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
+            <IconButton
               onClick={() => void handlePrimaryClick()}
-              className="rounded-full bg-amber-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-amber-600"
               disabled={isLoading}
+              title="Confirm revoke & rotate"
+              variant="danger"
             >
-              Confirm revoke & rotate
-            </button>
-            <button
-              type="button"
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            </IconButton>
+            <IconButton
               onClick={() => setIsConfirmOpen(false)}
-              className="rounded-full border border-amber-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900 transition hover:bg-amber-100"
               disabled={isLoading}
+              title="Cancel"
             >
-              Cancel
-            </button>
+              <X className="h-4 w-4" />
+            </IconButton>
           </div>
         </div>
       ) : null}

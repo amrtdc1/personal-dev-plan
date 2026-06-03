@@ -25,8 +25,17 @@ import type { CollegeThemeTeam } from "@/lib/theming/providers/espn-college";
 import { db } from "@/lib/instantdb/client";
 import { env } from "@/lib/config/env";
 import type { UserProfile } from "@/lib/domain/types";
+import { IconButton } from "@/components/ui/icon-button";
+import { Copy, Loader2, RefreshCw, Save, ShieldCheck } from "lucide-react";
 
 type AppSection = "dashboard" | "goals" | "node-map" | "calendar" | "habits" | "journal" | "profile";
+type SectionIconType = "dashboard" | "goals" | "node-map" | "calendar" | "habits" | "journal";
+type SectionNavItem = {
+  id: SectionIconType;
+  label: string;
+  shortLabel: string;
+  icon: SectionIconType;
+};
 type ThemeChoice = "light" | "dark" | "system";
 type ThemeSource = "palette" | "cwm" | "college";
 type ThemeBrandSnapshot = {
@@ -200,7 +209,6 @@ function SignedInShell() {
   const [pendingOpenItem, setPendingOpenItem] = useState<
     { kind: "goal" | "childGoal" | "task"; id: string } | null
   >(null);
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isThemeSaving, setIsThemeSaving] = useState(false);
   const [themeError, setThemeError] = useState<string | null>(null);
   const [savedThemeSnapshot, setSavedThemeSnapshot] = useState<ThemeBrandSnapshot | null>(null);
@@ -221,14 +229,14 @@ function SignedInShell() {
       : null,
   );
 
-  const navItems = useMemo(
+  const navItems = useMemo<SectionNavItem[]>(
     () => [
-      { id: "dashboard" as const, label: "Today", shortLabel: "Today", icon: "dashboard" as const },
-      { id: "goals" as const, label: "Planning", shortLabel: "Plan", icon: "goals" as const },
-      { id: "node-map" as const, label: "Node Map", shortLabel: "Map", icon: "node-map" as const },
-      { id: "calendar" as const, label: "Calendar", shortLabel: "Calendar", icon: "calendar" as const },
-      { id: "habits" as const, label: "Habits", shortLabel: "Habits", icon: "habits" as const },
-      { id: "journal" as const, label: "Journal", shortLabel: "Journal", icon: "journal" as const },
+      { id: "dashboard", label: "Today", shortLabel: "Today", icon: "dashboard" },
+      { id: "goals", label: "Planning", shortLabel: "Plan", icon: "goals" },
+      { id: "node-map", label: "Node Map", shortLabel: "Map", icon: "node-map" },
+      { id: "calendar", label: "Calendar", shortLabel: "Calendar", icon: "calendar" },
+      { id: "habits", label: "Habits", shortLabel: "Habits", icon: "habits" },
+      { id: "journal", label: "Journal", shortLabel: "Journal", icon: "journal" },
     ],
     [],
   );
@@ -373,86 +381,6 @@ function SignedInShell() {
     }
   }
 
-  function renderProfileMenuButton(buttonClassName: string) {
-    return (
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setIsProfileMenuOpen((current) => !current)}
-          className={buttonClassName}
-          aria-haspopup="menu"
-          aria-expanded={isProfileMenuOpen}
-          aria-label={`Open profile menu (signed in as ${currentUser.email})`}
-          title={`Signed in as ${currentUser.email}`}
-        >
-          {initials}
-        </button>
-
-        {isProfileMenuOpen ? (
-          <div className="pdp-card pdp-modal-theme absolute right-0 z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-            <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Account</p>
-            <button
-              type="button"
-              onClick={() => {
-                navigateToSection("profile");
-                setIsProfileMenuOpen(false);
-              }}
-              className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
-            >
-              Profile & Theme Settings
-            </button>
-            <div className="mx-2 mt-1">
-              {themeSource === "cwm" ? (
-                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
-                  <Image
-                    src="/cwm-logo.png"
-                    alt="CWM logo"
-                    width={16}
-                    height={16}
-                    className="h-4 w-4 rounded-sm object-contain"
-                  />
-                  <span className="text-xs font-semibold text-slate-700">CWM Theme</span>
-                </span>
-              ) : themeSource === "college" && selectedCollegeTeam ? (
-                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
-                  {brandVisual.logoUrl ? (
-                    <Image
-                      src={brandVisual.logoUrl}
-                      alt={`${selectedCollegeTeam.displayName} logo`}
-                      width={16}
-                      height={16}
-                      className="h-4 w-4 rounded-sm object-contain"
-                    />
-                  ) : null}
-                  <span className="text-xs font-semibold text-slate-700">{selectedCollegeTeam.displayName}</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
-                  <span
-                    className="h-4 w-4 rounded-full border border-slate-300"
-                    style={{
-                      backgroundColor: PALETTE_THEME_TOKENS[resolvedPalette].primary,
-                    }}
-                  />
-                  <span className="text-xs font-semibold text-slate-700">
-                    Palette - {resolvedPalette.charAt(0).toUpperCase() + resolvedPalette.slice(1)}
-                  </span>
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => db.auth.signOut()}
-              className="mt-2 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
-            >
-              Sign out
-            </button>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
   function navigateToSection(section: AppSection) {
     if (section !== "profile") {
       setPreviewThemeSnapshot(null);
@@ -488,69 +416,19 @@ function SignedInShell() {
         ) : null}
       </div>
 
-      <div className="flex items-center justify-end gap-2">
-        <div className="sm:hidden">
-          <button
-            type="button"
-            onClick={() => void handleQuickThemeChange(getNextThemeChoice(themeChoice))}
-            disabled={isThemeSaving}
-            className="pdp-solid-surface inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label={`Switch theme mode (currently ${themeChoice})`}
-            title={`Theme: ${themeChoice}`}
-          >
-            {themeChoice === "light" ? (
-              <SunIcon className="h-4 w-4" />
-            ) : themeChoice === "dark" ? (
-              <MoonIcon className="h-4 w-4" />
-            ) : (
-              <SystemIcon className="h-4 w-4" />
-            )}
-          </button>
-        </div>
-        <div className="hidden items-center gap-2 sm:flex">
-          <div className="pdp-solid-surface inline-flex rounded-full border border-slate-300 bg-white p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => void handleQuickThemeChange("light")}
-              disabled={isThemeSaving}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition ${
-                themeChoice === "light" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-              }`}
-              aria-label="Set light mode"
-              title="Light mode"
-            >
-              <SunIcon className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleQuickThemeChange("dark")}
-              disabled={isThemeSaving}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition ${
-                themeChoice === "dark" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-              }`}
-              aria-label="Set dark mode"
-              title="Dark mode"
-            >
-              <MoonIcon className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleQuickThemeChange("system")}
-              disabled={isThemeSaving}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition ${
-                themeChoice === "system" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-              }`}
-              aria-label="Set system mode"
-              title="System mode"
-            >
-              <SystemIcon className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-        {renderProfileMenuButton(
-          "pdp-solid-surface inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-xs font-semibold text-slate-800 transition hover:bg-slate-50 sm:h-9 sm:w-9",
-        )}
-      </div>
+      <HomeTopControls
+        initials={initials}
+        currentUserEmail={currentUser.email ?? "signed-in user"}
+        isThemeSaving={isThemeSaving}
+        themeChoice={themeChoice}
+        onQuickThemeChange={handleQuickThemeChange}
+        onOpenProfileSettings={() => navigateToSection("profile")}
+        onSignOut={() => db.auth.signOut()}
+        themeSource={themeSource}
+        selectedCollegeTeamName={selectedCollegeTeam?.displayName ?? null}
+        brandLogoUrl={brandVisual.logoUrl}
+        resolvedPalette={resolvedPalette}
+      />
 
       <section className="pdp-panel">
 
@@ -580,34 +458,16 @@ function SignedInShell() {
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">
               Welcome back, {welcomeFirstName}
             </h1>
-            <p className="mt-2 hidden max-w-none text-sm text-slate-600 sm:block">
-              Align your professional growth, personal life, and spiritual walk.
-            </p>
           </div>
         </div>
 
         {themeError ? <p className="mt-3 text-sm text-red-700">{themeError}</p> : null}
 
-        <nav className="mt-4 hidden flex-wrap gap-2 sm:flex" aria-label="Primary app sections">
-          {navItems.map((item) => {
-            const isActive = activeSection === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => navigateToSection(item.id)}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  isActive
-                    ? "text-white"
-                    : "pdp-solid-surface border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-                style={isActive ? { backgroundColor: "var(--pdp-theme-primary)" } : undefined}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
+        <DesktopSectionNav
+          items={navItems}
+          activeSection={activeSection}
+          onNavigate={navigateToSection}
+        />
       </section>
 
       {activeSection === "dashboard" ? (
@@ -632,39 +492,272 @@ function SignedInShell() {
         <ProfileSettings onThemeSaved={handleThemeProfileSaved} onThemePreview={handleThemeProfilePreview} />
       ) : null}
 
-      <nav
-        className="pdp-solid-surface fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] sm:hidden"
-        aria-label="Mobile app sections"
-      >
-        <div className="mx-auto grid max-w-6xl grid-cols-6">
-          {navItems.map((item) => {
-            const isActive = activeSection === item.id;
-            return (
-              <button
-                key={`mobile-${item.id}`}
-                type="button"
-                onClick={() => navigateToSection(item.id)}
-                className={`flex flex-col items-center gap-1 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 text-[11px] font-medium transition ${
-                  isActive ? "text-slate-900" : "text-slate-500"
-                }`}
-                aria-current={isActive ? "page" : undefined}
-              >
-                <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${
-                    isActive ? "text-white" : "pdp-solid-muted-surface bg-slate-100 text-slate-600"
-                  }`}
-                  style={isActive ? { backgroundColor: "var(--pdp-theme-primary)" } : undefined}
-                  aria-hidden="true"
-                >
-                  <SectionIcon type={item.icon} className="h-4 w-4" />
-                </span>
-                <span>{item.shortLabel}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+      <MobileSectionNav
+        items={navItems}
+        activeSection={activeSection}
+        onNavigate={navigateToSection}
+      />
     </main>
+  );
+}
+
+function DesktopSectionNav({
+  items,
+  activeSection,
+  onNavigate,
+}: {
+  items: SectionNavItem[];
+  activeSection: AppSection;
+  onNavigate: (section: AppSection) => void;
+}) {
+  return (
+    <nav className="mt-4 hidden flex-wrap gap-2 sm:flex" aria-label="Primary app sections">
+      {items.map((item) => {
+        const isActive = activeSection === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onNavigate(item.id)}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              isActive
+                ? "pdp-solid-muted-surface border border-slate-300 bg-slate-100 text-slate-900"
+                : "pdp-solid-surface border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            {item.label}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function MobileSectionNav({
+  items,
+  activeSection,
+  onNavigate,
+}: {
+  items: SectionNavItem[];
+  activeSection: AppSection;
+  onNavigate: (section: AppSection) => void;
+}) {
+  return (
+    <nav
+      className="pdp-solid-surface fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] sm:hidden"
+      aria-label="Mobile app sections"
+    >
+      <div className="mx-auto grid max-w-6xl grid-cols-6">
+        {items.map((item) => {
+          const isActive = activeSection === item.id;
+          return (
+            <button
+              key={`mobile-${item.id}`}
+              type="button"
+              onClick={() => onNavigate(item.id)}
+              className={`flex flex-col items-center gap-1 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 text-[11px] font-medium transition ${
+                isActive ? "text-slate-800" : "text-slate-500"
+              }`}
+              aria-current={isActive ? "page" : undefined}
+            >
+              <span
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${
+                  isActive
+                    ? "pdp-solid-surface border border-slate-300 bg-white text-slate-800 shadow-sm"
+                    : "pdp-solid-muted-surface bg-slate-100 text-slate-600"
+                }`}
+                aria-hidden="true"
+              >
+                <SectionIcon type={item.icon} className="h-4 w-4" />
+              </span>
+              <span>{item.shortLabel}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function HomeTopControls({
+  initials,
+  currentUserEmail,
+  isThemeSaving,
+  themeChoice,
+  onQuickThemeChange,
+  onOpenProfileSettings,
+  onSignOut,
+  themeSource,
+  selectedCollegeTeamName,
+  brandLogoUrl,
+  resolvedPalette,
+}: {
+  initials: string;
+  currentUserEmail: string;
+  isThemeSaving: boolean;
+  themeChoice: ThemeChoice;
+  onQuickThemeChange: (choice: ThemeChoice) => Promise<void>;
+  onOpenProfileSettings: () => void;
+  onSignOut: () => void;
+  themeSource: ThemeSource;
+  selectedCollegeTeamName: string | null;
+  brandLogoUrl: string | null;
+  resolvedPalette: UserProfile["palette"];
+}) {
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+
+  return (
+    <div className="flex items-center justify-end gap-2">
+      <ThemeModeControls
+        isThemeSaving={isThemeSaving}
+        themeChoice={themeChoice}
+        onQuickThemeChange={onQuickThemeChange}
+      />
+
+      <ProfileMenuDropdown
+        initials={initials}
+        currentUserEmail={currentUserEmail}
+        isProfileMenuOpen={isProfileMenuOpen}
+        onToggle={() => setIsProfileMenuOpen((current) => !current)}
+        onOpenProfileSettings={() => {
+          onOpenProfileSettings();
+          setIsProfileMenuOpen(false);
+        }}
+        onSignOut={onSignOut}
+        themeSource={themeSource}
+        selectedCollegeTeamName={selectedCollegeTeamName}
+        brandLogoUrl={brandLogoUrl}
+        resolvedPalette={resolvedPalette}
+      />
+    </div>
+  );
+}
+
+function ThemeModeControls({
+  isThemeSaving,
+  themeChoice,
+  onQuickThemeChange,
+}: {
+  isThemeSaving: boolean;
+  themeChoice: ThemeChoice;
+  onQuickThemeChange: (choice: ThemeChoice) => Promise<void>;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => void onQuickThemeChange(getNextThemeChoice(themeChoice))}
+      disabled={isThemeSaving}
+      className="pdp-solid-surface inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:h-9 sm:w-9"
+      aria-label={`Switch theme mode (currently ${themeChoice})`}
+      title={`Theme: ${themeChoice}`}
+    >
+      {themeChoice === "light" ? (
+        <SunIcon className="h-4 w-4" />
+      ) : themeChoice === "dark" ? (
+        <MoonIcon className="h-4 w-4" />
+      ) : (
+        <SystemIcon className="h-4 w-4" />
+      )}
+    </button>
+  );
+}
+
+function ProfileMenuDropdown({
+  initials,
+  currentUserEmail,
+  isProfileMenuOpen,
+  onToggle,
+  onOpenProfileSettings,
+  onSignOut,
+  themeSource,
+  selectedCollegeTeamName,
+  brandLogoUrl,
+  resolvedPalette,
+}: {
+  initials: string;
+  currentUserEmail: string;
+  isProfileMenuOpen: boolean;
+  onToggle: () => void;
+  onOpenProfileSettings: () => void;
+  onSignOut: () => void;
+  themeSource: ThemeSource;
+  selectedCollegeTeamName: string | null;
+  brandLogoUrl: string | null;
+  resolvedPalette: UserProfile["palette"];
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="pdp-solid-surface inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-xs font-semibold text-slate-800 transition hover:bg-slate-50 sm:h-9 sm:w-9"
+        aria-haspopup="menu"
+        aria-expanded={isProfileMenuOpen}
+        aria-label={`Open profile menu (signed in as ${currentUserEmail})`}
+        title={`Signed in as ${currentUserEmail}`}
+      >
+        {initials}
+      </button>
+
+      {isProfileMenuOpen ? (
+        <div className="pdp-card pdp-modal-theme absolute right-0 z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+          <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Account</p>
+          <button
+            type="button"
+            onClick={onOpenProfileSettings}
+            className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+          >
+            Profile & Theme Settings
+          </button>
+          <div className="mx-2 mt-1">
+            {themeSource === "cwm" ? (
+              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                <Image
+                  src="/cwm-logo.png"
+                  alt="CWM logo"
+                  width={16}
+                  height={16}
+                  className="h-4 w-4 rounded-sm object-contain"
+                />
+                <span className="text-xs font-semibold text-slate-700">CWM Theme</span>
+              </span>
+            ) : themeSource === "college" && selectedCollegeTeamName ? (
+              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                {brandLogoUrl ? (
+                  <Image
+                    src={brandLogoUrl}
+                    alt={`${selectedCollegeTeamName} logo`}
+                    width={16}
+                    height={16}
+                    className="h-4 w-4 rounded-sm object-contain"
+                  />
+                ) : null}
+                <span className="text-xs font-semibold text-slate-700">{selectedCollegeTeamName}</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                <span
+                  className="h-4 w-4 rounded-full border border-slate-300"
+                  style={{
+                    backgroundColor: PALETTE_THEME_TOKENS[resolvedPalette].primary,
+                  }}
+                />
+                <span className="text-xs font-semibold text-slate-700">
+                  Palette - {resolvedPalette.charAt(0).toUpperCase() + resolvedPalette.slice(1)}
+                </span>
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="mt-2 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+          >
+            Sign out
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1451,21 +1544,21 @@ function ProfileSettings({
 
         <div>
           <div className="flex flex-wrap items-center gap-3">
-            <button
+            <IconButton
               type="submit"
+              variant="primary"
               disabled={isSaving}
-              className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              title={isSaving ? "Saving..." : "Save profile"}
             >
-              {isSaving ? "Saving..." : "Save profile"}
-            </button>
-            <button
-              type="button"
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            </IconButton>
+            <IconButton
               onClick={() => void handleManualSync()}
               disabled={isSyncing || pendingSyncCount === 0}
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              title={isSyncing ? "Syncing..." : "Sync now"}
             >
-              {isSyncing ? "Syncing..." : "Sync now"}
-            </button>
+              {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            </IconButton>
             <span className="text-xs text-slate-500">Queued changes: {pendingSyncCount}</span>
           </div>
           {syncMessage ? <p className="mt-2 text-sm text-slate-600">{syncMessage}</p> : null}
@@ -1493,13 +1586,12 @@ function ProfileSettings({
               </label>
 
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
+                <IconButton
                   onClick={() => void handleCopyCalendarFeed()}
-                  className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+                  title="Copy URL"
                 >
-                  Copy URL
-                </button>
+                  <Copy className="h-4 w-4" />
+                </IconButton>
                 <a
                   href={calendarFeedUrl}
                   target="_blank"
@@ -1508,14 +1600,13 @@ function ProfileSettings({
                 >
                   Open Feed
                 </a>
-                <button
-                  type="button"
+                <IconButton
                   onClick={() => void handleCheckCalendarFeed()}
                   disabled={isCalendarFeedLoading || isCalendarFeedChecking}
-                  className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  title={isCalendarFeedChecking ? "Checking..." : "Validate Feed"}
                 >
-                  {isCalendarFeedChecking ? "Checking..." : "Validate Feed"}
-                </button>
+                  {isCalendarFeedChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                </IconButton>
                 <CalendarFeedRotationControl
                   isLoading={isCalendarFeedLoading}
                   onPrepareRotate={() => {
@@ -1534,21 +1625,19 @@ function ProfileSettings({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Calendar client setup</p>
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
+                    <IconButton
                       onClick={() => void handleCopyCalendarSetupLink(calendarFeedUrl, "HTTPS URL")}
-                      className="rounded-full border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+                      title="Copy HTTPS"
                     >
-                      Copy HTTPS
-                    </button>
-                    <button
-                      type="button"
+                      <Copy className="h-4 w-4" />
+                    </IconButton>
+                    <IconButton
                       onClick={() => (calendarFeedWebcalUrl ? void handleCopyCalendarSetupLink(calendarFeedWebcalUrl, "webcal URL") : undefined)}
                       disabled={!calendarFeedWebcalUrl}
-                      className="rounded-full border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Copy webcal"
                     >
-                      Copy webcal
-                    </button>
+                      <Copy className="h-4 w-4" />
+                    </IconButton>
                   </div>
                 </div>
 
@@ -2458,7 +2547,7 @@ function SectionIcon({
   type,
   className,
 }: {
-  type: "dashboard" | "goals" | "node-map" | "calendar" | "habits" | "journal";
+  type: SectionIconType;
   className?: string;
 }) {
   if (type === "goals") {

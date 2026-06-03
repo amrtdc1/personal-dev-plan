@@ -4,6 +4,11 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
 import { buildHabitMetrics, type HabitMetricSnapshot } from "@/components/dashboard/habit-metrics";
 import { CrudModal } from "@/components/ui/crud-modal";
+import { EmptyStateCard } from "@/components/ui/empty-state-card";
+import { ErrorBanner } from "@/components/ui/error-banner";
+import { IconButton } from "@/components/ui/icon-button";
+import { LoadingSection } from "@/components/ui/loading-section";
+import { Archive, Check, Loader2, Pause, Play, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import type { Habit, HabitCadence, HabitCheckin } from "@/lib/domain/types";
@@ -37,6 +42,7 @@ export function HabitsWorkspace() {
   const [habitCadence, setHabitCadence] = useState<HabitCadence>("daily");
   const [habitTargetCount, setHabitTargetCount] = useState("1");
   const [isSavingHabit, setIsSavingHabit] = useState(false);
+  const [isCreateHabitModalOpen, setIsCreateHabitModalOpen] = useState(false);
   const [isSavingHabitCheckin, setIsSavingHabitCheckin] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -199,28 +205,22 @@ export function HabitsWorkspace() {
 
   if (isLoading || isRefreshing) {
     return (
-      <section className="pdp-panel">
-        <h2 className="text-lg font-semibold text-slate-900">Habits</h2>
-        <p className="mt-3 text-sm text-slate-700">Loading habits...</p>
-      </section>
+      <LoadingSection title="Habits" message="Loading habits..." />
     );
   }
 
   if (error) {
     return (
-      <section className="pdp-panel rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-red-700">Habits</h2>
-        <p className="mt-2 text-sm text-red-700">{error.message}</p>
-      </section>
+      <ErrorBanner title="Habits" message={error.message} />
     );
   }
 
   if (!user) {
     return (
-      <section className="pdp-panel">
-        <h2 className="text-lg font-semibold text-slate-900">Habits</h2>
-        <p className="mt-3 text-sm text-slate-700">Sign in to track and check in habits.</p>
-      </section>
+      <EmptyStateCard
+        title="Habits"
+        description="Sign in to track and check in habits."
+      />
     );
   }
 
@@ -243,6 +243,7 @@ export function HabitsWorkspace() {
       setHabitTitle("");
       setHabitCadence("daily");
       setHabitTargetCount("1");
+      setIsCreateHabitModalOpen(false);
       setRefreshKey((value) => value + 1);
     } catch (caughtError) {
       setSaveError(getErrorMessage(caughtError, "We could not save the habit."));
@@ -350,11 +351,26 @@ export function HabitsWorkspace() {
     setCheckinDateInput(new Date().toISOString().slice(0, 10));
   }
 
+  function openCreateHabitModal() {
+    setHabitTitle("");
+    setHabitCadence("daily");
+    setHabitTargetCount("1");
+    setSaveError(null);
+    setIsCreateHabitModalOpen(true);
+  }
+
+  function closeCreateHabitModal() {
+    setIsCreateHabitModalOpen(false);
+    setHabitTitle("");
+    setHabitCadence("daily");
+    setHabitTargetCount("1");
+  }
+
   return (
     <WorkspaceShell
       title="Habits"
       sectionClassName="pdp-panel-mobile-flat pdp-mobile-surface"
-      description="Track recurring routines and keep your streaks alive with fast daily check-ins."
+      description="Track routines with quick daily check-ins."
       notices={
         <>
           {loadError ? <p className="mt-3 text-sm text-red-700">{loadError}</p> : null}
@@ -366,46 +382,15 @@ export function HabitsWorkspace() {
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Habit Tracker</h3>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-          {activeHabits.length} active
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+            {activeHabits.length} active
+          </span>
+          <IconButton onClick={openCreateHabitModal} title="Create habit" variant="primary">
+            <Plus className="h-4 w-4" />
+          </IconButton>
+        </div>
       </div>
-
-      <form className="mt-3 grid gap-2 md:grid-cols-4" onSubmit={handleHabitSubmit}>
-        <input
-          value={habitTitle}
-          onChange={(event) => setHabitTitle(event.target.value)}
-          className="pdp-control rounded-xl"
-          placeholder="Habit title"
-          aria-label="Habit title"
-        />
-        <select
-          value={habitCadence}
-          onChange={(event) => setHabitCadence(event.target.value as HabitCadence)}
-          className="pdp-control rounded-xl"
-          aria-label="Habit cadence"
-        >
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
-        </select>
-        <input
-          type="number"
-          min={1}
-          value={habitTargetCount}
-          onChange={(event) => setHabitTargetCount(event.target.value)}
-          className="pdp-control rounded-xl"
-          placeholder="Target count"
-          aria-label="Habit target count"
-        />
-        <button
-          type="submit"
-          disabled={isSavingHabit}
-          className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:bg-slate-400"
-          style={{ backgroundColor: "var(--pdp-theme-primary)" }}
-        >
-          {isSavingHabit ? "Saving..." : "Create habit"}
-        </button>
-      </form>
 
       <div className="mt-3 flex min-w-0 justify-start sm:justify-end">
         <div className="w-full sm:w-auto">
@@ -425,176 +410,238 @@ export function HabitsWorkspace() {
         </div>
       </div>
 
+      <CrudModal
+        isOpen={isCreateHabitModalOpen}
+        title="Create habit"
+        onClose={closeCreateHabitModal}
+      >
+        <form className="grid gap-3" onSubmit={handleHabitSubmit}>
+          <label className="block text-sm text-slate-700">
+            Habit title
+            <input
+              value={habitTitle}
+              onChange={(event) => setHabitTitle(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+              placeholder="Habit title"
+              aria-label="Habit title"
+            />
+          </label>
+          <label className="block text-sm text-slate-700">
+            Habit cadence
+            <select
+              value={habitCadence}
+              onChange={(event) => setHabitCadence(event.target.value as HabitCadence)}
+              className="pdp-control mt-1 rounded-xl"
+              aria-label="Habit cadence"
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </label>
+          <label className="block text-sm text-slate-700">
+            Target count
+            <input
+              type="number"
+              min={1}
+              value={habitTargetCount}
+              onChange={(event) => setHabitTargetCount(event.target.value)}
+              className="pdp-control mt-1 rounded-xl"
+              placeholder="Target count"
+              aria-label="Habit target count"
+            />
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            <IconButton
+              type="submit"
+              variant="primary"
+              disabled={isSavingHabit || habitTitle.trim().length === 0}
+              title={isSavingHabit ? "Saving..." : "Create habit"}
+            >
+              {isSavingHabit ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            </IconButton>
+            <IconButton onClick={closeCreateHabitModal} title="Cancel">
+              <X className="h-4 w-4" />
+            </IconButton>
+          </div>
+        </form>
+      </CrudModal>
+
       <div className="mt-4 grid min-w-0 gap-3 lg:grid-cols-2">
-        <ul className="min-w-0 space-y-2">
-          {activeHabits.length === 0 ? (
-            <li className="pdp-card-mobile-ghost rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
-              No habits yet.
-            </li>
-          ) : (
-            sortedActiveHabits.map((habit) => {
-              const isSelected = effectiveSelectedHabitId === habit.id;
-              const checkinCount = habitCheckinsByHabitId[habit.id]?.length ?? 0;
-              const metrics = habitMetricsByHabitId[habit.id] ?? {
-                currentStreak: 0,
-                bestStreak: 0,
-                adherence28dPercent: 0,
-                trend: "flat" as const,
-              };
-              const activityCells = buildRecentActivityCells(habit, habitCheckinsByHabitId[habit.id] ?? []);
-              const streakFill = Math.max(6, Math.min(100, Math.round((metrics.currentStreak / Math.max(1, metrics.bestStreak || 1)) * 100)));
-
-              return (
-                <li key={habit.id} className="pdp-card-mobile-ghost min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedHabitId(habit.id)}
-                    className="w-full min-w-0 text-left"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className={`font-medium ${isSelected ? "text-slate-900" : "text-slate-700"}`}>{habit.title}</p>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${trendBadgeClass(metrics.trend)}`}>
-                        {metrics.trend}
-                      </span>
-                    </div>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      {habit.cadence === "daily" ? "Daily" : "Weekly"} | Target {habit.targetCount} | {checkinCount} check-ins | {habit.status}
-                    </p>
-
-                    <div className="mt-2 grid min-w-0 gap-2 md:grid-cols-3">
-                      <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">4-week adherence</p>
-                        <p className="mt-0.5 text-sm font-semibold text-slate-900">{metrics.adherence28dPercent}%</p>
-                        <div className="mt-1 h-1.5 rounded-full bg-slate-200">
-                          <div
-                            className="h-1.5 rounded-full bg-emerald-500 transition-all"
-                            style={{ width: `${Math.max(4, metrics.adherence28dPercent)}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Streak</p>
-                        <p className="mt-0.5 text-sm font-semibold text-slate-900">{metrics.currentStreak} / {metrics.bestStreak}</p>
-                        <div className="mt-1 h-1.5 rounded-full bg-slate-200">
-                          <div
-                            className="h-1.5 rounded-full bg-sky-500 transition-all"
-                            style={{ width: `${streakFill}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Recent activity</p>
-                        <div className="mt-1 grid grid-cols-7 gap-1">
-                          {activityCells.map((isActive, index) => (
-                            <span
-                              key={`${habit.id}-activity-${index}`}
-                              className={`h-2.5 rounded-sm ${isActive ? "bg-indigo-500" : "bg-slate-200"}`}
-                              aria-hidden="true"
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openCheckinModal(habit.id)}
-                      disabled={isSavingHabitCheckin || habit.status === "paused"}
-                      className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {habit.status === "paused" ? "Paused" : "Check in today"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleHabitStatusToggle(habit)}
-                      disabled={activeActionHabitId === habit.id}
-                      className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {habit.status === "paused" ? "Resume" : "Pause"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleArchiveHabit(habit)}
-                      disabled={activeActionHabitId === habit.id}
-                      className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700 transition hover:border-amber-400 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Archive
-                    </button>
-                  </div>
+        <div className="min-w-0 px-1 py-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active habits</p>
+          <div className="mt-2 max-h-[min(34rem,calc(100dvh-22rem))] overflow-y-auto pr-1">
+            <ul className="space-y-2">
+              {activeHabits.length === 0 ? (
+                <li className="pdp-card-mobile-ghost rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+                  No habits yet.
                 </li>
-              );
-            })
-          )}
-        </ul>
+              ) : (
+                sortedActiveHabits.map((habit) => {
+                  const isSelected = effectiveSelectedHabitId === habit.id;
+                  const checkinCount = habitCheckinsByHabitId[habit.id]?.length ?? 0;
+                  const metrics = habitMetricsByHabitId[habit.id] ?? {
+                    currentStreak: 0,
+                    bestStreak: 0,
+                    adherence28dPercent: 0,
+                    trend: "flat" as const,
+                  };
+                  const activityCells = buildRecentActivityCells(habit, habitCheckinsByHabitId[habit.id] ?? []);
+                  const streakFill = Math.max(6, Math.min(100, Math.round((metrics.currentStreak / Math.max(1, metrics.bestStreak || 1)) * 100)));
 
-        <div className="pdp-card-mobile-ghost min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent check-in days</p>
-          {recentDailyCheckins.length === 0 ? (
-            <p className="mt-2 text-xs text-slate-500">No check-ins yet.</p>
-          ) : (
-            <ul className="mt-2 space-y-2 text-sm text-slate-700">
-              {recentDailyCheckins.slice(0, 12).map((daily) => (
-                <li key={daily.date}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDailyCheckinDate(daily.date)}
-                    className="pdp-card-mobile-ghost w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-left transition hover:border-slate-300 hover:bg-white"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-slate-800">{daily.date}</span>
-                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                        {daily.checkins.length} check-ins
-                      </span>
-                    </div>
-                    <p className="mt-1 truncate text-xs text-slate-500">
-                      {daily.checkins.slice(0, 3).map((entry) => entry.habitTitle).join(" | ")}
-                      {daily.checkins.length > 3 ? " ..." : ""}
-                    </p>
-                  </button>
-                </li>
-              ))}
+                  return (
+                    <li key={habit.id} className="pdp-card-mobile-ghost min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedHabitId(habit.id)}
+                        className="w-full min-w-0 text-left"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={`font-medium ${isSelected ? "text-slate-900" : "text-slate-700"}`}>{habit.title}</p>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${trendBadgeClass(metrics.trend)}`}>
+                            {metrics.trend}
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          {habit.cadence === "daily" ? "Daily" : "Weekly"} | Target {habit.targetCount} | {checkinCount} check-ins | {habit.status}
+                        </p>
+
+                        <div className="mt-2 grid min-w-0 gap-2 md:grid-cols-3">
+                          <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">4-week adherence</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900">{metrics.adherence28dPercent}%</p>
+                            <div className="mt-1 h-1.5 rounded-full bg-slate-200">
+                              <div
+                                className="h-1.5 rounded-full bg-emerald-500 transition-all"
+                                style={{ width: `${Math.max(4, metrics.adherence28dPercent)}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Streak</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900">{metrics.currentStreak} / {metrics.bestStreak}</p>
+                            <div className="mt-1 h-1.5 rounded-full bg-slate-200">
+                              <div
+                                className="h-1.5 rounded-full bg-sky-500 transition-all"
+                                style={{ width: `${streakFill}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Recent activity</p>
+                            <div className="mt-1 grid grid-cols-7 gap-1">
+                              {activityCells.map((isActive, index) => (
+                                <span
+                                  key={`${habit.id}-activity-${index}`}
+                                  className={`h-2.5 rounded-sm ${isActive ? "bg-indigo-500" : "bg-slate-200"}`}
+                                  aria-hidden="true"
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <IconButton
+                          onClick={() => openCheckinModal(habit.id)}
+                          disabled={isSavingHabitCheckin || habit.status === "paused"}
+                          title={habit.status === "paused" ? "Habit is paused" : "Check in today"}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </IconButton>
+                        <IconButton
+                          onClick={() => void handleHabitStatusToggle(habit)}
+                          disabled={activeActionHabitId === habit.id}
+                          title={habit.status === "paused" ? "Resume habit" : "Pause habit"}
+                        >
+                          {habit.status === "paused" ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+                        </IconButton>
+                        <IconButton
+                          onClick={() => void handleArchiveHabit(habit)}
+                          disabled={activeActionHabitId === habit.id}
+                          title="Archive habit"
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                        </IconButton>
+                      </div>
+                    </li>
+                  );
+                })
+              )}
             </ul>
-          )}
+          </div>
+        </div>
+
+        <div className="min-w-0 px-1 py-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent check-in days</p>
+          <div className="mt-2 max-h-[min(34rem,calc(100dvh-22rem))] overflow-y-auto pr-1">
+            {recentDailyCheckins.length === 0 ? (
+              <p className="text-xs text-slate-500">No check-ins yet.</p>
+            ) : (
+              <ul className="space-y-2 text-sm text-slate-700">
+                {recentDailyCheckins.slice(0, 12).map((daily) => (
+                  <li key={daily.date}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDailyCheckinDate(daily.date)}
+                      className="pdp-card-mobile-ghost w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-left transition hover:border-slate-300 hover:bg-white"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-slate-800">{daily.date}</span>
+                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                          {daily.checkins.length} check-ins
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-slate-500">
+                        {daily.checkins.slice(0, 3).map((entry) => entry.habitTitle).join(" | ")}
+                        {daily.checkins.length > 3 ? " ..." : ""}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
 
       {archivedHabits.length > 0 ? (
         <div className="mt-4 pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-white px-3 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Archived habits</p>
-          <ul className="mt-2 space-y-2">
-            {archivedHabits.map((habit) => (
-              <li key={habit.id} className="pdp-card-mobile-ghost rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium text-slate-800">{habit.title}</p>
-                    <p className="text-xs text-slate-500">Archived {habit.deletedAt ? habit.deletedAt.slice(0, 10) : ""}</p>
+          <div className="mt-2 max-h-64 overflow-y-auto pr-1">
+            <ul className="space-y-2">
+              {archivedHabits.map((habit) => (
+                <li key={habit.id} className="pdp-card-mobile-ghost rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{habit.title}</p>
+                      <p className="text-xs text-slate-500">Archived {habit.deletedAt ? habit.deletedAt.slice(0, 10) : ""}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <IconButton
+                        onClick={() => void handleRestoreHabit(habit)}
+                        disabled={activeActionHabitId === habit.id}
+                        title="Restore habit"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </IconButton>
+                      <IconButton
+                        onClick={() => void handlePermanentlyDeleteHabit(habit)}
+                        disabled={activeActionHabitId === habit.id}
+                        title="Delete forever"
+                        variant="danger"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </IconButton>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleRestoreHabit(habit)}
-                      disabled={activeActionHabitId === habit.id}
-                      className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Restore
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handlePermanentlyDeleteHabit(habit)}
-                      disabled={activeActionHabitId === habit.id}
-                      className="rounded-full border border-red-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:border-red-400 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Delete forever
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       ) : null}
 
@@ -618,21 +665,17 @@ export function HabitsWorkspace() {
             </label>
 
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setCheckinModalHabitId(null)}
-                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
+              <IconButton onClick={() => setCheckinModalHabitId(null)} title="Cancel">
+                <X className="h-4 w-4" />
+              </IconButton>
+              <IconButton
                 onClick={() => void handleHabitCheckin(selectedCheckinHabit.id, checkinDateInput)}
                 disabled={isSavingHabitCheckin || checkinDateInput.length === 0}
-                className="rounded-full border border-indigo-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-indigo-700 transition hover:border-indigo-400 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Confirm check-in"
+                variant="success"
               >
-                {isSavingHabitCheckin ? "Saving..." : "Confirm check-in"}
-              </button>
+                {isSavingHabitCheckin ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              </IconButton>
             </div>
           </div>
         ) : null}

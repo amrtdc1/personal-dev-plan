@@ -16,6 +16,7 @@ import type {
   ChildGoal,
   Task,
   UserProfile,
+  VisionStatement,
 } from "@/lib/domain/types";
 import { getTaskParentGoalId } from "@/lib/domain/types";
 import type { AppSchema } from "@/lib/instantdb/schema";
@@ -64,6 +65,7 @@ export type SaveGoalInput = {
   description: string;
   projectedStartDate: string | null;
   projectedEndDate: string | null;
+  status?: ItemStatus;
   timeframeLabel?: string;
   isFocus: boolean;
   existingGoal?: Goal;
@@ -263,6 +265,8 @@ export type DataRepository = {
   subscribeOfflineMutationCount: (listener: (count: number) => void) => () => void;
   flushOfflineMutations: () => Promise<OfflineFlushResult>;
   getUserProfile: (ownerUid: string) => Promise<UserProfile | null>;
+  getVisionStatement: (ownerUid: string) => Promise<VisionStatement | null>;
+  saveVisionStatement: (ownerUid: string, statement: string) => Promise<VisionStatement>;
 };
 
 let isFlushingOfflineMutations = false;
@@ -315,6 +319,8 @@ export const dataRepository: DataRepository = {
       : await getNextGoalOrderIndex(input.ownerUid, input.type);
 
     const goalId = input.existingGoal?.id ?? input.goalId ?? id();
+    const resolvedStatus = input.status ?? input.existingGoal?.status ?? "not_started";
+
     const goal: Goal = {
       id: goalId,
       ownerUid: input.ownerUid,
@@ -332,9 +338,11 @@ export const dataRepository: DataRepository = {
       projectedEndDate: input.projectedEndDate,
       actualStartDate: input.existingGoal?.actualStartDate ?? null,
       actualEndDate: input.existingGoal?.actualEndDate ?? null,
-      status: input.existingGoal?.status ?? "not_started",
+      status: resolvedStatus,
       percentComplete:
-        input.existingGoal?.percentComplete ?? statusToPercent(input.existingGoal?.status ?? "not_started"),
+        input.existingGoal && input.status === undefined
+          ? input.existingGoal.percentComplete
+          : statusToPercent(resolvedStatus),
       isFocus: input.isFocus,
       themeColor: getGoalThemeColor(input.type),
       orderIndex: nextOrderIndex,
@@ -1693,6 +1701,60 @@ export const dataRepository: DataRepository = {
     });
 
     return data.userProfiles?.[0] ?? null;
+  },
+  async getVisionStatement(ownerUid) {
+    const data = await runClientQuery<{ visionStatements?: VisionStatement[] }>({
+      visionStatements: {
+        $: {
+          where: {
+            ownerUid,
+          },
+        },
+      },
+    });
+
+    return data.visionStatements?.[0] ?? null;
+  },
+  async saveVisionStatement(ownerUid, statement) {
+    ensureClientMutationSupport();
+
+    const trimmed = statement.trim();
+    let existing = await dataRepository.getVisionStatement(ownerUid);
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const now = new Date().toISOString();
+      const visionId = existing?.id ?? id();
+      const next: VisionStatement = {
+        id: visionId,
+        ownerUid,
+        statement: trimmed,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
+
+      try {
+        await db.transact(
+          db.tx.visionStatements[visionId].update({
+            ownerUid: next.ownerUid,
+            statement: next.statement,
+            createdAt: next.createdAt,
+            updatedAt: next.updatedAt,
+          }),
+        );
+
+        return next;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.toLowerCase().includes("already exists") && !existing) {
+          existing = await dataRepository.getVisionStatement(ownerUid);
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw new Error("Could not save vision statement.");
   },
 };
 

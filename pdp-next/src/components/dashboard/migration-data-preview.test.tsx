@@ -82,9 +82,19 @@ function buildGoal(overrides: Partial<Goal>): Goal {
   };
 }
 
-describe("migration data preview timeline filtering", () => {
+describe("migration data preview planning tab navigation", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.scrollTo = vi.fn();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ cycles: [], commitments: [] }),
+      } as unknown as Response),
+    );
+
     getUserProfileMock.mockReset();
     listGoalsMock.mockReset();
     listChildGoalsMock.mockReset();
@@ -161,56 +171,61 @@ describe("migration data preview timeline filtering", () => {
     });
   });
 
-  it("defaults to yearly goals and can switch filters", async () => {
+  it("defaults to week tab and shows annual goals when year tab is clicked", async () => {
     const user = userEvent.setup();
 
     render(<MigrationDataPreview />);
 
+    // Week tab should be active by default
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "Yearly (1)" })[0]?.className).toContain("bg-slate-900");
+      expect(screen.getByRole("button", { name: "Week" }).getAttribute("aria-current")).toBe("page");
     });
 
-    expect(screen.getAllByRole("button", { name: "Long-term (1)" })[0]?.className).not.toContain("bg-slate-900");
-    expect(screen.getAllByRole("button", { name: "All (2)" })[0]?.className).not.toContain("bg-slate-900");
-
-    expect(screen.getAllByRole("button", { name: "Yearly (1)" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "Long-term (1)" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "All (2)" }).length).toBeGreaterThan(0);
-
-    await user.click(screen.getAllByRole("button", { name: "Long-term (1)" })[0]);
+    // Navigate to Year tab
+    await user.click(screen.getByRole("button", { name: "Year" }));
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "Long-term (1)" })[0]?.className).toContain("bg-slate-900");
+      expect(screen.getByRole("button", { name: "Year" }).getAttribute("aria-current")).toBe("page");
     });
 
-    expect(screen.getAllByRole("button", { name: "Yearly (1)" })[0]?.className).not.toContain("bg-slate-900");
-
-    await user.click(screen.getAllByRole("button", { name: "All (2)" })[0]);
-
+    // Annual goal visible, vision_5y goal should be filtered out
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "All (2)" })[0]?.className).toContain("bg-slate-900");
+      expect(screen.getAllByText("Yearly planning goal").length).toBeGreaterThan(0);
     });
+    expect(screen.queryByText("Long-term personal goal")).toBeNull();
+
+    // Domain filter buttons present
+    expect(screen.getByRole("button", { name: "All (2)" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Professional (1)" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Personal (1)" })).not.toBeNull();
 
     expect(listGoalsMock).toHaveBeenCalledWith("user-1", "professional", { includeDeleted: true });
     expect(listGoalsMock).toHaveBeenCalledWith("user-1", "personal", { includeDeleted: true });
   });
 
-  it("initializes filter from persisted preference", async () => {
-    window.localStorage.setItem("pdp.goalTimelineFilter", "vision_5y");
+  it("initializes planning tab from persisted preference", async () => {
+    window.localStorage.setItem("pdp.planningTab", "year");
 
     render(<MigrationDataPreview />);
 
+    // Year tab is persisted so it should be active
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "Long-term (1)" })[0]?.className).toContain("bg-slate-900");
+      expect(screen.getByRole("button", { name: "Year" }).getAttribute("aria-current")).toBe("page");
     });
 
-    expect(screen.getAllByRole("button", { name: "Yearly (1)" })[0]?.className).not.toContain("bg-slate-900");
+    // Annual filter is auto-applied, only annual goal visible
+    await waitFor(() => {
+      expect(screen.getByText("Yearly planning goal")).not.toBeNull();
+    });
+    expect(screen.queryByText("Long-term personal goal")).toBeNull();
   });
 
   it("renders habits and supports creating today check-in", async () => {
     const user = userEvent.setup();
 
     render(<MigrationDataPreview />);
+
+    await user.click(screen.getByRole("button", { name: "Year" }));
 
     await waitFor(() => {
       expect(screen.getByText("Daily review")).not.toBeNull();
@@ -233,6 +248,8 @@ describe("migration data preview timeline filtering", () => {
     const user = userEvent.setup();
 
     render(<MigrationDataPreview />);
+
+    await user.click(screen.getByRole("button", { name: "Year" }));
 
     await waitFor(() => {
       expect((screen.getByRole("button", { name: "+ Task" }) as HTMLButtonElement).disabled).toBe(false);

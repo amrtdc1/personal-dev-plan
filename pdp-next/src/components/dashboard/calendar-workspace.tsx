@@ -19,7 +19,11 @@ import { getTaskParentGoalId } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
-import { InfoPopover } from "@/components/ui/info-popover";
+import { EmptyStateCard } from "@/components/ui/empty-state-card";
+import { ErrorBanner } from "@/components/ui/error-banner";
+import { LoadingSection } from "@/components/ui/loading-section";
+import { IconButton } from "@/components/ui/icon-button";
+import { FilterX, Loader2, Save, X } from "lucide-react";
 
 type CalendarItemKind = "goal" | "childGoal" | "task";
 type CreateType = "goal" | "task";
@@ -855,8 +859,16 @@ export function CalendarWorkspace() {
     tasks,
   ]);
 
-  if (isLoading || error || !user) {
-    return null;
+  if (isLoading) {
+    return <LoadingSection title="Calendar" message="Loading calendar..." titleClassName="pdp-section-title" />;
+  }
+
+  if (error) {
+    return <ErrorBanner title="Calendar" message={error.message} />;
+  }
+
+  if (!user) {
+    return <EmptyStateCard title="Calendar" description="Sign in to view and manage calendar items." />;
   }
 
   async function reloadData() {
@@ -1525,18 +1537,7 @@ export function CalendarWorkspace() {
     <section className={`pdp-panel pdp-panel-mobile-flat pdp-mobile-surface ${isTouchFriendly ? "pdp-touch-mode" : ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="pdp-section-title text-slate-900">Calendar</h2>
-            <InfoPopover
-              className="self-center sm:hidden"
-              label="Calendar help"
-            >
-              Select dates to create goals/tasks, drag events to reschedule, and inspect hierarchy links directly in the calendar.
-            </InfoPopover>
-          </div>
-          <p className="mt-2 hidden max-w-3xl text-sm leading-6 text-slate-700 sm:block">
-            Select dates to create goals/tasks, drag events to reschedule, and inspect hierarchy links directly in the calendar.
-          </p>
+          <h2 className="pdp-section-title text-slate-900">Calendar</h2>
         </div>
         {isRefreshing || isSaving ? (
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
@@ -1646,13 +1647,9 @@ export function CalendarWorkspace() {
                 </div>
 
                 <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={resetCalendarFilters}
-                    className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                  >
-                    Reset filters
-                  </button>
+                  <IconButton onClick={resetCalendarFilters} title="Reset filters">
+                    <FilterX className="h-4 w-4" />
+                  </IconButton>
                 </div>
               </>
             ) : null}
@@ -1940,16 +1937,17 @@ export function CalendarWorkspace() {
               </label>
 
               <div className="flex flex-wrap gap-2">
-                <button type="submit" disabled={isSaving} className={primaryActionClass}>
-                  {isSaving ? "Saving..." : "Create on calendar"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                <IconButton
+                  type="submit"
+                  variant="primary"
+                  disabled={isSaving}
+                  title={isSaving ? "Saving..." : "Create on calendar"}
                 >
-                  Cancel
-                </button>
+                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                </IconButton>
+                <IconButton onClick={() => setIsCreateModalOpen(false)} title="Cancel">
+                  <X className="h-4 w-4" />
+                </IconButton>
               </div>
             </form>
           </CrudModal>
@@ -2067,16 +2065,17 @@ export function CalendarWorkspace() {
                   ) : null}
 
                   <div className="flex flex-wrap gap-2">
-                    <button type="submit" disabled={isSaving} className={secondaryActionClass}>
-                      {isSaving ? "Saving..." : "Save event updates"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearSelectedEvent}
-                      className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                    <IconButton
+                      type="submit"
+                      variant="primary"
+                      disabled={isSaving}
+                      title={isSaving ? "Saving..." : "Save event updates"}
                     >
-                      Cancel
-                    </button>
+                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    </IconButton>
+                    <IconButton onClick={clearSelectedEvent} title="Cancel">
+                      <X className="h-4 w-4" />
+                    </IconButton>
                   </div>
                 </>
               ) : null}

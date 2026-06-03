@@ -6,7 +6,12 @@ import { db } from "@/lib/instantdb/client";
 import { renderStrictMarkdownToHtml } from "@/lib/journal/markdown";
 import type { Goal, JournalEntry } from "@/lib/domain/types";
 import { CrudModal } from "@/components/ui/crud-modal";
+import { EmptyStateCard } from "@/components/ui/empty-state-card";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { InfoPopover } from "@/components/ui/info-popover";
+import { IconButton } from "@/components/ui/icon-button";
+import { LoadingSection } from "@/components/ui/loading-section";
+import { Archive, ChevronLeft, ChevronRight, Filter, Loader2, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 
 const MOOD_OPTIONS = ["great", "good", "okay", "low", "stressed"] as const;
 const JOURNAL_PAGE_SIZE = 6;
@@ -132,28 +137,22 @@ export function JournalWorkspace() {
 
   if (isLoading || isRefreshing) {
     return (
-      <section className="pdp-panel">
-        <h2 className="pdp-section-title text-slate-900">Journal</h2>
-        <p className="mt-3 text-sm text-slate-700">Loading journal entries...</p>
-      </section>
+      <LoadingSection title="Journal" message="Loading journal entries..." titleClassName="pdp-section-title" />
     );
   }
 
   if (error) {
     return (
-      <section className="pdp-panel rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-red-700">Journal</h2>
-        <p className="mt-2 text-sm text-red-700">{error.message}</p>
-      </section>
+      <ErrorBanner title="Journal" message={error.message} />
     );
   }
 
   if (!user) {
     return (
-      <section className="pdp-panel">
-        <h2 className="pdp-section-title text-slate-900">Journal</h2>
-        <p className="mt-3 text-sm text-slate-700">Sign in to create and manage journal entries.</p>
-      </section>
+      <EmptyStateCard
+        title="Journal"
+        description="Sign in to create and manage journal entries."
+      />
     );
   }
 
@@ -290,9 +289,11 @@ export function JournalWorkspace() {
           <button
             type="button"
             onClick={openCreateEntryModal}
-            className="rounded-full bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600"
+            className="inline-flex items-center justify-center rounded-full bg-blue-700 p-2 text-white transition hover:bg-blue-600"
+            title="New entry"
+            aria-label="New entry"
           >
-            + Entry
+            <Plus className="h-4 w-4" />
           </button>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
             Entries: {filteredEntries.length}
@@ -391,20 +392,17 @@ export function JournalWorkspace() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
+            <IconButton
               type="submit"
+              variant="primary"
               disabled={isSaving}
-              className="pdp-btn-primary rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              title={isSaving ? "Saving..." : editingEntry ? "Update Entry" : "Save Entry"}
             >
-              {isSaving ? "Saving..." : editingEntry ? "Update Entry" : "Save Entry"}
-            </button>
-            <button
-              type="button"
-              onClick={closeEntryModal}
-              className="pdp-btn-secondary rounded-lg px-4 py-2 text-sm font-semibold"
-            >
-              Cancel
-            </button>
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            </IconButton>
+            <IconButton onClick={closeEntryModal} title="Cancel">
+              <X className="h-4 w-4" />
+            </IconButton>
           </div>
         </form>
       </CrudModal>
@@ -415,10 +413,12 @@ export function JournalWorkspace() {
           <button
             type="button"
             onClick={() => setIsFilterPanelOpen((current) => !current)}
-            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+            className="inline-flex items-center justify-center rounded-full border border-slate-300 p-1.5 text-slate-600 transition hover:border-slate-400 hover:bg-slate-100"
             aria-expanded={isFilterPanelOpen}
+            title={isFilterPanelOpen ? "Hide filters" : "Show filters"}
+            aria-label={isFilterPanelOpen ? "Hide filters" : "Show filters"}
           >
-            {isFilterPanelOpen ? "Hide filters" : "Show filters"}
+            <Filter className="h-4 w-4" />
           </button>
         </div>
 
@@ -515,29 +515,24 @@ export function JournalWorkspace() {
 
                 <div className="flex flex-wrap gap-2">
                   {!entry.deletedAt ? (
-                    <button
-                      type="button"
-                      onClick={() => handleEdit(entry)}
-                      className="pdp-btn-secondary rounded-lg px-3 py-1.5 text-xs font-semibold"
-                    >
-                      Edit
-                    </button>
+                    <IconButton onClick={() => handleEdit(entry)} title="Edit entry">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </IconButton>
                   ) : null}
-                  <button
-                    type="button"
+                  <IconButton
                     onClick={() => void handleArchiveToggle(entry)}
-                    className="pdp-btn-secondary rounded-lg px-3 py-1.5 text-xs font-semibold"
+                    title={entry.deletedAt ? "Restore entry" : "Archive entry"}
                   >
-                    {entry.deletedAt ? "Restore" : "Archive"}
-                  </button>
+                    {entry.deletedAt ? <RotateCcw className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                  </IconButton>
                   {entry.deletedAt ? (
-                    <button
-                      type="button"
+                    <IconButton
                       onClick={() => void handlePermanentDelete(entry)}
-                      className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:border-red-400 hover:bg-red-100"
+                      title="Delete permanently"
+                      variant="danger"
                     >
-                      Delete permanently
-                    </button>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </IconButton>
                   ) : null}
                 </div>
               </div>
@@ -574,17 +569,19 @@ export function JournalWorkspace() {
               type="button"
               onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
               disabled={effectiveCurrentPage <= 1}
-              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center rounded-full border border-slate-300 p-1 text-slate-600 transition hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Previous page" aria-label="Previous page"
             >
-              Prev
+              <ChevronLeft className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
               onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
               disabled={effectiveCurrentPage >= totalPages}
-              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center rounded-full border border-slate-300 p-1 text-slate-600 transition hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Next page" aria-label="Next page"
             >
-              Next
+              <ChevronRight className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>

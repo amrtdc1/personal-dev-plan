@@ -3,9 +3,9 @@ export type GoalTimeframeLevel = "vision_5y" | "annual" | "quarterly" | "monthly
 export type ItemStatus = "not_started" | "in_progress" | "done";
 export type HabitCadence = "daily" | "weekly";
 export type HabitState = "active" | "paused" | "archived";
-export type PlanningCycleType = "weekly" | "quarterly";
+export type PlanningCycleType = "weekly" | "quarterly" | "yearly";
 export type PlanningCycleStatus = "active" | "completed" | "archived";
-export type PlanningCommitmentLevel = "weekly" | "quarterly";
+export type PlanningCommitmentLevel = "weekly" | "quarterly" | "yearly";
 export type PlanningCommitmentDomain = GoalType | "mixed";
 export type PlanningCommitmentStatus = "not_started" | "in_progress" | "done" | "dropped";
 
@@ -127,6 +127,14 @@ export type UserProfile = {
   collegeLogoUrl?: string | null;
   timezone: string;
   retentionDays: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type VisionStatement = {
+  id: string;
+  ownerUid: string;
+  statement: string;
   createdAt: string;
   updatedAt: string;
 };

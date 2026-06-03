@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { DailyFocusPlan, PlanningCommitment, PlanningCycle, Task } from "@/lib/domain/types";
+import { IconButton } from "@/components/ui/icon-button";
+import { ExternalLink, Loader2, Save } from "lucide-react";
 
 type FocusTodayPanelProps = {
   tasks: Task[];
@@ -369,13 +371,9 @@ export function FocusTodayPanel({ tasks, onOpenTask }: FocusTodayPanelProps) {
                         </p>
                       )}
                       {onOpenTask ? (
-                        <button
-                          type="button"
-                          onClick={() => onOpenTask(task.id)}
-                          className="mt-2 rounded-full border border-slate-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                        >
-                          Open task
-                        </button>
+                        <IconButton onClick={() => onOpenTask(task.id)} title="Open task" size="sm">
+                          <ExternalLink className="h-3 w-3" />
+                        </IconButton>
                       ) : null}
                     </div>
                   </li>
@@ -400,14 +398,14 @@ export function FocusTodayPanel({ tasks, onOpenTask }: FocusTodayPanelProps) {
         <p className="text-xs text-slate-600">
           {dailyFocusPlan ? `Last saved ${new Date(dailyFocusPlan.updatedAt).toLocaleString()}` : "Not saved yet."}
         </p>
-        <button
-          type="button"
+        <IconButton
           onClick={() => void handleSaveDailyFocus()}
           disabled={isSaving}
-          className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+          title={isSaving ? "Saving..." : "Save focus"}
+          variant="primary"
         >
-          {isSaving ? "Saving..." : "Save focus"}
-        </button>
+          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        </IconButton>
       </div>
     </section>
   );

@@ -7,6 +7,13 @@ import type { Goal, Habit, HabitCheckin, ItemStatus, ChildGoal, PlanningCommitme
 import { getTaskParentGoalId } from "@/lib/domain/types";
 import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
 import { CrudModal } from "@/components/ui/crud-modal";
+import { AsyncStateContainer } from "@/components/ui/async-state-container";
+import { EmptyStateCard } from "@/components/ui/empty-state-card";
+import { ErrorBanner } from "@/components/ui/error-banner";
+import { LoadingSection } from "@/components/ui/loading-section";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { IconButton } from "@/components/ui/icon-button";
+import { CheckCircle2, Clock, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 
 type DashboardInsightsMode = "today" | "close_day";
 type TodayQueueSortMode = "urgent" | "quick_wins";
@@ -16,8 +23,9 @@ type TodayCommitmentFilterMode = "all" | "none" | string;
 const DASHBOARD_INSIGHTS_VIEW_STORAGE_KEY = "pdp.dashboardInsightsView";
 const DASHBOARD_TODAY_QUEUE_SORT_STORAGE_KEY = "pdp.dashboardTodayQueueSort";
 const DASHBOARD_TODAY_COMMITMENT_FILTER_STORAGE_KEY = "pdp.dashboardTodayCommitmentFilter";
-const QUICK_ACTION_BUTTON_CLASS =
-  "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-50";
+const QUICK_ACTION_TASK_PAGE_SIZE = 6;
+const COMPLETED_TASK_PAGE_SIZE = 6;
+const HABIT_CHECKIN_PAGE_SIZE = 15;
 
 export function DashboardInsights() {
   const { isLoading, user, error } = db.useAuth();
@@ -56,6 +64,9 @@ export function DashboardInsights() {
   const [habitCheckinModalHabitId, setHabitCheckinModalHabitId] = useState<string | null>(null);
   const [habitCheckinDate, setHabitCheckinDate] = useState("");
   const [todayTaskFilterMode, setTodayTaskFilterMode] = useState<TodayTaskFilterMode>("all");
+  const [quickActionTaskPage, setQuickActionTaskPage] = useState(1);
+  const [completedTaskPage, setCompletedTaskPage] = useState(1);
+  const [habitCheckinPage, setHabitCheckinPage] = useState(1);
   const [todayQueueSortMode, setTodayQueueSortMode] = useState<TodayQueueSortMode>(() => {
     if (typeof window === "undefined") {
       return "urgent";
@@ -365,7 +376,7 @@ export function DashboardInsights() {
 
     if (todayQueueSortMode === "urgent") {
       if (todayTaskFilterMode === "overdue") {
-        return overdueTasks.slice(0, 8);
+        return overdueTasks;
       }
 
       const taskMap = new Map<string, Task>();
@@ -375,29 +386,84 @@ export function DashboardInsights() {
       for (const task of tasksDueToday.sort(compareTasksByDueDate)) {
         taskMap.set(task.id, task);
       }
-      const prioritized = Array.from(taskMap.values()).slice(0, 8);
+      const prioritized = Array.from(taskMap.values());
       if (prioritized.length > 0) {
         return prioritized;
       }
     }
 
     if (todayQueueSortMode === "quick_wins") {
-      return [...openTasks]
-        .sort(compareTasksByQuickWins)
-        .slice(0, 8);
+      return [...openTasks].sort(compareTasksByQuickWins);
     }
 
-    return [...openTasks].sort(compareTasksByDueDate).slice(0, 8);
+    return [...openTasks].sort(compareTasksByDueDate);
   }, [commitmentScopedTasks, overdueTasks, tasksDueToday, todayQueueSortMode, todayTaskFilterMode]);
 
   const completedTodayTasks = useMemo(
     () =>
       commitmentScopedTasks
         .filter((task) => task.status === "done" && task.updatedAt.slice(0, 10) === todayIso)
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        .slice(0, 4),
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [commitmentScopedTasks, todayIso],
   );
+
+  const quickActionTaskPageCount = useMemo(
+    () => Math.max(1, Math.ceil(quickActionTasks.length / QUICK_ACTION_TASK_PAGE_SIZE)),
+    [quickActionTasks.length],
+  );
+  const completedTaskPageCount = useMemo(
+    () => Math.max(1, Math.ceil(completedTodayTasks.length / COMPLETED_TASK_PAGE_SIZE)),
+    [completedTodayTasks.length],
+  );
+  const habitCheckinPageCount = useMemo(
+    () => Math.max(1, Math.ceil(habitsNeedingCheckin.length / HABIT_CHECKIN_PAGE_SIZE)),
+    [habitsNeedingCheckin.length],
+  );
+
+  const pagedQuickActionTasks = useMemo(() => {
+    const start = (quickActionTaskPage - 1) * QUICK_ACTION_TASK_PAGE_SIZE;
+    return quickActionTasks.slice(start, start + QUICK_ACTION_TASK_PAGE_SIZE);
+  }, [quickActionTaskPage, quickActionTasks]);
+
+  const pagedCompletedTodayTasks = useMemo(() => {
+    const start = (completedTaskPage - 1) * COMPLETED_TASK_PAGE_SIZE;
+    return completedTodayTasks.slice(start, start + COMPLETED_TASK_PAGE_SIZE);
+  }, [completedTaskPage, completedTodayTasks]);
+
+  const pagedHabitsNeedingCheckin = useMemo(() => {
+    const start = (habitCheckinPage - 1) * HABIT_CHECKIN_PAGE_SIZE;
+    return habitsNeedingCheckin.slice(start, start + HABIT_CHECKIN_PAGE_SIZE);
+  }, [habitCheckinPage, habitsNeedingCheckin]);
+
+  useEffect(() => {
+    setQuickActionTaskPage(1);
+  }, [todayQueueSortMode, todayTaskFilterMode, effectiveTodayCommitmentFilterMode]);
+
+  useEffect(() => {
+    setCompletedTaskPage(1);
+  }, [effectiveTodayCommitmentFilterMode]);
+
+  useEffect(() => {
+    setHabitCheckinPage(1);
+  }, [todayIso]);
+
+  useEffect(() => {
+    if (quickActionTaskPage > quickActionTaskPageCount) {
+      setQuickActionTaskPage(quickActionTaskPageCount);
+    }
+  }, [quickActionTaskPage, quickActionTaskPageCount]);
+
+  useEffect(() => {
+    if (completedTaskPage > completedTaskPageCount) {
+      setCompletedTaskPage(completedTaskPageCount);
+    }
+  }, [completedTaskPage, completedTaskPageCount]);
+
+  useEffect(() => {
+    if (habitCheckinPage > habitCheckinPageCount) {
+      setHabitCheckinPage(habitCheckinPageCount);
+    }
+  }, [habitCheckinPage, habitCheckinPageCount]);
 
   async function handleQuickTaskDone(taskId: string, requireConfirmation = true) {
     if (!user) {
@@ -751,30 +817,14 @@ export function DashboardInsights() {
     }
   }
 
-  if (isLoading || isRefreshing) {
-    return (
-      <section className="pdp-panel">
-        <h2 className="text-lg font-semibold text-slate-900">Today Workspace</h2>
-        <p className="mt-3 text-sm text-slate-700">Loading insights...</p>
-      </section>
-    );
-  }
+  const authErrorMessage = error?.message ?? null;
 
-  if (error) {
+  if (!user && !isLoading && !isRefreshing && !authErrorMessage) {
     return (
-      <section className="pdp-panel rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-red-700">Today Workspace</h2>
-        <p className="mt-2 text-sm text-red-700">{error.message}</p>
-      </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <section className="pdp-panel">
-        <h2 className="text-lg font-semibold text-slate-900">Today Workspace</h2>
-        <p className="mt-3 text-sm text-slate-700">Sign in to see focus and risk insights.</p>
-      </section>
+      <EmptyStateCard
+        title="Today Workspace"
+        description="Sign in to see focus and risk insights."
+      />
     );
   }
 
@@ -784,18 +834,25 @@ export function DashboardInsights() {
   ];
 
   return (
+    <AsyncStateContainer
+      isLoading={isLoading || isRefreshing}
+      loadingFallback={<LoadingSection title="Today Workspace" message="Loading insights..." />}
+      errorMessage={authErrorMessage}
+      errorFallback={
+        <ErrorBanner
+          title="Today Workspace"
+          message={authErrorMessage ?? "We could not load Today workspace details."}
+        />
+      }
+    >
     <WorkspaceShell
       title="Today Workspace"
       sectionClassName="pdp-panel-mobile-flat pdp-mobile-surface"
       leftRailClassName="pdp-panel-muted-mobile-flat"
       headerAside={
-        <button
-          type="button"
-          onClick={openQuickTaskCreateModal}
-          className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-        >
-          + Task
-        </button>
+        <IconButton onClick={openQuickTaskCreateModal} title="Create task" variant="primary">
+          <Plus className="h-4 w-4" />
+        </IconButton>
       }
       notices={
         <>
@@ -867,20 +924,14 @@ export function DashboardInsights() {
 
           {dashboardMode === "today" ? (
             <>
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm text-slate-600">Focus on what needs action now.</p>
-              </div>
-
               <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="pdp-solid-surface pdp-card-mobile-ghost rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
             <p className="text-sm font-semibold text-slate-700">Tasks due today</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{tasksDueToday.length}</p>
-            <p className="text-xs text-slate-600">Need action</p>
           </div>
           <div className="pdp-solid-surface pdp-card-mobile-ghost rounded-xl border border-slate-200 px-3 py-3 shadow-sm">
             <p className="text-sm font-semibold text-slate-700">Habit check-ins</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{habitsCheckedInTodayCount}</p>
-            <p className="text-xs text-slate-600">of {habits.length} active habits</p>
             {habitsCheckedInToday.length > 0 ? (
               <p className="mt-1 truncate text-[11px] text-slate-500">
                 Checked in: {habitsCheckedInToday.map((habit) => habit.title).slice(0, 3).join(", ")}
@@ -975,11 +1026,11 @@ export function DashboardInsights() {
             {quickActionTasks.length === 0 && completedTodayTasks.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">No immediate task actions.</p>
             ) : (
-              <div className="mt-2 space-y-2">
+              <div className="mt-2 space-y-1">
                 {quickActionTasks.length > 0 ? (
-                  <ul className="space-y-2">
-                    {quickActionTasks.map((task) => (
-                      <li key={task.id} className="pdp-card-mobile-ghost flex min-w-0 flex-wrap items-start justify-between gap-2 rounded-lg border border-slate-200 px-2 py-2">
+                  <ul className="space-y-1">
+                    {pagedQuickActionTasks.map((task) => (
+                      <li key={task.id} className="pdp-card-mobile-ghost flex min-w-0 flex-wrap items-start justify-between gap-2 rounded-lg border border-slate-200 px-2 py-1">
                         <div className="min-w-0 flex-1">
                           <button
                             type="button"
@@ -1002,35 +1053,45 @@ export function DashboardInsights() {
                           </label>
                         </div>
                         <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
-                          <button
-                            type="button"
+                          <IconButton
                             onClick={() => void handleQuickTaskSnooze(task.id, 1)}
                             disabled={actionInFlightId === `task-defer-${task.id}`}
-                            className={`${QUICK_ACTION_BUTTON_CLASS} border-amber-300 text-amber-700 hover:border-amber-400 hover:bg-amber-50`}
+                            title={actionInFlightId === `task-defer-${task.id}` ? "Saving..." : "Snooze +1 day"}
+                            className="border-amber-300 text-amber-700 hover:border-amber-400 hover:bg-amber-50"
                           >
-                            {actionInFlightId === `task-defer-${task.id}` ? "Saving..." : "+1d"}
-                          </button>
-                          <button
-                            type="button"
+                            {actionInFlightId === `task-defer-${task.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                          </IconButton>
+                          <IconButton
                             onClick={() => void handleQuickTaskDone(task.id, true)}
                             disabled={actionInFlightId === `task-${task.id}`}
-                            className={`${QUICK_ACTION_BUTTON_CLASS} border-emerald-300 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50`}
+                            title={actionInFlightId === `task-${task.id}` ? "Saving..." : "Mark done"}
+                            className="border-emerald-300 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50"
                           >
-                            {actionInFlightId === `task-${task.id}` ? "Saving..." : "Mark done"}
-                          </button>
+                            {actionInFlightId === `task-${task.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                          </IconButton>
                         </div>
                       </li>
                     ))}
                   </ul>
                 ) : null}
 
+                {quickActionTaskPageCount > 1 ? (
+                  <PaginationControls
+                    page={quickActionTaskPage}
+                    pageCount={quickActionTaskPageCount}
+                    onPrevious={() => setQuickActionTaskPage((page) => Math.max(1, page - 1))}
+                    onNext={() => setQuickActionTaskPage((page) => Math.min(quickActionTaskPageCount, page + 1))}
+                    className="pt-1"
+                  />
+                ) : null}
+
                 {completedTodayTasks.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     {quickActionTasks.length > 0 ? <div className="border-t border-slate-200" /> : null}
                     <p className="text-xs font-semibold text-slate-500">Completed today</p>
-                    <ul className="space-y-2">
-                      {completedTodayTasks.map((task) => (
-                        <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+                    <ul className="space-y-1">
+                      {pagedCompletedTodayTasks.map((task) => (
+                        <li key={task.id} className="pdp-card-mobile-ghost rounded-lg border border-slate-200 bg-slate-50 px-2 py-1">
                           <button
                             type="button"
                             onClick={() => openTaskQuickModal(task.id)}
@@ -1053,6 +1114,15 @@ export function DashboardInsights() {
                         </li>
                       ))}
                     </ul>
+                    {completedTaskPageCount > 1 ? (
+                      <PaginationControls
+                        page={completedTaskPage}
+                        pageCount={completedTaskPageCount}
+                        onPrevious={() => setCompletedTaskPage((page) => Math.max(1, page - 1))}
+                        onNext={() => setCompletedTaskPage((page) => Math.min(completedTaskPageCount, page + 1))}
+                        className="pt-1"
+                      />
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1061,24 +1131,37 @@ export function DashboardInsights() {
 
           <div className="min-w-0 pdp-card-mobile-ghost rounded-xl border border-slate-200 bg-white px-3 py-3">
             <p className="text-sm font-semibold text-slate-700">Quick habit check-ins</p>
-            {habitsNeedingCheckin.slice(0, 20).length === 0 ? (
+            {habitsNeedingCheckin.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">All tracked habits are checked in today.</p>
             ) : (
-              <ul className="mt-2 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-                {habitsNeedingCheckin.slice(0, 20).map((habit) => (
-                  <li key={habit.id} className="pdp-card-mobile-ghost min-w-0 rounded-lg border border-slate-200 px-2 py-2">
-                    <p className="truncate text-sm font-medium text-slate-900">{habit.title}</p>
-                    <button
-                      type="button"
-                      onClick={() => openQuickHabitCheckinModal(habit.id)}
-                      disabled={actionInFlightId === `habit-${habit.id}`}
-                      className={`${QUICK_ACTION_BUTTON_CLASS} mt-2 w-full border-indigo-300 text-indigo-700 hover:border-indigo-400 hover:bg-indigo-50`}
-                    >
-                      {actionInFlightId === `habit-${habit.id}` ? "Saving..." : "Check in"}
-                    </button>
+              <>
+                <ul className="mt-2 grid min-w-0 grid-cols-1 gap-1 sm:grid-cols-2">
+                  {pagedHabitsNeedingCheckin.map((habit) => (
+                  <li key={habit.id} className="pdp-card-mobile-ghost min-w-0 rounded-lg border border-slate-200 px-2 py-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-medium text-slate-900">{habit.title}</p>
+                      <IconButton
+                        onClick={() => openQuickHabitCheckinModal(habit.id)}
+                        disabled={actionInFlightId === `habit-${habit.id}`}
+                        title={actionInFlightId === `habit-${habit.id}` ? "Saving..." : "Check in"}
+                        className="border-emerald-300 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50"
+                      >
+                        {actionInFlightId === `habit-${habit.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      </IconButton>
+                    </div>
                   </li>
-                ))}
-              </ul>
+                  ))}
+                </ul>
+                {habitCheckinPageCount > 1 ? (
+                  <PaginationControls
+                    page={habitCheckinPage}
+                    pageCount={habitCheckinPageCount}
+                    onPrevious={() => setHabitCheckinPage((page) => Math.max(1, page - 1))}
+                    onNext={() => setHabitCheckinPage((page) => Math.min(habitCheckinPageCount, page + 1))}
+                    className="mt-2"
+                  />
+                ) : null}
+              </>
             )}
           </div>
               </div>
@@ -1190,14 +1273,14 @@ export function DashboardInsights() {
           </div>
 
           <div className="mt-3 flex justify-end">
-            <button
-              type="button"
+            <IconButton
               onClick={() => void handleCloseDayJournalSave()}
               disabled={actionInFlightId === "close-day-journal"}
-              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              title={actionInFlightId === "close-day-journal" ? "Saving..." : "Save close day note"}
+              variant="primary"
             >
-              {actionInFlightId === "close-day-journal" ? "Saving..." : "Save close day note"}
-            </button>
+              {actionInFlightId === "close-day-journal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            </IconButton>
           </div>
             </div>
           ) : null}
@@ -1273,21 +1356,17 @@ export function DashboardInsights() {
           </label>
 
           <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setIsQuickTaskModalOpen(false)}
-              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
+            <IconButton onClick={() => setIsQuickTaskModalOpen(false)} title="Cancel">
+              <X className="h-4 w-4" />
+            </IconButton>
+            <IconButton
               onClick={() => void handleQuickTaskCreate()}
               disabled={actionInFlightId === "quick-create-task" || quickTaskTitle.trim().length === 0}
-              className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              title={actionInFlightId === "quick-create-task" ? "Saving..." : "Create Task"}
+              variant="primary"
             >
-              {actionInFlightId === "quick-create-task" ? "Saving..." : "Create Task"}
-            </button>
+              {actionInFlightId === "quick-create-task" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            </IconButton>
           </div>
         </div>
       </CrudModal>
@@ -1370,30 +1449,30 @@ export function DashboardInsights() {
             </label>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
+              <IconButton
                 onClick={() => void handleTaskModalSave()}
                 disabled={actionInFlightId === `task-save-${selectedTask.id}` || taskModalTitle.trim().length === 0}
-                className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                title={actionInFlightId === `task-save-${selectedTask.id}` ? "Saving..." : "Save changes"}
+                variant="primary"
               >
-                {actionInFlightId === `task-save-${selectedTask.id}` ? "Saving..." : "Save changes"}
-              </button>
-              <button
-                type="button"
+                {actionInFlightId === `task-save-${selectedTask.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              </IconButton>
+              <IconButton
                 onClick={() => void handleTaskModalDelete()}
                 disabled={actionInFlightId === `task-delete-${selectedTask.id}`}
-                className="rounded-full border border-rose-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 transition hover:border-rose-400 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                title={actionInFlightId === `task-delete-${selectedTask.id}` ? "Deleting..." : "Delete task"}
+                variant="danger"
               >
-                {actionInFlightId === `task-delete-${selectedTask.id}` ? "Deleting..." : "Delete task"}
-              </button>
-              <button
-                type="button"
+                {actionInFlightId === `task-delete-${selectedTask.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </IconButton>
+              <IconButton
                 onClick={() => void handleTaskModalDone()}
                 disabled={actionInFlightId === `task-${selectedTask.id}`}
-                className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                title={actionInFlightId === `task-${selectedTask.id}` ? "Saving..." : "Mark Complete"}
+                className="border-emerald-300 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50"
               >
-                {actionInFlightId === `task-${selectedTask.id}` ? "Saving..." : "Mark Complete"}
-              </button>
+                {actionInFlightId === `task-${selectedTask.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              </IconButton>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -1406,14 +1485,13 @@ export function DashboardInsights() {
                   onChange={(event) => setTaskModalSnoozeDays(event.currentTarget.value)}
                   className="pdp-control w-20 rounded-lg"
                 />
-                <button
-                  type="button"
+                <IconButton
                   onClick={() => void handleTaskModalSnooze()}
                   disabled={actionInFlightId === `task-defer-${selectedTask.id}`}
-                  className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700 transition hover:border-amber-400 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  title={actionInFlightId === `task-defer-${selectedTask.id}` ? "Saving..." : "Snooze"}
                 >
-                  {actionInFlightId === `task-defer-${selectedTask.id}` ? "Saving..." : "Snooze"}
-                </button>
+                  {actionInFlightId === `task-defer-${selectedTask.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                </IconButton>
               </div>
             </div>
 
@@ -1435,21 +1513,17 @@ export function DashboardInsights() {
               <p className="mt-1 text-xs text-slate-500">{buildTaskDueLabel(pendingTaskDone, todayIso)}</p>
             </div>
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setPendingTaskDoneId(null)}
-                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
+              <IconButton onClick={() => setPendingTaskDoneId(null)} title="Cancel">
+                <X className="h-4 w-4" />
+              </IconButton>
+              <IconButton
                 onClick={() => void handleQuickTaskDone(pendingTaskDone.id, false)}
                 disabled={actionInFlightId === `task-${pendingTaskDone.id}`}
-                className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 transition hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                title={actionInFlightId === `task-${pendingTaskDone.id}` ? "Saving..." : "Confirm"}
+                className="border-emerald-300 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50"
               >
-                {actionInFlightId === `task-${pendingTaskDone.id}` ? "Saving..." : "Confirm"}
-              </button>
+                {actionInFlightId === `task-${pendingTaskDone.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              </IconButton>
             </div>
           </div>
         ) : null}
@@ -1474,26 +1548,23 @@ export function DashboardInsights() {
             </label>
 
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setHabitCheckinModalHabitId(null)}
-                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
+              <IconButton onClick={() => setHabitCheckinModalHabitId(null)} title="Cancel">
+                <X className="h-4 w-4" />
+              </IconButton>
+              <IconButton
                 onClick={() => void handleQuickHabitCheckin(selectedHabitForQuickCheckin.id)}
                 disabled={actionInFlightId === `habit-${selectedHabitForQuickCheckin.id}` || !habitCheckinDate}
-                className="rounded-full border border-indigo-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-indigo-700 transition hover:border-indigo-400 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
+                title={actionInFlightId === `habit-${selectedHabitForQuickCheckin.id}` ? "Saving..." : "Confirm Check-in"}
+                className="border-emerald-300 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50"
               >
-                {actionInFlightId === `habit-${selectedHabitForQuickCheckin.id}` ? "Saving..." : "Confirm Check-in"}
-              </button>
+                {actionInFlightId === `habit-${selectedHabitForQuickCheckin.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              </IconButton>
             </div>
           </div>
         ) : null}
       </CrudModal>
     </WorkspaceShell>
+    </AsyncStateContainer>
   );
 }
 

@@ -35,13 +35,22 @@ import { getTaskParentGoalId } from "@/lib/domain/types";
 import { dataRepository } from "@/lib/data/repository";
 import { db } from "@/lib/instantdb/client";
 import { CrudModal } from "@/components/ui/crud-modal";
-import { InfoPopover } from "@/components/ui/info-popover";
+import { EmptyStateCard } from "@/components/ui/empty-state-card";
+import { ErrorBanner } from "@/components/ui/error-banner";
+import { LoadingSection } from "@/components/ui/loading-section";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { GoalTypeTag } from "@/components/ui/tags";
 import { PlanningPreviewPanel } from "@/components/dashboard/planning-preview-panel";
 import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
+import { IconButton } from "@/components/ui/icon-button";
+import { ArchiveRestore, Check, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 
 const GOAL_TIMELINE_FILTER_STORAGE_KEY = "pdp.goalTimelineFilter";
 const GOAL_TYPE_FILTER_STORAGE_KEY = "pdp.goalTypeFilter";
+const PLANNING_GOALS_PAGE_SIZE = 6;
+const PLANNING_TASKS_PAGE_SIZE = 6;
+const PLANNING_TAB_STORAGE_KEY = "pdp.planningTab";
+type PlanningTab = "week" | "quarter" | "year" | "vision";
 type RepositorySnapshot = {
   profile: UserProfile | null;
   professionalGoals: Goal[];
@@ -108,8 +117,10 @@ export function MigrationDataPreview({
   });
   const [goalTitle, setGoalTitle] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
+  const [goalStatus, setGoalStatus] = useState<ItemStatus>("not_started");
   const [goalStartDate, setGoalStartDate] = useState("");
   const [goalEndDate, setGoalEndDate] = useState("");
+  const [goalTargetYear, setGoalTargetYear] = useState(`${new Date().getFullYear() + 3}`);
   const [goalTimeframeLabel, setGoalTimeframeLabel] = useState("");
   const [goalIsFocus, setGoalIsFocus] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -142,7 +153,23 @@ export function MigrationDataPreview({
   const [habitSaveError, setHabitSaveError] = useState<string | null>(null);
   const [isSavingHabitCheckin, setIsSavingHabitCheckin] = useState(false);
   const [habitCheckinError, setHabitCheckinError] = useState<string | null>(null);
-  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
+  const [planningTab, setPlanningTab] = useState<PlanningTab>(() => {
+    if (typeof window === "undefined") {
+      return "week";
+    }
+    const stored = window.localStorage.getItem(PLANNING_TAB_STORAGE_KEY);
+    if (stored === "week" || stored === "quarter" || stored === "year" || stored === "vision") {
+      return stored;
+    }
+    return "week";
+  });
+  const [visionStatement, setVisionStatement] = useState("");
+  const [isSavingVisionStatement, setIsSavingVisionStatement] = useState(false);
+  const [visionStatementSaveError, setVisionStatementSaveError] = useState<string | null>(null);
+  const [visionStatementSaved, setVisionStatementSaved] = useState(false);
+  const [professionalGoalsPage, setProfessionalGoalsPage] = useState(1);
+  const [personalGoalsPage, setPersonalGoalsPage] = useState(1);
+  const [tasksPage, setTasksPage] = useState(1);
 
   const allGoals = useMemo(
     () => [
@@ -190,10 +217,7 @@ export function MigrationDataPreview({
       }),
     [allTasks, allChildGoals, allGoals],
   );
-  const hasAnyArchived =
-    archivedGoals.length > 0 ||
-    orphanArchivedChildGoals.length > 0 ||
-    orphanArchivedTasks.length > 0;
+  const hasAnyArchived = archivedGoals.length > 0;
   const editingGoal = allGoals.find((goal) => goal.id === editingGoalId) ?? null;
   const editingChildGoal = allChildGoals.find((childGoal) => childGoal.id === editingChildGoalId) ?? null;
   const editingTask = allTasks.find((task) => task.id === editingTaskId) ?? null;
@@ -226,20 +250,26 @@ export function MigrationDataPreview({
     }),
     [activeGoals],
   );
-  const goalTypeCounts = useMemo(
-    () => ({
-      all: activeGoals.length,
-      professional: activeGoals.filter((goal) => goal.type === "professional").length,
-      personal: activeGoals.filter((goal) => goal.type === "personal").length,
-    }),
-    [activeGoals],
-  );
+  const goalTypeCounts = useMemo(() => {
+    const goalsInTimeline = activeGoals.filter(
+      (goal) => goalTimelineFilter === "all" || (goal.timeframeLevel ?? "annual") === goalTimelineFilter,
+    );
+
+    return {
+      all: goalsInTimeline.length,
+      professional: goalsInTimeline.filter((goal) => goal.type === "professional").length,
+      personal: goalsInTimeline.filter((goal) => goal.type === "personal").length,
+    };
+  }, [activeGoals, goalTimelineFilter]);
   const parentGoalCandidates = useMemo(
     () =>
       activeGoals.filter(
-        (goal) => goal.type === goalType && goal.id !== (editingGoal?.id ?? ""),
+        (goal) =>
+          goal.type === goalType &&
+          goal.id !== (editingGoal?.id ?? "") &&
+          (planningTab !== "vision" || (goal.timeframeLevel ?? "annual") === "vision_5y"),
       ),
-    [activeGoals, editingGoal?.id, goalType],
+    [activeGoals, editingGoal?.id, goalType, planningTab],
   );
   const professionalGoals = useMemo(
     () => filteredActiveGoals.filter((goal) => goal.type === "professional"),
@@ -273,6 +303,30 @@ export function MigrationDataPreview({
           : [],
     [childGoalsForSelectedGoal.length, selectedChildGoal, selectedGoal, snapshot?.tasksByChildGoalId],
   );
+  const professionalGoalsPageCount = useMemo(
+    () => Math.max(1, Math.ceil(professionalGoals.length / PLANNING_GOALS_PAGE_SIZE)),
+    [professionalGoals.length],
+  );
+  const personalGoalsPageCount = useMemo(
+    () => Math.max(1, Math.ceil(personalGoals.length / PLANNING_GOALS_PAGE_SIZE)),
+    [personalGoals.length],
+  );
+  const tasksPageCount = useMemo(
+    () => Math.max(1, Math.ceil(tasksForSelectedChildGoal.length / PLANNING_TASKS_PAGE_SIZE)),
+    [tasksForSelectedChildGoal.length],
+  );
+  const pagedProfessionalGoals = useMemo(() => {
+    const start = (professionalGoalsPage - 1) * PLANNING_GOALS_PAGE_SIZE;
+    return professionalGoals.slice(start, start + PLANNING_GOALS_PAGE_SIZE);
+  }, [professionalGoals, professionalGoalsPage]);
+  const pagedPersonalGoals = useMemo(() => {
+    const start = (personalGoalsPage - 1) * PLANNING_GOALS_PAGE_SIZE;
+    return personalGoals.slice(start, start + PLANNING_GOALS_PAGE_SIZE);
+  }, [personalGoals, personalGoalsPage]);
+  const pagedTasksForSelectedChildGoal = useMemo(() => {
+    const start = (tasksPage - 1) * PLANNING_TASKS_PAGE_SIZE;
+    return tasksForSelectedChildGoal.slice(start, start + PLANNING_TASKS_PAGE_SIZE);
+  }, [tasksForSelectedChildGoal, tasksPage]);
   const selectedTask = useMemo(
     () => tasksForSelectedChildGoal.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasksForSelectedChildGoal],
@@ -330,37 +384,6 @@ export function MigrationDataPreview({
   }, [goalTypeFilter]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    if (typeof window.matchMedia !== "function") {
-      return;
-    }
-
-    const mobileQuery = window.matchMedia("(max-width: 768px)");
-    const syncFilterPanel = () => {
-      setIsFilterPanelOpen(!mobileQuery.matches);
-    };
-
-    syncFilterPanel();
-
-    if (typeof mobileQuery.addEventListener === "function") {
-      mobileQuery.addEventListener("change", syncFilterPanel);
-    } else {
-      mobileQuery.addListener(syncFilterPanel);
-    }
-
-    return () => {
-      if (typeof mobileQuery.removeEventListener === "function") {
-        mobileQuery.removeEventListener("change", syncFilterPanel);
-      } else {
-        mobileQuery.removeListener(syncFilterPanel);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     if (!goalParentGoalId) {
       return;
     }
@@ -385,11 +408,12 @@ export function MigrationDataPreview({
       setLoadError(null);
 
       try {
-        const [profile, professionalGoals, personalGoals, loadedHabits] = await Promise.all([
+        const [profile, professionalGoals, personalGoals, loadedHabits, loadedVisionStatement] = await Promise.all([
           dataRepository.getUserProfile(currentUser.id),
           dataRepository.listGoals(currentUser.id, "professional", { includeDeleted: true }),
           dataRepository.listGoals(currentUser.id, "personal", { includeDeleted: true }),
           dataRepository.listHabits(currentUser.id),
+          dataRepository.getVisionStatement(currentUser.id),
         ]);
 
         let loadedCommitments: PlanningCommitment[] = [];
@@ -463,6 +487,7 @@ export function MigrationDataPreview({
             childGoalsByGoalId: rolledChildGoalsByGoalId,
             tasksByChildGoalId,
           });
+          setVisionStatement(loadedVisionStatement?.statement ?? "");
           setPlanningCommitments(loadedCommitments);
         }
       } catch (repositoryError) {
@@ -516,8 +541,10 @@ export function MigrationDataPreview({
           setGoalTimeframeLevel(goal.timeframeLevel ?? "annual");
           setGoalTitle(goal.title);
           setGoalDescription(goal.description);
+          setGoalStatus(goal.status);
           setGoalStartDate(goal.projectedStartDate ?? "");
           setGoalEndDate(goal.projectedEndDate ?? "");
+          setGoalTargetYear(getGoalTargetYear(goal));
           setGoalTimeframeLabel(goal.timeframe === "Ongoing" ? "" : goal.timeframe);
           setGoalIsFocus(goal.isFocus);
           setSaveError(null);
@@ -620,8 +647,55 @@ export function MigrationDataPreview({
     tasksForSelectedChildGoal,
   ]);
 
-  if (isLoading || error || !user) {
-    return null;
+  useEffect(() => {
+    setProfessionalGoalsPage(1);
+    setPersonalGoalsPage(1);
+  }, [goalTimelineFilter, goalTypeFilter]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(PLANNING_TAB_STORAGE_KEY, planningTab);
+    }
+  }, [planningTab]);
+
+  useEffect(() => {
+    if (planningTab === "vision") {
+      setGoalTimelineFilter("vision_5y");
+    }
+  }, [planningTab]);
+
+  useEffect(() => {
+    setTasksPage(1);
+  }, [selectedGoalId, selectedChildGoalId]);
+
+  useEffect(() => {
+    if (professionalGoalsPage > professionalGoalsPageCount) {
+      setProfessionalGoalsPage(professionalGoalsPageCount);
+    }
+  }, [professionalGoalsPage, professionalGoalsPageCount]);
+
+  useEffect(() => {
+    if (personalGoalsPage > personalGoalsPageCount) {
+      setPersonalGoalsPage(personalGoalsPageCount);
+    }
+  }, [personalGoalsPage, personalGoalsPageCount]);
+
+  useEffect(() => {
+    if (tasksPage > tasksPageCount) {
+      setTasksPage(tasksPageCount);
+    }
+  }, [tasksPage, tasksPageCount]);
+
+  if (isLoading) {
+    return <LoadingSection title="Planning" message="Loading planning workspace..." titleClassName="pdp-section-title" />;
+  }
+
+  if (error) {
+    return <ErrorBanner title="Planning" message={error.message} />;
+  }
+
+  if (!user) {
+    return <EmptyStateCard title="Planning" description="Sign in to manage your goals and tasks." />;
   }
 
   async function handleChildGoalSubmit(event: FormEvent<HTMLFormElement>) {
@@ -922,17 +996,31 @@ export function MigrationDataPreview({
     setSaveError(null);
 
     try {
+      const normalizedTimeframeLevel: GoalTimeframeLevel = planningTab === "vision" ? "vision_5y" : goalTimeframeLevel;
+      const normalizedTargetYear = goalTargetYear.trim();
+      const projectedEndDate = /^\d{4}$/.test(normalizedTargetYear) ? `${normalizedTargetYear}-12-31` : goalEndDate || null;
+
+      if (planningTab === "vision" && !projectedEndDate) {
+        throw new Error("Target year is required for long-term goals.");
+      }
+
       await dataRepository.saveGoal({
         goalId: editingGoal?.id,
         ownerUid: currentUser.id,
         type: goalType,
         parentGoalId: goalParentGoalId || null,
-        timeframeLevel: goalTimeframeLevel,
+        timeframeLevel: normalizedTimeframeLevel,
         title: goalTitle,
         description: goalDescription,
-        projectedStartDate: goalStartDate || null,
-        projectedEndDate: goalEndDate || null,
-        timeframeLabel: goalTimeframeLabel,
+        status: goalStatus,
+        projectedStartDate: planningTab === "vision" ? null : goalStartDate || null,
+        projectedEndDate,
+        timeframeLabel:
+          planningTab === "vision"
+            ? /^\d{4}$/.test(normalizedTargetYear)
+              ? `Target ${normalizedTargetYear}`
+              : goalTimeframeLabel
+            : goalTimeframeLabel,
         isFocus: goalIsFocus,
         existingGoal: editingGoal ?? undefined,
       });
@@ -947,14 +1035,37 @@ export function MigrationDataPreview({
     }
   }
 
+  async function handleSaveVisionStatement() {
+    if (!user) {
+      return;
+    }
+
+    setIsSavingVisionStatement(true);
+    setVisionStatementSaveError(null);
+    setVisionStatementSaved(false);
+
+    try {
+      const saved = await dataRepository.saveVisionStatement(user.id, visionStatement);
+      setVisionStatement(saved.statement);
+      setVisionStatementSaved(true);
+      setTimeout(() => setVisionStatementSaved(false), 3000);
+    } catch (repositoryError) {
+      setVisionStatementSaveError(getErrorMessage(repositoryError, "We could not save the vision statement."));
+    } finally {
+      setIsSavingVisionStatement(false);
+    }
+  }
+
   function startEditing(goal: Goal) {
     setGoalType(goal.type);
     setGoalTimeframeLevel(goal.timeframeLevel ?? "annual");
     setGoalParentGoalId(goal.parentGoalId ?? "");
     setGoalTitle(goal.title);
     setGoalDescription(goal.description);
+    setGoalStatus(goal.status);
     setGoalStartDate(goal.projectedStartDate ?? "");
     setGoalEndDate(goal.projectedEndDate ?? "");
+    setGoalTargetYear(getGoalTargetYear(goal));
     setGoalTimeframeLabel(goal.timeframe === "Ongoing" ? "" : goal.timeframe);
     setGoalIsFocus(goal.isFocus);
     setSaveError(null);
@@ -995,12 +1106,14 @@ export function MigrationDataPreview({
   function resetGoalForm() {
     setEditingGoalId(null);
     setGoalType("professional");
-    setGoalTimeframeLevel("annual");
+    setGoalTimeframeLevel("vision_5y");
     setGoalParentGoalId("");
     setGoalTitle("");
     setGoalDescription("");
+    setGoalStatus("not_started");
     setGoalStartDate("");
     setGoalEndDate("");
+    setGoalTargetYear(`${new Date().getFullYear() + 3}`);
     setGoalTimeframeLabel("");
     setGoalIsFocus(false);
     setSaveError(null);
@@ -1079,60 +1192,6 @@ export function MigrationDataPreview({
     }
   }
 
-  const timelineNav = (
-    <div className="space-y-4">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Timeline</p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {[
-            ["vision_5y", "Long-term", goalTimelineCounts.vision_5y],
-            ["annual", "Yearly", goalTimelineCounts.annual],
-            ["all", "All", goalTimelineCounts.all],
-          ].map(([value, label, count]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setGoalTimelineFilter(value as GoalTimeframeLevel | "all")}
-              className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition ${
-                goalTimelineFilter === value
-                  ? "bg-slate-900 text-white"
-                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {label} ({count})
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Domain</p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {[
-            ["all", "All Goals", goalTypeCounts.all],
-            ["professional", "Professional", goalTypeCounts.professional],
-            ["personal", "Personal", goalTypeCounts.personal],
-          ].map(([value, label, count]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setGoalTypeFilter(value as "all" | "professional" | "personal")}
-              className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition ${
-                goalTypeFilter === value
-                  ? "bg-slate-900 text-white"
-                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {label} ({count})
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <p className="text-xs text-slate-600">Goals are long-horizon anchors; weekly and quarterly execution now lives in commitments.</p>
-    </div>
-  );
-
   const detailLaneNav = (
     <div className="flex flex-wrap items-center gap-2">
       <button
@@ -1167,15 +1226,6 @@ export function MigrationDataPreview({
           title="Planning"
           sectionClassName="pdp-panel-mobile-flat pdp-mobile-surface"
           leftRailClassName="pdp-panel-muted-mobile-flat"
-          titleTrailing={
-            <span className="sm:hidden">
-              <InfoPopover className="self-center" label="Planning help">
-                Build and organize your professional and personal goals into clear, trackable timelines.
-              </InfoPopover>
-            </span>
-          }
-          description="Build and organize your professional and personal goals into clear, trackable timelines."
-          descriptionClassName="hidden sm:block"
           headerAside={
             isRefreshing ? (
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
@@ -1201,74 +1251,128 @@ export function MigrationDataPreview({
             </>
           }
         >
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 pdp-panel-muted-mobile-flat">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">PLANNING FILTERS</p>
+          {/* Planning tab bar */}
+          <div className="flex gap-1 rounded-xl border border-slate-200 bg-slate-100/60 p-1">
+            {([
+              ["week", "Week"],
+              ["quarter", "Quarter"],
+              ["year", "Year"],
+              ["vision", "Vision"],
+            ] as const).map(([tab, label]) => (
               <button
+                key={tab}
                 type="button"
-                onClick={() => setIsFilterPanelOpen((current) => !current)}
-                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                onClick={() => setPlanningTab(tab)}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  planningTab === tab
+                    ? "pdp-solid-surface text-slate-900 shadow-sm"
+                    : "bg-slate-50/60 text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+                aria-current={planningTab === tab ? "page" : undefined}
               >
-                {isFilterPanelOpen ? "Hide filters" : "Show filters"}
+                {label}
               </button>
-            </div>
-
-            {isFilterPanelOpen ? <div className="mt-3">{timelineNav}</div> : null}
+            ))}
           </div>
 
-          <PlanningPreviewPanel goals={activeGoals} tasks={allTasks} />
+          {planningTab === "week" ? (
+            <PlanningPreviewPanel surface="weekly" goals={activeGoals} tasks={allTasks} />
+          ) : null}
+          {planningTab === "quarter" ? (
+            <PlanningPreviewPanel surface="quarterly" goals={activeGoals} tasks={allTasks} />
+          ) : null}
+          {planningTab === "year" ? (
+            <PlanningPreviewPanel surface="yearly" goals={activeGoals} tasks={allTasks} />
+          ) : null}
+          {planningTab === "vision" ? (
+            <>
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white px-3 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vision statement</p>
+                <textarea
+                  value={visionStatement}
+                  onChange={(event) => {
+                    setVisionStatement(event.target.value);
+                    setVisionStatementSaved(false);
+                  }}
+                  className="pdp-control mt-2 min-h-24 rounded-xl"
+                  placeholder="Write a long-term vision statement for where you want to be in 3-5 years."
+                  maxLength={800}
+                />
+                <div className="mt-2 flex items-center gap-2">
+                  <IconButton
+                    onClick={() => void handleSaveVisionStatement()}
+                    disabled={isSavingVisionStatement}
+                    title={isSavingVisionStatement ? "Saving..." : "Save vision"}
+                    variant="primary"
+                  >
+                    {isSavingVisionStatement ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  </IconButton>
+                  {visionStatementSaved ? <p className="text-xs text-emerald-700">Vision saved.</p> : null}
+                  {visionStatementSaveError ? <p className="text-xs text-red-700">{visionStatementSaveError}</p> : null}
+                </div>
+              </div>
+
+              {/* Domain filter */}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {[
+                  ["all", "All", goalTypeCounts.all],
+                  ["professional", "Professional", goalTypeCounts.professional],
+                  ["personal", "Personal", goalTypeCounts.personal],
+                ].map(([value, label, count]) => (
+                  <button
+                    key={String(value)}
+                    type="button"
+                    onClick={() => setGoalTypeFilter(value as "all" | "professional" | "personal")}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+                      goalTypeFilter === value
+                        ? "bg-slate-900 text-white"
+                        : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {label} ({count})
+                  </button>
+                ))}
+              </div>
 
           <div className="pdp-card pdp-card-mobile-flat sticky top-2 z-10 mt-4 px-3 py-2 text-[11px] leading-5 text-slate-500 shadow-sm backdrop-blur sm:text-xs lg:static lg:shadow-none">
-        <span className="font-semibold uppercase tracking-wide text-slate-500">Relationship path:</span>{" "}
-        <span className="font-semibold text-slate-700">{selectedGoal?.title ?? "Select a goal"}</span>{" "}
-        <span>&gt;</span>{" "}
-        <span className="font-semibold text-slate-700">{selectedTask?.title ?? "Select a task"}</span>
+        <span className="font-semibold uppercase tracking-wide text-slate-500">Vision focus:</span>{" "}
+        <span className="font-semibold text-slate-700">{selectedGoal?.title ?? "Select a long-term goal"}</span>
           </div>
-
-            <div className="mt-3 lg:hidden">{detailLaneNav}</div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <article className={`${mobileView === "goals" ? "block" : "hidden"} pdp-panel-muted pdp-panel-muted-mobile-flat lg:block`}>
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Goals</h3>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  resetGoalForm();
-                  setGoalType("professional");
-                  setIsGoalModalOpen(true);
-                }}
-                className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-              >
-                + Pro
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  resetGoalForm();
-                  setGoalType("personal");
-                  setIsGoalModalOpen(true);
-                }}
-                className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-              >
-                + Personal
-              </button>
-            </div>
+            <IconButton
+              onClick={() => {
+                resetGoalForm();
+                setGoalTimeframeLevel("vision_5y");
+                setIsGoalModalOpen(true);
+              }}
+              title="Create goal"
+              variant="primary"
+            >
+              <Plus className="h-4 w-4" />
+            </IconButton>
           </div>
 
-          <p className="mt-2 text-xs text-slate-500">Pick a goal to view tasks and progress.</p>
+          <p className="mt-2 text-xs text-slate-500">Pick a long-term goal to review and update progress.</p>
 
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 space-y-1">
             {[
               ["professional", "Professional", professionalGoals] as const,
               ["personal", "Personal", personalGoals] as const,
-            ].map(([groupType, groupLabel, groupGoals]) => (
+            ].map(([groupType, groupLabel, groupGoals]) => {
+              const groupPage = groupType === "professional" ? professionalGoalsPage : personalGoalsPage;
+              const groupPageCount = groupType === "professional" ? professionalGoalsPageCount : personalGoalsPageCount;
+              const pagedGroupGoals = groupType === "professional" ? pagedProfessionalGoals : pagedPersonalGoals;
+
+              return (
               <div key={groupLabel}>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{groupLabel}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{groupLabel}</p>
                 {groupGoals.length === 0 ? (
-                  <ul className="mt-2 space-y-2">
-                    <li className="pdp-card-mobile-ghost rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+                  <ul className="mt-2 space-y-1">
+                    <li className="pdp-card-mobile-ghost rounded-lg border border-dashed border-slate-300 bg-white px-2 py-1 text-xs text-slate-500">
                       No {groupLabel.toLowerCase()} goals yet.
                     </li>
                   </ul>
@@ -1279,8 +1383,8 @@ export function MigrationDataPreview({
                     onDragEnd={(event) => handleGoalDragEnd(groupType, groupGoals, event)}
                   >
                     <SortableContext items={groupGoals.map((goal) => goal.id)} strategy={verticalListSortingStrategy}>
-                      <ul className="mt-2 space-y-2">
-                        {groupGoals.map((goal) => {
+                      <ul className="mt-2 space-y-1">
+                        {pagedGroupGoals.map((goal) => {
                           const isSelected = goal.id === selectedGoalId;
                           return (
                             <SortableListItem
@@ -1289,27 +1393,27 @@ export function MigrationDataPreview({
                               label={`Drag to reorder goal ${goal.title}`}
                               isSelected={isSelected}
                             >
-                              <div className="rounded-lg px-3 py-2">
+                              <div className="rounded-lg px-1.5 py-0.5">
                                 <button
                                   type="button"
                                   onClick={() => {
                                     setSelectedGoalId(goal.id);
                                     setSelectedChildGoalId(null);
                                     setSelectedTaskId(null);
-                                    setMobileView("tasks");
+                                    setMobileView("goals");
                                   }}
                                   className="w-full text-left"
                                 >
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <p className="font-medium text-slate-900">{goal.title}</p>
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <p className="text-sm font-semibold text-slate-900">{goal.title}</p>
                                     <GoalTypeTag type={goal.type} />
                                   </div>
-                                  <p className="mt-1 text-xs text-slate-600">{goal.percentComplete}% complete</p>
-                                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                  <p className="mt-0.5 text-xs text-slate-600">{goal.percentComplete}% complete</p>
+                                  <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                     {getGoalTimeframeLevelLabel(goal.timeframeLevel ?? "annual")}
                                   </p>
                                 </button>
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                                   <IconActionButton label="Edit goal" onClick={() => startEditing(goal)}>
                                     <PencilIcon />
                                   </IconActionButton>
@@ -1321,7 +1425,7 @@ export function MigrationDataPreview({
                                     onChange={(event) => {
                                       void handleGoalStatusChange(goal, event.target.value as ItemStatus);
                                     }}
-                                    className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                                    className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-700"
                                   >
                                     <option value="not_started">Not started</option>
                                     <option value="in_progress">In progress</option>
@@ -1336,17 +1440,37 @@ export function MigrationDataPreview({
                     </SortableContext>
                   </DndContext>
                 )}
+
+                {groupGoals.length > 0 && groupPageCount > 1 ? (
+                  <PaginationControls
+                    page={groupPage}
+                    pageCount={groupPageCount}
+                    onPrevious={() => {
+                      if (groupType === "professional") {
+                        setProfessionalGoalsPage((page) => Math.max(1, page - 1));
+                      } else {
+                        setPersonalGoalsPage((page) => Math.max(1, page - 1));
+                      }
+                    }}
+                    onNext={() => {
+                      if (groupType === "professional") {
+                        setProfessionalGoalsPage((page) => Math.min(groupPageCount, page + 1));
+                      } else {
+                        setPersonalGoalsPage((page) => Math.min(groupPageCount, page + 1));
+                      }
+                    }}
+                    className="mt-2"
+                  />
+                ) : null}
               </div>
-            ))}
+            );})}
           </div>
         </article>
 
-        <article className={`${mobileView === "tasks" ? "block" : "hidden"} pdp-panel-muted pdp-panel-muted-mobile-flat lg:block`}>
+        <article className="hidden">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Tasks</h3>
-            <button
-              type="button"
-              disabled={!selectedGoal}
+            <IconButton
               onClick={() => {
                 const targetChildGoalId = selectedChildGoal?.id ?? childGoalsForSelectedGoal[0]?.id ?? selectedGoal?.id;
                 if (targetChildGoalId) {
@@ -1356,10 +1480,12 @@ export function MigrationDataPreview({
                   openCreateTaskModal(targetChildGoalId);
                 }
               }}
-              className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!selectedGoal}
+              title="Create task"
+              variant="primary"
             >
-              + Task
-            </button>
+              <Plus className="h-4 w-4" />
+            </IconButton>
           </div>
 
           {selectedGoal ? (
@@ -1370,68 +1496,80 @@ export function MigrationDataPreview({
             <p className="mt-2 text-xs text-slate-500">Select a goal to view tasks.</p>
           )}
 
-          <ul className="mt-3 space-y-2">
+          <ul className="mt-3 space-y-1">
             {tasksForSelectedChildGoal.length === 0 ? (
-              <li className="pdp-card-mobile-ghost rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">
+              <li className="pdp-card-mobile-ghost rounded-lg border border-dashed border-slate-300 bg-white px-2 py-1 text-xs text-slate-500">
                 No tasks yet.
               </li>
             ) : (
-              <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
-                <SortableContext
-                  items={tasksForSelectedChildGoal.map((task) => task.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {tasksForSelectedChildGoal.map((task) => {
-                    const isSelected = task.id === selectedTaskId;
-                    return (
-                      <SortableListItem
-                        key={task.id}
-                        id={task.id}
-                        label={`Drag to reorder task ${task.title}`}
-                        isSelected={isSelected}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedTaskId(task.id);
-                            startEditingTask(task);
-                          }}
-                          className="w-full rounded-lg px-3 py-2 text-left"
+              <>
+                <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
+                  <SortableContext
+                    items={pagedTasksForSelectedChildGoal.map((task) => task.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {pagedTasksForSelectedChildGoal.map((task) => {
+                      const isSelected = task.id === selectedTaskId;
+                      return (
+                        <SortableListItem
+                          key={task.id}
+                          id={task.id}
+                          label={`Drag to reorder task ${task.title}`}
+                          isSelected={isSelected}
                         >
-                          <p className="font-medium text-slate-900">{task.title}</p>
-                          <p className="mt-1 text-xs text-slate-600">
-                            {task.dueDate ? `Due ${task.dueDate}` : "No due date"} | {task.percentComplete}% complete
-                          </p>
-                          {task.commitmentId && commitmentMap.get(task.commitmentId) ? (
-                            <span className="mt-1 inline-block rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">
-                              {commitmentMap.get(task.commitmentId)!.title}
-                            </span>
-                          ) : null}
-                        </button>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <IconActionButton label="Edit task" onClick={() => startEditingTask(task)}>
-                            <PencilIcon />
-                          </IconActionButton>
-                          <IconActionButton label="Archive task" onClick={() => void handleTaskArchiveToggle(task)}>
-                            <ArchiveIcon />
-                          </IconActionButton>
-                          <select
-                            value={task.status}
-                            onChange={(event) => {
-                              void handleTaskStatusChange(task, event.target.value as ItemStatus);
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTaskId(task.id);
+                              startEditingTask(task);
                             }}
-                            className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                            className="w-full rounded-lg px-2 py-1 text-left"
                           >
-                            <option value="not_started">Not started</option>
-                            <option value="in_progress">In progress</option>
-                            <option value="done">Done</option>
-                          </select>
-                        </div>
-                      </SortableListItem>
-                    );
-                  })}
-                </SortableContext>
-              </DndContext>
+                            <p className="font-medium text-slate-900">{task.title}</p>
+                            <p className="mt-1 text-xs text-slate-600">
+                              {task.dueDate ? `Due ${task.dueDate}` : "No due date"} | {task.percentComplete}% complete
+                            </p>
+                            {task.commitmentId && commitmentMap.get(task.commitmentId) ? (
+                              <span className="mt-1 inline-block rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                                {commitmentMap.get(task.commitmentId)!.title}
+                              </span>
+                            ) : null}
+                          </button>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <IconActionButton label="Edit task" onClick={() => startEditingTask(task)}>
+                              <PencilIcon />
+                            </IconActionButton>
+                            <IconActionButton label="Archive task" onClick={() => void handleTaskArchiveToggle(task)}>
+                              <ArchiveIcon />
+                            </IconActionButton>
+                            <select
+                              value={task.status}
+                              onChange={(event) => {
+                                void handleTaskStatusChange(task, event.target.value as ItemStatus);
+                              }}
+                              className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                            >
+                              <option value="not_started">Not started</option>
+                              <option value="in_progress">In progress</option>
+                              <option value="done">Done</option>
+                            </select>
+                          </div>
+                        </SortableListItem>
+                      );
+                    })}
+                  </SortableContext>
+                </DndContext>
+
+                {tasksPageCount > 1 ? (
+                  <PaginationControls
+                    page={tasksPage}
+                    pageCount={tasksPageCount}
+                    onPrevious={() => setTasksPage((page) => Math.max(1, page - 1))}
+                    onNext={() => setTasksPage((page) => Math.min(tasksPageCount, page + 1))}
+                    className="mt-2"
+                  />
+                ) : null}
+              </>
             )}
           </ul>
         </article>
@@ -1472,13 +1610,14 @@ export function MigrationDataPreview({
             placeholder="Target count"
             aria-label="Habit target count"
           />
-          <button
+          <IconButton
             type="submit"
+            variant="primary"
             disabled={isSavingHabit}
-            className="rounded-full bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+            title={isSavingHabit ? "Saving..." : "Create habit"}
           >
-            {isSavingHabit ? "Saving..." : "Create habit"}
-          </button>
+            {isSavingHabit ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          </IconButton>
         </form>
         {habitSaveError ? <p className="mt-2 text-sm text-red-700">{habitSaveError}</p> : null}
 
@@ -1504,15 +1643,15 @@ export function MigrationDataPreview({
                         {habit.cadence === "daily" ? "Daily" : "Weekly"} | Target {habit.targetCount} | {checkinCount} check-ins
                       </p>
                     </button>
-                    <div className="mt-2">
-                      <button
-                        type="button"
+                  <div className="mt-2">
+                      <IconButton
                         onClick={() => void handleHabitCheckin(habit.id)}
                         disabled={isSavingHabitCheckin}
-                        className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Check in today"
+                        variant="success"
                       >
-                        Check in today
-                      </button>
+                        <Check className="h-4 w-4" />
+                      </IconButton>
                     </div>
                   </li>
                 );
@@ -1547,8 +1686,7 @@ export function MigrationDataPreview({
       {showArchivedGoals && hasAnyArchived ? (
         <article className="pdp-panel-muted pdp-panel-muted-mobile-flat mt-5">
           <h3 className="text-sm font-semibold text-slate-900">
-            Archived ({archivedGoals.length} goal{archivedGoals.length === 1 ? "" : "s"}, {orphanArchivedTasks.length} task
-            {orphanArchivedTasks.length === 1 ? "" : "s"})
+            Archived ({archivedGoals.length} goal{archivedGoals.length === 1 ? "" : "s"})
           </h3>
 
           {archivedGoals.length > 0 ? (
@@ -1567,20 +1705,19 @@ export function MigrationDataPreview({
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
+                        <IconButton
                           onClick={() => handleGoalArchiveToggle(goal)}
-                          className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                          title="Restore"
                         >
-                          Restore
-                        </button>
-                        <button
-                          type="button"
+                          <ArchiveRestore className="h-4 w-4" />
+                        </IconButton>
+                        <IconButton
                           onClick={() => void handleGoalPermanentDelete(goal)}
-                          className="rounded-full border border-red-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-red-700 transition hover:border-red-400 hover:bg-red-50"
+                          title="Delete permanently"
+                          variant="danger"
                         >
-                          Delete permanently
-                        </button>
+                          <Trash2 className="h-4 w-4" />
+                        </IconButton>
                       </div>
                     </div>
                   </li>
@@ -1589,7 +1726,7 @@ export function MigrationDataPreview({
             </div>
           ) : null}
 
-          {orphanArchivedTasks.length > 0 ? (
+          {false ? (
             <div className="mt-4">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Tasks ({orphanArchivedTasks.length})
@@ -1608,20 +1745,19 @@ export function MigrationDataPreview({
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
+                          <IconButton
                             onClick={() => handleTaskArchiveToggle(task)}
-                            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                            title="Restore"
                           >
-                            Restore
-                          </button>
-                          <button
-                            type="button"
+                            <ArchiveRestore className="h-4 w-4" />
+                          </IconButton>
+                          <IconButton
                             onClick={() => void handleTaskPermanentDelete(task)}
-                            className="rounded-full border border-red-300 px-3 py-1 text-xs font-medium uppercase tracking-wide text-red-700 transition hover:border-red-400 hover:bg-red-50"
+                            title="Delete permanently"
+                            variant="danger"
                           >
-                            Delete permanently
-                          </button>
+                            <Trash2 className="h-4 w-4" />
+                          </IconButton>
                         </div>
                       </div>
                     </li>
@@ -1632,6 +1768,9 @@ export function MigrationDataPreview({
           ) : null}
         </article>
       ) : null}
+
+            </>
+          ) : null}
 
         </WorkspaceShell>
       ) : null}
@@ -1654,18 +1793,28 @@ export function MigrationDataPreview({
             </select>
           </label>
 
-          <label className="block text-sm text-slate-700">
-            Timeframe level
-            <select
-              value={goalTimeframeLevel}
-              onChange={(event) => setGoalTimeframeLevel(event.target.value as GoalTimeframeLevel)}
-              className="pdp-control mt-1 rounded-xl"
-            >
-              <option value="vision_5y">Long-term</option>
-              <option value="annual">Yearly</option>
-            </select>
-            <p className="mt-1 text-xs text-slate-500">Use commitments for quarterly and weekly priorities.</p>
-          </label>
+          {planningTab === "vision" ? (
+            <label className="block text-sm text-slate-700">
+              Goal horizon
+              <input
+                value="Long-term (3-5 years)"
+                readOnly
+                className="pdp-control mt-1 rounded-xl"
+              />
+            </label>
+          ) : (
+            <label className="block text-sm text-slate-700">
+              Timeframe level
+              <select
+                value={goalTimeframeLevel}
+                onChange={(event) => setGoalTimeframeLevel(event.target.value as GoalTimeframeLevel)}
+                className="pdp-control mt-1 rounded-xl"
+              >
+                <option value="vision_5y">Long-term</option>
+                <option value="annual">Yearly</option>
+              </select>
+            </label>
+          )}
 
           <label className="block text-sm text-slate-700">
             Parent goal (optional)
@@ -1703,35 +1852,67 @@ export function MigrationDataPreview({
             />
           </label>
 
-          <label className="block text-sm text-slate-700">
-            Projected start
-            <input
-              type="date"
-              value={goalStartDate}
-              onChange={(event) => setGoalStartDate(event.target.value)}
-              className="pdp-control mt-1 rounded-xl"
-            />
-          </label>
+          {planningTab === "vision" ? (
+            <>
+              <label className="block text-sm text-slate-700">
+                Target year
+                <input
+                  type="number"
+                  min={new Date().getFullYear()}
+                  max={2200}
+                  step={1}
+                  value={goalTargetYear}
+                  onChange={(event) => setGoalTargetYear(event.target.value)}
+                  className="pdp-control mt-1 rounded-xl"
+                  placeholder="2029"
+                />
+              </label>
+              <label className="block text-sm text-slate-700">
+                Status
+                <select
+                  value={goalStatus}
+                  onChange={(event) => setGoalStatus(event.target.value as ItemStatus)}
+                  className="pdp-control mt-1 rounded-xl"
+                >
+                  <option value="not_started">Not started</option>
+                  <option value="in_progress">Active</option>
+                  <option value="done">Done</option>
+                </select>
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="block text-sm text-slate-700">
+                Projected start
+                <input
+                  type="date"
+                  value={goalStartDate}
+                  onChange={(event) => setGoalStartDate(event.target.value)}
+                  className="pdp-control mt-1 rounded-xl"
+                />
+              </label>
 
-          <label className="block text-sm text-slate-700">
-            Projected end
-            <input
-              type="date"
-              value={goalEndDate}
-              onChange={(event) => setGoalEndDate(event.target.value)}
-              className="pdp-control mt-1 rounded-xl"
-            />
-          </label>
+              <label className="block text-sm text-slate-700">
+                Projected end
+                <input
+                  type="date"
+                  value={goalEndDate}
+                  onChange={(event) => setGoalEndDate(event.target.value)}
+                  className="pdp-control mt-1 rounded-xl"
+                />
+              </label>
 
-          <label className="block text-sm text-slate-700">
-            Timeframe label
-            <input
-              value={goalTimeframeLabel}
-              onChange={(event) => setGoalTimeframeLabel(event.target.value)}
-              className="pdp-control mt-1 rounded-xl"
-              placeholder="Q3 2026"
-            />
-          </label>
+              <label className="block text-sm text-slate-700">
+                Timeframe label
+                <input
+                  value={goalTimeframeLabel}
+                  onChange={(event) => setGoalTimeframeLabel(event.target.value)}
+                  className="pdp-control mt-1 rounded-xl"
+                  placeholder="Q3 2026"
+                />
+              </label>
+            </>
+          )}
 
           <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
             <input
@@ -1746,20 +1927,17 @@ export function MigrationDataPreview({
           {saveError ? <p className="text-sm text-red-700 md:col-span-2">{saveError}</p> : null}
 
           <div className="flex flex-wrap items-center gap-3 md:col-span-2">
-            <button
+            <IconButton
               type="submit"
+              variant="primary"
               disabled={isSaving}
-              className="rounded-full bg-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+              title={isSaving ? "Saving..." : editingGoal ? "Update goal" : "Create goal"}
             >
-              {isSaving ? "Saving..." : editingGoal ? "Update goal" : "Create goal"}
-            </button>
-            <button
-              type="button"
-              onClick={closeGoalModal}
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            </IconButton>
+            <IconButton onClick={closeGoalModal} title="Cancel">
+              <X className="h-4 w-4" />
+            </IconButton>
           </div>
         </form>
       </CrudModal>
@@ -1819,20 +1997,17 @@ export function MigrationDataPreview({
           </label>
           {childGoalSaveError ? <p className="text-sm text-red-700">{childGoalSaveError}</p> : null}
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            <IconButton
               type="submit"
+              variant="primary"
               disabled={isSavingChildGoal}
-              className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              title={isSavingChildGoal ? "Saving..." : editingChildGoal ? "Update child goal" : "Create child goal"}
             >
-              {isSavingChildGoal ? "Saving..." : editingChildGoal ? "Update child goal" : "Create child goal"}
-            </button>
-            <button
-              type="button"
-              onClick={closeChildGoalModal}
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
+              {isSavingChildGoal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            </IconButton>
+            <IconButton onClick={closeChildGoalModal} title="Cancel">
+              <X className="h-4 w-4" />
+            </IconButton>
           </div>
         </form>
       </CrudModal>
@@ -1909,20 +2084,17 @@ export function MigrationDataPreview({
           </label>
           {taskSaveError ? <p className="text-sm text-red-700">{taskSaveError}</p> : null}
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            <IconButton
               type="submit"
+              variant="primary"
               disabled={isSavingTask || (!(editingTask ? getTaskParentGoalId(editingTask) : null) && !targetChildGoalIdForTask && !selectedGoal)}
-              className="rounded-full bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+              title={isSavingTask ? "Saving..." : editingTask ? "Update task" : "Create task"}
             >
-              {isSavingTask ? "Saving..." : editingTask ? "Update task" : "Create task"}
-            </button>
-            <button
-              type="button"
-              onClick={closeTaskModal}
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
+              {isSavingTask ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            </IconButton>
+            <IconButton onClick={closeTaskModal} title="Cancel">
+              <X className="h-4 w-4" />
+            </IconButton>
           </div>
         </form>
       </CrudModal>
@@ -1961,7 +2133,7 @@ function SortableListItem({
       className={`${isDragging ? "opacity-80" : ""}`}
     >
       <div
-        className={`relative rounded-lg border px-2 py-2 transition ${
+        className={`relative rounded-lg border px-2 py-1.5 transition ${
           isSelected
             ? "pdp-selectable-row pdp-selectable-row-selected pdp-selectable-row-interactive"
             : "pdp-selectable-row pdp-selectable-row-interactive border-slate-200 bg-white hover:border-slate-300"
@@ -1972,7 +2144,7 @@ function SortableListItem({
           type="button"
           aria-label={label}
           title={label}
-          className="absolute right-2 top-2 inline-flex items-center justify-center rounded-full p-1 text-slate-600 transition hover:bg-slate-50 active:cursor-grabbing"
+          className="absolute right-2 top-1.5 inline-flex items-center justify-center rounded-full p-1 text-slate-600 transition hover:bg-slate-50 active:cursor-grabbing"
           onClick={(event) => event.preventDefault()}
           {...attributes}
           {...listeners}
@@ -2130,5 +2302,20 @@ function getGoalTimeframeLevelLabel(timeframeLevel: GoalTimeframeLevel) {
   }
 
   return "Yearly";
+}
+
+function getGoalTargetYear(goal: Goal) {
+  const dateCandidate = goal.projectedEndDate;
+  if (dateCandidate && /^\d{4}-\d{2}-\d{2}$/.test(dateCandidate)) {
+    return dateCandidate.slice(0, 4);
+  }
+
+  const labelCandidate = goal.timeframe;
+  const matchedYear = labelCandidate.match(/(19|20|21)\d{2}/)?.[0];
+  if (matchedYear) {
+    return matchedYear;
+  }
+
+  return `${new Date().getFullYear() + 3}`;
 }
 

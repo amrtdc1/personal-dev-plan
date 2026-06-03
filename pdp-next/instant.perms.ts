@@ -44,6 +44,7 @@ const rules = {
   notificationDeliveries: ownerScopedRules,
   planningCycles: ownerScopedRules,
   planningCommitments: ownerScopedRules,
+  visionStatements: ownerScopedRules,
   dailyFocusPlans: ownerScopedRules,
   $default: {
     allow: {

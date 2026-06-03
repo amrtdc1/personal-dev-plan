@@ -19,6 +19,8 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import { type GraphNodeData } from "@/components/dashboard/node-map/graph-adapter";
+import { IconButton } from "@/components/ui/icon-button";
+import { ExternalLink } from "lucide-react";
 
 type NodeGraphCanvasProps = {
   nodes: Node<GraphNodeData>[];
@@ -267,14 +269,13 @@ function NodeGraphCanvasInner({ nodes, edges, onOpenItem }: NodeGraphCanvasProps
             className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700"
             aria-label="Search graph nodes"
           />
-          <button
-            type="button"
+          <IconButton
             onClick={openSelectedNode}
             disabled={!selectedNode}
-            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Open selected"
           >
-            Open selected
-          </button>
+            <ExternalLink className="h-4 w-4" />
+          </IconButton>
         </div>
       </div>
 

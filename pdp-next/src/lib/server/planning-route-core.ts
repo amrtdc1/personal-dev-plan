@@ -76,7 +76,7 @@ export function parsePlanningCycleTypeFilter(searchParams: URLSearchParams) {
   }
 
   if (!isPlanningCycleType(cycleType)) {
-    throw new InstantRouteBadRequestError("cycleType must be 'weekly' or 'quarterly' when provided.");
+    throw new InstantRouteBadRequestError("cycleType must be 'weekly', 'quarterly', or 'yearly' when provided.");
   }
 
   return cycleType;
@@ -106,7 +106,7 @@ export async function parsePlanningCycleWritePayload(request: Request): Promise<
   const payload = await parseJsonPayload<PlanningCycleWritePayload>(request);
 
   if (!payload.cycleType || !isPlanningCycleType(payload.cycleType)) {
-    throw new InstantRouteBadRequestError("cycleType is required and must be 'weekly' or 'quarterly'.");
+    throw new InstantRouteBadRequestError("cycleType is required and must be 'weekly', 'quarterly', or 'yearly'.");
   }
 
   const startDate = parseRequiredIsoDate(payload.startDate, "startDate");
@@ -342,6 +342,26 @@ export async function completePlanningCycle(ownerUid: string, cycleId: string) {
   return next;
 }
 
+export async function archivePlanningCycle(ownerUid: string, cycleId: string) {
+  const instantAdmin = getInstantAdmin();
+  const existing = await findOwnedPlanningCycle(ownerUid, cycleId);
+  const now = new Date().toISOString();
+
+  const next: PlanningCycle = { ...existing, status: "archived", updatedAt: now };
+
+  await instantAdmin.transact(
+    instantAdmin.tx.planningCycles[cycleId].update({ status: "archived", updatedAt: now }),
+  );
+
+  return next;
+}
+
+export async function deletePlanningCycle(ownerUid: string, cycleId: string) {
+  const instantAdmin = getInstantAdmin();
+  await findOwnedPlanningCycle(ownerUid, cycleId);
+  await instantAdmin.transact(instantAdmin.tx.planningCycles[cycleId].delete());
+}
+
 export async function createPlanningCommitment(ownerUid: string, payload: ParsedPlanningCommitmentWritePayload) {
   const instantAdmin = getInstantAdmin();
   await findOwnedPlanningCycle(ownerUid, payload.cycleId);
@@ -473,7 +493,7 @@ export async function carryoverPlanningCommitment(ownerUid: string, commitmentId
 }
 
 async function findActiveCarryoverTargetCycle(ownerUid: string, source: PlanningCommitment) {
-  const targetCycleType: PlanningCycleType = source.level === "weekly" ? "weekly" : "quarterly";
+  const targetCycleType: PlanningCycleType = source.level;
   const cycles = await listOwnedPlanningCycles(ownerUid, { cycleType: targetCycleType });
   const activeTarget = cycles.find((cycle) => cycle.status === "active" && cycle.id !== source.cycleId) ?? null;
 
@@ -696,11 +716,11 @@ function parsePlanningCycleStatus(value: string): PlanningCycleStatus {
 }
 
 function parsePlanningCommitmentLevel(value: unknown): PlanningCommitmentLevel {
-  if (value === "weekly" || value === "quarterly") {
+  if (value === "weekly" || value === "quarterly" || value === "yearly") {
     return value;
   }
 
-  throw new InstantRouteBadRequestError("level is required and must be 'weekly' or 'quarterly'.");
+  throw new InstantRouteBadRequestError("level is required and must be 'weekly', 'quarterly', or 'yearly'.");
 }
 
 function parsePlanningCommitmentDomain(value: unknown): PlanningCommitmentDomain {
@@ -753,5 +773,5 @@ function dedupeStringArray(values: string[]) {
 }
 
 function isPlanningCycleType(value: string): value is PlanningCycleType {
-  return value === "weekly" || value === "quarterly";
+  return value === "weekly" || value === "quarterly" || value === "yearly";
 }

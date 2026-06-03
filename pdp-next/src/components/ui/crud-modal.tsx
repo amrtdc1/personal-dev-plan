@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { X } from "lucide-react";
 import { createPortal } from "react-dom";
+import { IconButton } from "@/components/ui/icon-button";
 
 type CrudModalProps = {
   isOpen: boolean;
@@ -64,13 +66,9 @@ export function CrudModal({ isOpen, title, onClose, children }: CrudModalProps) 
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-          >
-            Close
-          </button>
+          <IconButton onClick={onClose} title="Close" size="sm">
+            <X className="h-4 w-4" />
+          </IconButton>
         </div>
         <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1">
           {children}

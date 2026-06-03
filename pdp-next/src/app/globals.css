@@ -9,16 +9,16 @@
   --pdp-theme-soft: #e2e8f0;
   --pdp-surface: #ffffff;
   --pdp-muted-surface: #f8fafc;
-  --pdp-surface-panel-opacity: 82%;
-  --pdp-surface-muted-opacity: 82%;
-  --pdp-surface-card-opacity: 84%;
+  --pdp-surface-panel-opacity: 90%;
+  --pdp-surface-muted-opacity: 80%;
+  --pdp-surface-card-opacity: 92%;
   --pdp-surface-secondary-opacity: 80%;
   --pdp-muted-secondary-opacity: 76%;
   --pdp-muted-article-opacity: 70%;
-  --pdp-border: #cbd5e1;
-  --pdp-text-strong: #0f172a;
-  --pdp-text: #334155;
-  --pdp-text-muted: #64748b;
+  --pdp-border: #d8dee8;
+  --pdp-text-strong: #1f2937;
+  --pdp-text: #475569;
+  --pdp-text-muted: #6b7280;
   --pdp-status-not-started-bg: #e2e8f0;
   --pdp-status-not-started-text: #334155;
   --pdp-status-progress-bg: #dbeafe;
@@ -54,16 +54,16 @@
   --foreground: #171717;
   --pdp-surface: #ffffff;
   --pdp-muted-surface: #f8fafc;
-  --pdp-surface-panel-opacity: 82%;
-  --pdp-surface-muted-opacity: 82%;
-  --pdp-surface-card-opacity: 84%;
+  --pdp-surface-panel-opacity: 90%;
+  --pdp-surface-muted-opacity: 80%;
+  --pdp-surface-card-opacity: 92%;
   --pdp-surface-secondary-opacity: 80%;
   --pdp-muted-secondary-opacity: 76%;
   --pdp-muted-article-opacity: 70%;
-  --pdp-border: #cbd5e1;
-  --pdp-text-strong: #0f172a;
-  --pdp-text: #334155;
-  --pdp-text-muted: #64748b;
+  --pdp-border: #d8dee8;
+  --pdp-text-strong: #1f2937;
+  --pdp-text: #475569;
+  --pdp-text-muted: #6b7280;
   --pdp-status-not-started-bg: #e2e8f0;
   --pdp-status-not-started-text: #334155;
   --pdp-status-progress-bg: #dbeafe;
@@ -83,10 +83,10 @@
   --pdp-surface-secondary-opacity: 66%;
   --pdp-muted-secondary-opacity: 62%;
   --pdp-muted-article-opacity: 56%;
-  --pdp-border: #334155;
-  --pdp-text-strong: #f8fafc;
-  --pdp-text: #e2e8f0;
-  --pdp-text-muted: #94a3b8;
+  --pdp-border: #2f3c50;
+  --pdp-text-strong: #e5e7eb;
+  --pdp-text: #cbd5e1;
+  --pdp-text-muted: #8b98ad;
   --pdp-status-not-started-bg: #1e293b;
   --pdp-status-not-started-text: #cbd5e1;
   --pdp-status-progress-bg: #1e3a8a;
@@ -99,13 +99,13 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-archivo), var(--font-geist-sans), "Segoe UI", sans-serif;
-  font-size: 16px;
-  line-height: 1.55;
+  font-size: 16.5px;
+  line-height: 1.58;
 }
 
 @media (min-width: 1200px) {
   body {
-    font-size: 17px;
+    font-size: 17.5px;
   }
 }
 
@@ -117,12 +117,12 @@ h1, h2, h3, h4, h5, h6,
 
 .pdp-shell {
   position: relative;
-  font-size: 1.02rem;
+  font-size: 1.05rem;
 }
 
 @media (min-width: 1024px) {
   .pdp-shell {
-    font-size: 1.06rem;
+    font-size: 1.09rem;
   }
 }
 
@@ -192,6 +192,24 @@ h1, h2, h3, h4, h5, h6,
 
 .pdp-shell .text-slate-400 {
   color: color-mix(in srgb, var(--pdp-text-muted) 72%, var(--pdp-text) 28%) !important;
+}
+
+.pdp-shell .text-\[11px\],
+.pdp-modal-theme .text-\[11px\] {
+  font-size: 0.79rem !important;
+  line-height: 1.2rem !important;
+}
+
+.pdp-shell .text-xs,
+.pdp-modal-theme .text-xs {
+  font-size: 0.84rem !important;
+  line-height: 1.25rem !important;
+}
+
+.pdp-shell .text-sm,
+.pdp-modal-theme .text-sm {
+  font-size: 0.95rem !important;
+  line-height: 1.4rem !important;
 }
 
 .pdp-modal-theme .bg-white {
@@ -265,7 +283,7 @@ h1, h2, h3, h4, h5, h6,
   border: 1px solid var(--pdp-border);
   background-color: color-mix(in srgb, var(--pdp-surface) var(--pdp-surface-panel-opacity), transparent);
   padding: 1.25rem;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
   backdrop-filter: blur(2px);
 }
 
@@ -287,7 +305,7 @@ h1, h2, h3, h4, h5, h6,
 }
 
 .pdp-section-kicker {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -333,6 +351,18 @@ h1, h2, h3, h4, h5, h6,
   border-radius: 0.75rem;
 }
 
+.pdp-list-item-mobile-flat {
+  border-radius: 0.75rem;
+}
+
+.pdp-modal-mobile-sheet {
+  border-radius: 1rem;
+}
+
+.pdp-drawer-mobile-flat {
+  border-radius: 1rem;
+}
+
 .pdp-divider-list > * + * {
   border-top: 1px solid color-mix(in srgb, var(--pdp-border) 70%, transparent);
   padding-top: 0.6rem;
@@ -367,6 +397,27 @@ h1, h2, h3, h4, h5, h6,
     background-color: transparent !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
+  }
+
+  .pdp-list-item-mobile-flat {
+    border-color: transparent !important;
+    border-radius: 0.5rem;
+    box-shadow: none !important;
+  }
+
+  .pdp-modal-mobile-sheet {
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+    border-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .pdp-drawer-mobile-flat {
+    border-radius: 0;
+    border-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
   }
 
   .pdp-mobile-surface .pdp-panel-muted {
@@ -419,7 +470,7 @@ h1, h2, h3, h4, h5, h6,
   width: 100%;
   border-radius: 0.5rem;
   border: 1px solid var(--pdp-border);
-  background-color: var(--pdp-surface);
+  background-color: color-mix(in srgb, var(--pdp-surface) 88%, var(--pdp-muted-surface));
   color: var(--pdp-text-strong);
   padding: 0.5rem 0.75rem;
   font-size: 0.95rem;
@@ -427,9 +478,9 @@ h1, h2, h3, h4, h5, h6,
 }
 
 .pdp-control:focus {
-  outline: 2px solid color-mix(in srgb, var(--pdp-theme-primary) 65%, #ffffff 35%);
+  outline: 2px solid color-mix(in srgb, var(--pdp-theme-primary) 44%, #ffffff 56%);
   outline-offset: 1px;
-  border-color: color-mix(in srgb, var(--pdp-theme-primary) 74%, var(--pdp-border));
+  border-color: color-mix(in srgb, var(--pdp-theme-primary) 52%, var(--pdp-border));
 }
 
 .pdp-btn-primary {
@@ -456,7 +507,7 @@ h1, h2, h3, h4, h5, h6,
 .pdp-shell input:not([type="checkbox"]):not([type="radio"]),
 .pdp-shell select,
 .pdp-shell textarea {
-  background-color: var(--pdp-surface) !important;
+  background-color: color-mix(in srgb, var(--pdp-surface) 88%, var(--pdp-muted-surface)) !important;
   color: var(--pdp-text-strong) !important;
 }
 
