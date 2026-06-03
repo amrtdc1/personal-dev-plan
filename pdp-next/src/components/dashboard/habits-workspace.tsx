@@ -6,6 +6,7 @@ import { buildHabitMetrics, type HabitMetricSnapshot } from "@/components/dashbo
 import { CrudModal } from "@/components/ui/crud-modal";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { ErrorBanner } from "@/components/ui/error-banner";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { IconButton } from "@/components/ui/icon-button";
 import { LoadingSection } from "@/components/ui/loading-section";
 import { Archive, Check, Loader2, Pause, Play, Plus, RotateCcw, Trash2, X } from "lucide-react";
@@ -370,7 +371,13 @@ export function HabitsWorkspace() {
     <WorkspaceShell
       title="Habits"
       sectionClassName="pdp-panel-mobile-flat pdp-mobile-surface"
+      titleTrailing={
+        <InfoPopover className="self-center sm:hidden" label="Habits help">
+          Track routines with quick daily check-ins.
+        </InfoPopover>
+      }
       description="Track routines with quick daily check-ins."
+      descriptionClassName="hidden sm:block"
       notices={
         <>
           {loadError ? <p className="mt-3 text-sm text-red-700">{loadError}</p> : null}
@@ -380,8 +387,7 @@ export function HabitsWorkspace() {
         </>
       }
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Habit Tracker</h3>
+      <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
             {activeHabits.length} active
@@ -390,10 +396,8 @@ export function HabitsWorkspace() {
             <Plus className="h-4 w-4" />
           </IconButton>
         </div>
-      </div>
 
-      <div className="mt-3 flex min-w-0 justify-start sm:justify-end">
-        <div className="w-full sm:w-auto">
+        <div className="w-52 sm:w-auto">
           <select
             value={habitSortKey}
             onChange={(event) => setHabitSortKey(event.target.value as HabitSortKey)}

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { MagicCodeAuth } from "@/components/auth/magic-code-auth";
 import { CalendarWorkspace } from "@/components/dashboard/calendar-workspace";
 import { DashboardInsights } from "@/components/dashboard/dashboard-insights";
@@ -1026,6 +1026,78 @@ function ProfileSettings({
       : null;
   const previewBrandSource: ThemeSource = themeSource;
   const previewBrandVisual = getBrandVisual(previewBrandSource, previewCollegeTeam, previewThemeValue);
+
+  // Debounced auto-save for theme changes (short debounce so quick theme toggles feel instant)
+  const themeAutosaveTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!user || !profile) return;
+
+    const mappedTheme = currentDisplayMode === "system" ? "cwm" : currentDisplayMode;
+    const selectedThemeSource = themeSource;
+    const desiredSnapshot: ThemeBrandSnapshot = {
+      themeSource: selectedThemeSource,
+      theme: mappedTheme,
+      palette: selectedThemeSource === "palette" ? currentPalette : profile.palette,
+      collegeTeamId: selectedThemeSource === "college" ? (selectedCollegeTeam?.id ?? null) : null,
+      collegeTeamName:
+        selectedThemeSource === "college"
+          ? (selectedCollegeTeam?.displayName ?? nullableValue(profile.collegeTeamName ?? null))
+          : null,
+      collegeLogoUrl:
+        selectedThemeSource === "college"
+          ? (selectedCollegeTeam ? getCollegeTeamLogoUrl(selectedCollegeTeam.id) : nullableValue(profile.collegeLogoUrl ?? null))
+          : null,
+    };
+
+    const currentSnapshot: ThemeBrandSnapshot = {
+      themeSource: normalizeThemeSource(profile.themeMode, profile.collegeTeamId ?? null),
+      theme: profile.theme ?? "cwm",
+      palette: profile.palette ?? "ocean",
+      collegeTeamId: profile.collegeTeamId ?? null,
+      collegeTeamName: profile.collegeTeamName ?? null,
+      collegeLogoUrl: profile.collegeLogoUrl ?? null,
+    };
+
+    if (areThemeSnapshotsEqual(currentSnapshot, desiredSnapshot)) {
+      return;
+    }
+
+    if (themeAutosaveTimeoutRef.current) {
+      window.clearTimeout(themeAutosaveTimeoutRef.current);
+    }
+
+    themeAutosaveTimeoutRef.current = window.setTimeout(async () => {
+      setIsSaving(true);
+      setSaveError(null);
+      setSaveMessage(null);
+
+      try {
+        await saveUserProfileToServer({
+          themeMode: desiredSnapshot.themeSource,
+          theme: desiredSnapshot.theme,
+          palette: desiredSnapshot.palette,
+          collegeTeamId: desiredSnapshot.collegeTeamId,
+          collegeTeamName: desiredSnapshot.collegeTeamName,
+          collegeLogoUrl: desiredSnapshot.collegeLogoUrl,
+        });
+
+        onThemeSaved?.(desiredSnapshot);
+        setSaveMessage("Theme saved.");
+      } catch (updateError) {
+        setSaveError(getFriendlyProfileSaveError(updateError, "We could not save your theme selection."));
+      } finally {
+        setIsSaving(false);
+      }
+    }, 500);
+
+    return () => {
+      if (themeAutosaveTimeoutRef.current) {
+        window.clearTimeout(themeAutosaveTimeoutRef.current);
+        themeAutosaveTimeoutRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, profile, themeSource, currentDisplayMode, currentPalette, selectedCollegeTeamId, availableCollegeTeamsById]);
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

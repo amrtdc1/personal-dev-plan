@@ -1219,6 +1219,54 @@ export function MigrationDataPreview({
     </div>
   );
 
+  const planningNavItems = [
+    ["week", "Week"],
+    ["quarter", "Quarter"],
+    ["year", "Year"],
+    ["vision", "Vision"],
+  ] as const;
+
+  const planningMobileNav = (
+    <div className="flex gap-1 rounded-xl border border-slate-200 bg-slate-100/60 p-1 w-full" aria-label="Planning views">
+      {planningNavItems.map(([tab, label]) => (
+        <button
+          key={tab}
+          type="button"
+          onClick={() => setPlanningTab(tab as PlanningTab)}
+          className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+            planningTab === tab ? "pdp-solid-surface text-slate-900 shadow-sm" : "bg-slate-50/60 text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+          }`}
+          aria-current={planningTab === tab ? "page" : undefined}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const planningLeftRail = (
+    <nav className="space-y-2" aria-label="Planning views">
+      {planningNavItems.map(([tab, label]) => {
+        const isActive = planningTab === tab;
+        return (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setPlanningTab(tab as PlanningTab)}
+            className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+              isActive ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+            aria-current={isActive ? "page" : undefined}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold">{label}</span>
+            </div>
+          </button>
+        );
+      })}
+    </nav>
+  );
+
   return (
     <>
       {showWorkspaceShell ? (
@@ -1226,6 +1274,9 @@ export function MigrationDataPreview({
           title="Planning"
           sectionClassName="pdp-panel-mobile-flat pdp-mobile-surface"
           leftRailClassName="pdp-panel-muted-mobile-flat"
+          mobileNav={planningMobileNav}
+          leftRailTitle="Views"
+          leftRailContent={planningLeftRail}
           headerAside={
             isRefreshing ? (
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
@@ -1251,29 +1302,7 @@ export function MigrationDataPreview({
             </>
           }
         >
-          {/* Planning tab bar */}
-          <div className="flex gap-1 rounded-xl border border-slate-200 bg-slate-100/60 p-1">
-            {([
-              ["week", "Week"],
-              ["quarter", "Quarter"],
-              ["year", "Year"],
-              ["vision", "Vision"],
-            ] as const).map(([tab, label]) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setPlanningTab(tab)}
-                className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                  planningTab === tab
-                    ? "pdp-solid-surface text-slate-900 shadow-sm"
-                    : "bg-slate-50/60 text-slate-700 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-                aria-current={planningTab === tab ? "page" : undefined}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* Planning navigation provided via WorkspaceShell (mobileNav / leftRailContent) */}
 
           {planningTab === "week" ? (
             <PlanningPreviewPanel surface="weekly" goals={activeGoals} tasks={allTasks} />

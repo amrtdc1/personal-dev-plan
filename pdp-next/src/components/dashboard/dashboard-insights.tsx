@@ -892,7 +892,7 @@ export function DashboardInsights() {
         </>
       }
       mobileNav={
-        <div className="flex w-full flex-wrap gap-2" aria-label="Today workspace modes">
+        <div className="flex gap-1 rounded-xl border border-slate-200 bg-slate-100/60 p-1 w-full" aria-label="Today workspace modes">
           {modeItems.map((item) => {
             const isActive = dashboardMode === item.mode;
             return (
@@ -900,9 +900,10 @@ export function DashboardInsights() {
                 key={`mobile-mode-${item.mode}`}
                 type="button"
                 onClick={() => setDashboardMode(item.mode)}
-                className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
-                  isActive ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  isActive ? "pdp-solid-surface text-slate-900 shadow-sm" : "bg-slate-50/60 text-slate-700 hover:bg-slate-50 hover:text-slate-900"
                 }`}
+                aria-current={isActive ? "page" : undefined}
               >
                 {item.label}
               </button>
